@@ -16,6 +16,10 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
+# تأكد من تعريف هذا المتغير لتجنب الخطأ
+if 'logout_pressed' not in st.session_state:
+    st.session_state.logout_pressed = False
+
 # --- Cookie Manager ---
 def get_manager():
     return stx.CookieManager()
@@ -26,14 +30,20 @@ cookie_manager = get_manager()
 def inject_security_css():
     st.markdown("""
         <style>
+        /* Hide Toolbar (3 dots), Deploy button, and Manage App button ONLY */
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         .stDeployButton {visibility: hidden !important; display: none !important;}
         [data-testid="manage-app-button"] {visibility: hidden !important; display: none !important;}
+        
+        /* Hide Footer */
         footer {visibility: hidden !important;}
+        
+        /* Hide Top Decoration */
         [data-testid="stDecoration"] {display: none;}
         </style>
     """, unsafe_allow_html=True)
 
+# Apply security settings (Hide by default, Show for 'abdulaziz')
 should_hide = True
 if st.session_state.logged_in:
     username = str(st.session_state.user_info.get('username', '')).lower()
@@ -255,20 +265,13 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
 
 # --- Special Transfer Function: SNC to NTCC ---
 def transfer_snc_to_ntcc(item_en, qty, user, unit):
-    # 1. Decrease SNC
     status_out, msg_out = update_central_inventory_with_log(item_en, "SNC", -qty, user, "Transfer Out to NTCC", unit)
     if not status_out:
         return False, f"SNC Error: {msg_out}"
     
-    # 2. Increase NTCC (Check if item exists first)
-    # Note: simple logic, tries to update. If fails (item not in NTCC), we might need to create it.
-    # For now, assuming item exists in both lists or using update logic.
     status_in, msg_in = update_central_inventory_with_log(item_en, "NTCC", qty, user, "Received from SNC", unit)
     
     if not status_in:
-        # If item doesn't exist in NTCC, we should add it.
-        # This part requires fetching item details from SNC to add to NTCC
-        # For simplicity, we return error saying "Item must exist in NTCC list first"
         return False, f"NTCC Error: {msg_in} (Ensure item exists in NTCC list)"
         
     return True, "Transfer Successful"
@@ -296,9 +299,10 @@ def update_local_inventory_record(region, item_en, new_qty):
         return True
     except: return False
 
-# --- Auto-Login Logic ---
+# --- Auto-Login Logic (FIXED WITH .GET) ---
 if not st.session_state.logged_in:
-    if not st.session_state.logout_pressed:
+    # Use .get() to avoid AttributeError
+    if not st.session_state.get('logout_pressed', False):
         time.sleep(0.1)
         cookie_user = cookie_manager.get(cookie="wms_user_pro")
         if cookie_user:
