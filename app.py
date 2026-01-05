@@ -26,14 +26,22 @@ cookie_manager = get_manager()
 def inject_security_css():
     st.markdown("""
         <style>
+        /* Hide Toolbar (3 dots), Deploy button, and Manage App button ONLY */
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         .stDeployButton {visibility: hidden !important; display: none !important;}
         [data-testid="manage-app-button"] {visibility: hidden !important; display: none !important;}
+        
+        /* Hide Footer */
         footer {visibility: hidden !important;}
+        
+        /* Hide Top Decoration */
         [data-testid="stDecoration"] {display: none;}
+        
+        /* NOTE: We do NOT hide the full header to keep the Sidebar Toggle visible */
         </style>
     """, unsafe_allow_html=True)
 
+# Apply security settings (Hide by default, Show for 'abdulaziz')
 should_hide = True
 if st.session_state.logged_in:
     username = str(st.session_state.user_info.get('username', '')).lower()
@@ -43,7 +51,7 @@ if st.session_state.logged_in:
 if should_hide:
     inject_security_css()
 
-# --- Constants & Lists ---
+# --- Constants ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 LOCATIONS = ["NTCC", "SNC"]
 AREAS = [
@@ -52,8 +60,9 @@ AREAS = [
     "Ward 30", "Ward 31", "Ward 40", "Ward 41", "Ward 50", "Ward 51",
     "Service area", "OPD", "E.R", "x-rays", "neurodiagnostic"
 ]
+NAME_COL = 'name_en'
 
-# --- English Text Dictionary ---
+# --- English Dictionary ---
 txt = {
     "app_title": "Unified WMS System",
     "login_page": "Login", "register_page": "Register",
@@ -101,11 +110,11 @@ txt = {
     "unit": "Unit", "piece": "Piece", "carton": "Carton",
     "edit_profile": "Edit Profile", "new_name": "New Name", "new_pass": "New Password", 
     "save_changes": "Save Changes", "profile_updated": "Profile updated, please login again",
-    "my_pending": "My Pending Requests (Click to Edit)",
-    "update_req": "Update Request"
+    "my_pending": "My Pending Requests (Edit/Cancel)",
+    "update_req": "Update",
+    "cancel_req": "Delete 🗑️",
+    "cancel_confirm": "Deleted successfully"
 }
-
-NAME_COL = 'name_en'
 
 # --- General CSS ---
 st.markdown(f"""
@@ -124,7 +133,7 @@ st.markdown(f"""
     <div class="copyright-footer">{txt['copyright']}</div>
 """, unsafe_allow_html=True)
 
-# --- Google Sheets Connection ---
+# --- Google Sheets Connection (Cached Client Only) ---
 @st.cache_resource
 def get_connection():
     try:
@@ -136,15 +145,19 @@ def get_connection():
         return sheet
     except: return None
 
+# --- Data Loading (NO CACHE to fix real-time issues) ---
 def load_data(worksheet_name):
     try:
         sh = get_connection()
         ws = sh.worksheet(worksheet_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
+        
+        # Standardize Columns to avoid KeyError
         if not df.empty:
             if 'item_en' in df.columns: df = df.rename(columns={'item_en': 'name_en'})
             if 'item_ar' in df.columns: df = df.rename(columns={'item_ar': 'name_ar'})
+            # Clean strings
             if 'status' in df.columns: df['status'] = df['status'].astype(str).str.strip()
             if 'region' in df.columns: df['region'] = df['region'].astype(str).str.strip()
         return df
@@ -171,18 +184,15 @@ def update_user_profile_in_db(username, new_name, new_pass):
             ws.update_cell(cell.row, 3, new_name)
             return True
         return False
-    except Exception as e: return False
+    except: return False
 
-# --- دالة تحديث طلب المشرف ---
+# --- Request Management Functions (Edit/Delete) ---
 def update_request_data(req_id, new_qty, new_unit):
     try:
         sh = get_connection()
         ws = sh.worksheet('requests')
-        # البحث عن الصف الذي يحتوي على رقم الطلب
         cell = ws.find(str(req_id))
         if cell:
-            # الترتيب في save_row: 
-            # 1:id, 2:name, 3:area, 4:item_ar, 5:item_en, 6:cat, 7:qty, 8:date, 9:status, 10:notes, 11:unit
             # Qty is col 7, Unit is col 11
             ws.update_cell(cell.row, 7, int(new_qty))
             ws.update_cell(cell.row, 11, str(new_unit))
@@ -190,6 +200,18 @@ def update_request_data(req_id, new_qty, new_unit):
         return False
     except: return False
 
+def delete_request_data(req_id):
+    try:
+        sh = get_connection()
+        ws = sh.worksheet('requests')
+        cell = ws.find(str(req_id))
+        if cell:
+            ws.delete_rows(cell.row)
+            return True
+        return False
+    except: return False
+
+# --- Inventory Logic ---
 def update_central_inventory_with_log(item_en, location, change_qty, user, action_desc, unit_type="Piece"):
     try:
         sh = get_connection()
@@ -198,6 +220,7 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
         inv_data = ws_inv.get_all_records()
         df_inv = pd.DataFrame(inv_data)
         
+        # Normalize for comparison
         target_item = str(item_en).strip().lower()
         target_loc = str(location).strip().lower()
         
@@ -211,8 +234,8 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
             raw_qty = df_inv.at[idx, 'qty']
             try:
                 current_qty = int(str(raw_qty).replace(',', '').split('.')[0])
-            except:
-                current_qty = 0
+            except: current_qty = 0
+                
             new_qty = max(0, current_qty + change_qty)
             ws_inv.update_cell(idx + 2, 4, new_qty) 
             
@@ -234,6 +257,7 @@ def update_local_inventory_record(region, item_en, new_qty):
         
         if not df.empty:
             df['clean_reg'] = df['region'].astype(str).str.strip()
+            # Normalize column search
             col_name = 'item_en' if 'item_en' in df.columns else 'name_en'
             df['clean_item'] = df[col_name].astype(str).str.strip()
             mask = (df['clean_reg'] == str(region).strip()) & (df['clean_item'] == str(item_en).strip())
@@ -244,6 +268,7 @@ def update_local_inventory_record(region, item_en, new_qty):
             ws.update_cell(row_idx + 2, 4, int(new_qty))
             ws.update_cell(row_idx + 2, 5, datetime.now().strftime("%Y-%m-%d %H:%M"))
         else:
+            # Append new record safely
             ws.append_row([region, item_en, item_en, int(new_qty), datetime.now().strftime("%Y-%m-%d %H:%M")])
         return True
     except: return False
@@ -524,40 +549,43 @@ else:
             
             st.markdown("---")
             
-            # --- My Pending Requests (EDITABLE) ---
+            # --- My Pending Requests (EDIT/CANCEL) ---
             reqs = load_data('requests')
             if not reqs.empty:
                 my_reqs = reqs[reqs['supervisor'] == info['name']]
-                
-                # Filter Pending for Edit
                 if 'status' in my_reqs.columns:
                     my_reqs['status'] = my_reqs['status'].astype(str).str.strip()
-                    
                 pending_reqs = my_reqs[my_reqs['status'] == 'Pending']
                 
                 if not pending_reqs.empty:
                     st.subheader(txt['my_pending'])
                     for idx, row in pending_reqs.iterrows():
-                        with st.expander(f"📝 Edit: {row.get('name_en', 'Item')} ({row['qty']})"):
-                            c1, c2 = st.columns(2)
-                            new_qty_edit = c1.number_input("New Qty", 1, 1000, int(row['qty']), key=f"edit_q_{row['req_id']}")
+                        with st.expander(f"⚙️ {row.get('name_en', 'Item')} ({row['qty']}) - Click to Manage"):
+                            c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
                             
-                            # Determine unit index
+                            new_qty_edit = c1.number_input("New Qty", 1, 1000, int(row['qty']), key=f"edit_q_{row['req_id']}")
                             curr_unit = row.get('unit', 'Piece')
                             u_idx = 0 if curr_unit == 'Piece' else 1
-                            new_unit_edit = c2.radio("New Unit", ['Piece', 'Carton'], index=u_idx, key=f"edit_u_{row['req_id']}")
+                            new_unit_edit = c2.radio("Unit", ['Piece', 'Carton'], index=u_idx, key=f"edit_u_{row['req_id']}", horizontal=True)
                             
-                            if st.button(txt['update_req'], key=f"save_{row['req_id']}"):
+                            # Edit Button
+                            if c3.button(txt['update_req'], key=f"save_{row['req_id']}"):
                                 if update_request_data(row['req_id'], new_qty_edit, new_unit_edit):
                                     st.success("Updated")
                                     time.sleep(1)
                                     st.rerun()
-                                else:
-                                    st.error("Error updating")
+                                else: st.error("Error")
+                            
+                            # Delete Button
+                            if c4.button(txt['cancel_req'], key=f"del_{row['req_id']}"):
+                                if delete_request_data(row['req_id']):
+                                    st.success(txt['cancel_confirm'])
+                                    time.sleep(1)
+                                    st.rerun()
+                                else: st.error("Error")
                                     
-                # Show All My Requests table (Read Only)
                 st.write("---")
-                st.caption("All My Requests Status:")
+                st.caption("Request History:")
                 cols_to_show = ['name_en', 'qty', 'status', 'region']
                 if 'unit' in my_reqs.columns: cols_to_show.insert(2, 'unit')
                 if 'item_en' in my_reqs.columns: my_reqs = my_reqs.rename(columns={'item_en': 'name_en'})
