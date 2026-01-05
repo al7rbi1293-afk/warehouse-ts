@@ -14,8 +14,6 @@ st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="c
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 CATS_AR = ["كهربائية", "كيميائية", "أدوات يدوية", "مستهلكات", "سلامة", "أخرى"]
 LOCATIONS = ["NTCC", "SNC"]
-
-# قائمة المناطق الجديدة الشاملة
 AREAS = [
     "Ground floor", "1st floor", 
     "2nd floor O.R", "2nd floor ICU 28", "2nd floor RT and Waiting area", "2nd floor ICU 29",
@@ -193,7 +191,6 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
             current_qty = int(df_inv.at[idx, 'qty'])
             new_qty = max(0, current_qty + change_qty)
             ws_inv.update_cell(idx + 2, 4, new_qty) 
-            # إضافة نوع الوحدة (Unit) في السجل للتوثيق
             log_desc = f"{action_desc} ({unit_type})"
             log_entry = [datetime.now().strftime("%Y-%m-%d %H:%M"), user, log_desc, item_en, location, change_qty, new_qty]
             ws_log.append_row(log_entry)
@@ -285,15 +282,18 @@ else:
             if wh_data.empty:
                 st.info(f"{txt['no_items']} - {warehouse_name}")
             else:
-                display_cols = ['name_ar', 'name_en', 'qty', 'category']
+                # إضافة 'unit' للعرض إذا كانت موجودة
+                base_cols = ['name_ar', 'name_en', 'qty', 'unit', 'category']
+                display_cols = [c for c in base_cols if c in wh_data.columns]
+                
                 st.dataframe(wh_data[display_cols], use_container_width=True)
+                
                 with st.expander(f"🛠 {txt['modify_stock']} ({warehouse_name})"):
                     item_options = wh_data.apply(lambda x: x[NAME_COL], axis=1)
                     sel_item = st.selectbox(f"{txt['select_item']} ({warehouse_name}):", item_options, key=f"sel_{warehouse_name}")
                     current_row = wh_data[wh_data[NAME_COL] == sel_item].iloc[0]
                     st.write(f"{txt['current_stock_display']} **{current_row['qty']}**")
                     
-                    # خيار تحديد الوحدة للجرد
                     st.write("---")
                     c_unit, c_act, c_amt = st.columns(3)
                     mgr_unit = c_unit.radio(txt['unit'], [txt['piece'], txt['carton']], key=f"u_{warehouse_name}")
@@ -324,7 +324,6 @@ else:
                         with st.container(border=True):
                             disp_name = row['item_ar'] if lang == 'ar' else row['item_en']
                             st.markdown(f"**📦 {disp_name}**")
-                            # عرضنا الوحدة هنا (حبة / كرتون)
                             req_u = row['unit'] if 'unit' in row else '-'
                             st.caption(f"{txt['area_label']}: **{row['region']}** | {txt['qty']}: **{row['qty']} ({req_u})**")
                             st.caption(f"👤 {row['supervisor']}")
@@ -392,7 +391,6 @@ else:
                 
                 if st.button(txt['send_req'], key="sk_snd", use_container_width=True):
                     item_data = wh_inv[wh_inv[NAME_COL] == sel_sk].iloc[0]
-                    # حفظ الطلب مع الوحدة
                     save_row('requests', [
                         str(uuid.uuid4()), info['name'], info['region'],
                         item_data['name_ar'], item_data['name_en'], item_data['category'],
@@ -439,7 +437,6 @@ else:
                     opts = ntcc_items.apply(lambda x: x[NAME_COL], axis=1)
                     sel = st.selectbox(txt['select_item'], opts)
                     
-                    # خيار الوحدة (حبة / كرتون)
                     c_u, c_q = st.columns(2)
                     req_unit = c_u.radio(txt['unit'], [txt['piece'], txt['carton']], horizontal=True)
                     qty = c_q.number_input(txt['qty_req'], 1, 1000, 1)
@@ -450,7 +447,7 @@ else:
                             str(uuid.uuid4()), info['name'], req_area,
                             item['name_ar'], item['name_en'], item['category'],
                             qty, datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            txt['pending'], "", req_unit # حفظ الوحدة هنا
+                            txt['pending'], "", req_unit
                         ])
                         st.success("✅")
                         time.sleep(1)
@@ -459,7 +456,6 @@ else:
             reqs = load_data('requests')
             if not reqs.empty:
                 my_reqs = reqs[reqs['supervisor'] == info['name']]
-                # عرض الوحدة في الجدول
                 disp_df = my_reqs[['item_ar' if lang=='ar' else 'item_en', 'qty', 'unit' if 'unit' in my_reqs.columns else 'status', 'status', 'region']]
                 st.dataframe(disp_df, use_container_width=True)
 
