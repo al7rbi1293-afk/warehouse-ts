@@ -26,14 +26,20 @@ cookie_manager = get_manager()
 def inject_security_css():
     st.markdown("""
         <style>
+        /* Hide Toolbar (3 dots), Deploy button, and Manage App button ONLY */
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         .stDeployButton {visibility: hidden !important; display: none !important;}
         [data-testid="manage-app-button"] {visibility: hidden !important; display: none !important;}
+        
+        /* Hide Footer */
         footer {visibility: hidden !important;}
+        
+        /* Hide Top Decoration */
         [data-testid="stDecoration"] {display: none;}
         </style>
     """, unsafe_allow_html=True)
 
+# Apply security settings (Hide by default, Show for 'abdulaziz')
 should_hide = True
 if st.session_state.logged_in:
     username = str(st.session_state.user_info.get('username', '')).lower()
@@ -43,7 +49,7 @@ if st.session_state.logged_in:
 if should_hide:
     inject_security_css()
 
-# --- Constants & Lists ---
+# --- Constants ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 LOCATIONS = ["NTCC", "SNC"]
 AREAS = [
@@ -52,8 +58,9 @@ AREAS = [
     "Ward 30", "Ward 31", "Ward 40", "Ward 41", "Ward 50", "Ward 51",
     "Service area", "OPD", "E.R", "x-rays", "neurodiagnostic"
 ]
+NAME_COL = 'name_en'
 
-# --- English Text Dictionary ---
+# --- English Dictionary ---
 txt = {
     "app_title": "Unified WMS System",
     "login_page": "Login", "register_page": "Register",
@@ -107,8 +114,6 @@ txt = {
     "cancel_confirm": "Deleted successfully"
 }
 
-NAME_COL = 'name_en'
-
 # --- General CSS ---
 st.markdown(f"""
     <style>
@@ -138,12 +143,15 @@ def get_connection():
         return sheet
     except: return None
 
+# --- Data Loading (NO CACHE) ---
 def load_data(worksheet_name):
     try:
         sh = get_connection()
         ws = sh.worksheet(worksheet_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
+        
+        # Standardize Columns
         if not df.empty:
             if 'item_en' in df.columns: df = df.rename(columns={'item_en': 'name_en'})
             if 'item_ar' in df.columns: df = df.rename(columns={'item_ar': 'name_ar'})
@@ -175,18 +183,14 @@ def update_user_profile_in_db(username, new_name, new_pass):
         return False
     except: return False
 
-# --- FIXED UPDATE FUNCTION (Matches Image Columns) ---
 def update_request_data(req_id, new_qty, new_unit):
     try:
         sh = get_connection()
         ws = sh.worksheet('requests')
         cell = ws.find(str(req_id))
         if cell:
-            # Based on image mapping:
-            # A=1 (id), B=2 (sup), C=3 (reg), D=4 (item), E=5 (cat)
-            # F=6 (QTY), G=7 (date), H=8 (status), I=9 (reason), J=10 (UNIT)
-            ws.update_cell(cell.row, 6, int(new_qty))  # Update Qty (Col F)
-            ws.update_cell(cell.row, 10, str(new_unit)) # Update Unit (Col J)
+            ws.update_cell(cell.row, 6, int(new_qty))
+            ws.update_cell(cell.row, 10, str(new_unit))
             return True
         return False
     except: return False
@@ -202,11 +206,19 @@ def delete_request_data(req_id):
         return False
     except: return False
 
+# --- FIXED: Robust Inventory Logic ---
 def update_central_inventory_with_log(item_en, location, change_qty, user, action_desc, unit_type="Piece"):
     try:
         sh = get_connection()
         ws_inv = sh.worksheet('inventory')
-        ws_log = sh.worksheet('stock_logs')
+        
+        # 1. Safely get or create stock_logs
+        try:
+            ws_log = sh.worksheet('stock_logs')
+        except:
+            ws_log = sh.add_worksheet(title="stock_logs", rows="1000", cols="10")
+            ws_log.append_row(["Date", "User", "Action", "Item", "Location", "Change", "New Qty"])
+
         inv_data = ws_inv.get_all_records()
         df_inv = pd.DataFrame(inv_data)
         
@@ -224,11 +236,21 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
             try:
                 current_qty = int(str(raw_qty).replace(',', '').split('.')[0])
             except: current_qty = 0
-            new_qty = max(0, current_qty + change_qty)
+                
+            new_qty = max(0, current_qty + int(change_qty))
             ws_inv.update_cell(idx + 2, 4, new_qty) 
             
+            # Safe JSON compatible types
             log_desc = f"{action_desc} ({unit_type})"
-            log_entry = [datetime.now().strftime("%Y-%m-%d %H:%M"), user, log_desc, item_en, location, change_qty, new_qty]
+            log_entry = [
+                datetime.now().strftime("%Y-%m-%d %H:%M"), 
+                str(user), 
+                str(log_desc), 
+                str(item_en), 
+                str(location), 
+                int(change_qty), 
+                int(new_qty)
+            ]
             ws_log.append_row(log_entry)
             return True, "Success"
         else:
@@ -472,10 +494,9 @@ else:
                 qty_sk = c_q.number_input(txt['qty_req'], 1, 1000, 1, key="sk_q")
                 if st.button(txt['send_req'], key="sk_snd", use_container_width=True):
                     item_data = wh_inv[wh_inv[NAME_COL] == sel_sk].iloc[0]
-                    # Fix: Ensure single item name passed
                     save_row('requests', [
                         str(uuid.uuid4()), info['name'], info['region'],
-                        item_data['name_en'], item_data['category'], # Corrected Order
+                        item_data['name_en'], item_data['name_en'], item_data['category'],
                         qty_sk, datetime.now().strftime("%Y-%m-%d %H:%M"),
                         txt['pending'], f"Source: {wh_source}", sk_unit
                     ])
@@ -512,7 +533,6 @@ else:
         with t_req:
             req_area = st.selectbox(txt['select_area'], AREAS, key="sup_req_area")
             
-            # --- Form to Add New Request ---
             if ntcc_items.empty:
                 st.warning(txt['no_items'])
             else:
@@ -524,7 +544,7 @@ else:
                     qty = c_q.number_input(txt['qty_req'], 1, 1000, 1)
                     if st.button(txt['send_req'], use_container_width=True):
                         item = ntcc_items[ntcc_items[NAME_COL] == sel].iloc[0]
-                        # Fix: Send exact columns mapping A-J
+                        # Safe Save: English name only
                         save_row('requests', [
                             str(uuid.uuid4()), info['name'], req_area,
                             item['name_en'], item['category'],
@@ -537,7 +557,6 @@ else:
             
             st.markdown("---")
             
-            # --- My Pending Requests (EDIT/CANCEL) ---
             reqs = load_data('requests')
             if not reqs.empty:
                 my_reqs = reqs[reqs['supervisor'] == info['name']]
