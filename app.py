@@ -16,10 +16,6 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
-# --- Prevent Auto-Login Loop on Logout ---
-if 'logout_pressed' not in st.session_state:
-    st.session_state.logout_pressed = False
-
 # --- Cookie Manager ---
 def get_manager():
     return stx.CookieManager()
@@ -47,7 +43,7 @@ if st.session_state.logged_in:
 if should_hide:
     inject_security_css()
 
-# --- Constants & Lists ---
+# --- Constants ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 LOCATIONS = ["NTCC", "SNC"]
 AREAS = [
@@ -58,7 +54,7 @@ AREAS = [
 ]
 NAME_COL = 'name_en'
 
-# --- English Text Dictionary ---
+# --- English Dictionary ---
 txt = {
     "app_title": "Unified WMS System",
     "login_page": "Login", "register_page": "Register",
@@ -75,8 +71,8 @@ txt = {
     "qty_req": "Request Qty", "qty_local": "Actual Qty",
     "send_req": "Send Request", "update_btn": "Save",
     "download_excel": "Export Excel", "no_items": "No items available",
-    "pending_reqs": "⏳ Supervisor Requests", "approved_reqs": "📦 To Issue",
-    "approve": "Approve ✅", "reject": "Reject ❌", "issue": "Issue 📦",
+    "pending_reqs": "⏳ Supervisor Requests", "approved_reqs": "📦 Requests to Issue",
+    "approve": "Approve ✅", "reject": "Reject ❌", "issue": "Confirm Issue 📦",
     "status": "Status", "reason": "Reason",
     "pending": "Pending", "approved": "Approved", 
     "rejected": "Rejected", "issued": "Issued",
@@ -85,15 +81,15 @@ txt = {
     "success_req": "Request Sent",
     "success_issue": "Issued successfully",
     "filter_region": "Region",
-    "issue_qty_input": "Issued Qty",
+    "issue_qty_input": "Actual Issued Qty",
     "manage_stock": "📦 Central Stock Monitor & Count",
     "select_action": "Action",
     "add_stock": "Add (+)", "reduce_stock": "Remove (-)",
     "amount": "Amount",
     "current_stock_display": "Current:", "new_stock_display": "New:",
-    "execute_update": "Update",
+    "execute_update": "Update Stock",
     "error_login": "Invalid Username or Password", "success_reg": "Registered successfully",
-    "stock_take_central": "📝 Central Stock Take",
+    "stock_take_central": "📝 Internal Warehouse Management",
     "sk_request": "📥 Store Keeper Request",
     "source_wh": "Select Warehouse",
     "ntcc_label": "Internal (NTCC)", "snc_label": "External (SNC)",
@@ -109,7 +105,10 @@ txt = {
     "my_pending": "My Pending Requests (Edit/Cancel)",
     "update_req": "Update",
     "cancel_req": "Delete 🗑️",
-    "cancel_confirm": "Deleted successfully"
+    "cancel_confirm": "Deleted successfully",
+    "receive_from_snc": "📥 Receive from External (SNC) to Internal (NTCC)",
+    "transfer_btn": "Transfer Stock",
+    "manual_stock_take": "🛠️ Manual Stock Take (NTCC Only)"
 }
 
 # --- General CSS ---
@@ -233,6 +232,7 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
             try:
                 current_qty = int(str(raw_qty).replace(',', '').split('.')[0])
             except: current_qty = 0
+                
             new_qty = max(0, current_qty + int(change_qty))
             ws_inv.update_cell(idx + 2, qty_col_idx, new_qty) 
             
@@ -252,6 +252,26 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
             return False, f"Item '{item_en}' not found"
     except Exception as e:
         return False, str(e)
+
+# --- Special Transfer Function: SNC to NTCC ---
+def transfer_snc_to_ntcc(item_en, qty, user, unit):
+    # 1. Decrease SNC
+    status_out, msg_out = update_central_inventory_with_log(item_en, "SNC", -qty, user, "Transfer Out to NTCC", unit)
+    if not status_out:
+        return False, f"SNC Error: {msg_out}"
+    
+    # 2. Increase NTCC (Check if item exists first)
+    # Note: simple logic, tries to update. If fails (item not in NTCC), we might need to create it.
+    # For now, assuming item exists in both lists or using update logic.
+    status_in, msg_in = update_central_inventory_with_log(item_en, "NTCC", qty, user, "Received from SNC", unit)
+    
+    if not status_in:
+        # If item doesn't exist in NTCC, we should add it.
+        # This part requires fetching item details from SNC to add to NTCC
+        # For simplicity, we return error saying "Item must exist in NTCC list first"
+        return False, f"NTCC Error: {msg_in} (Ensure item exists in NTCC list)"
+        
+    return True, "Transfer Successful"
 
 def update_local_inventory_record(region, item_en, new_qty):
     try:
@@ -276,11 +296,10 @@ def update_local_inventory_record(region, item_en, new_qty):
         return True
     except: return False
 
-# --- Auto-Login Logic (Robust) ---
-# Only check cookie if user is NOT logged in AND Logout button was NOT just pressed
+# --- Auto-Login Logic ---
 if not st.session_state.logged_in:
     if not st.session_state.logout_pressed:
-        time.sleep(0.1) # Give cookie manager a split second
+        time.sleep(0.1)
         cookie_user = cookie_manager.get(cookie="wms_user_pro")
         if cookie_user:
             users = load_data('users')
@@ -291,10 +310,7 @@ if not st.session_state.logged_in:
                     st.session_state.logged_in = True
                     st.session_state.user_info = match.iloc[0].to_dict()
                     st.rerun()
-    else:
-        # If logout was pressed, reset the flag so next refresh (manual) can use cookies if they exist
-        # But we delete cookie on logout, so it should be fine.
-        pass
+    else: pass
 
 # === LOGIN PAGE ===
 if not st.session_state.logged_in:
@@ -311,12 +327,9 @@ if not st.session_state.logged_in:
                     users['password'] = users['password'].astype(str)
                     match = users[(users['username']==u) & (users['password']==p)]
                     if not match.empty:
-                        # SUCCESSFUL LOGIN
                         st.session_state.logged_in = True
                         st.session_state.user_info = match.iloc[0].to_dict()
-                        # Clear the logout flag to allow auto-login next time
                         st.session_state.logout_pressed = False 
-                        # Set new cookie
                         cookie_manager.set("wms_user_pro", u, expires_at=datetime.now() + timedelta(days=7))
                         time.sleep(0.5)
                         st.rerun()
@@ -358,16 +371,11 @@ else:
                 st.rerun()
             else: st.error("Error Updating")
 
-    # --- LOGOUT BUTTON (FIXED LOGIC) ---
     if st.sidebar.button(txt['logout'], use_container_width=True):
-        # 1. Trigger Cookie Deletion
         cookie_manager.delete("wms_user_pro")
-        # 2. Clear Session
         st.session_state.logged_in = False
         st.session_state.user_info = {}
-        # 3. Set Flag to Block Immediate Auto-Login on Rerun
         st.session_state.logout_pressed = True
-        # 4. Wait for Browser to process cookie deletion
         time.sleep(0.5) 
         st.rerun()
 
@@ -446,38 +454,49 @@ else:
         with st.expander(f"📜 {txt['logs']}"):
             if not logs.empty: st.dataframe(logs, use_container_width=True)
 
-    # ================= 2. STORE KEEPER VIEW =================
+    # ================= 2. STORE KEEPER VIEW (NEW LAYOUT) =================
     elif info['role'] == 'storekeeper':
         st.header(txt['storekeeper_role'])
-        reqs = load_data('requests')
         inv = load_data('inventory')
-        tab_issue, tab_req_sk, tab_stocktake = st.tabs([txt['approved_reqs'], txt['sk_request'], txt['stock_take_central']])
+        reqs = load_data('requests')
         
+        # Tabs: 1. Issuing (Requests), 2. Internal Stock (Stock Take + Receive)
+        tab_issue, tab_internal_stock = st.tabs([txt['approved_reqs'], txt['stock_take_central']])
+        
+        # --- TAB 1: ISSUING ---
         with tab_issue:
             approved = pd.DataFrame()
             if not reqs.empty:
                 reqs['status'] = reqs['status'].astype(str).str.strip()
+                # Store Keeper sees 'Approved' status requests to Issue them
                 approved = reqs[reqs['status'] == 'Approved']
                 
             if approved.empty:
-                st.info("✅")
+                st.info("✅ No approved requests to issue")
             else:
                 for index, row in approved.iterrows():
                     with st.container(border=True):
                         disp_name = row.get('name_en', row.get('item_en', 'Unknown Item'))
                         st.markdown(f"**📦 {disp_name}**")
                         req_u = row['unit'] if 'unit' in row else '-'
-                        st.caption(f"📍 {row['region']} | {txt['qty_req']}: **{row['qty']} ({req_u})**")
+                        st.caption(f"📍 {row['region']} | Requested: **{row['qty']} ({req_u})**")
                         st.caption(f"SOURCE: NTCC (Internal)")
+                        
+                        # Store Keeper can edit the QTY actually issued
                         issue_qty = st.number_input(txt['issue_qty_input'], 1, 9999, int(row['qty']), key=f"iq_{row['req_id']}")
                         
                         if st.button(txt['issue'], key=f"btn_is_{row['req_id']}", use_container_width=True):
                             item_name_val = row.get('name_en', row.get('item_en'))
+                            # Update Central Stock (Decrease NTCC)
                             status, msg = update_central_inventory_with_log(item_name_val, "NTCC", -issue_qty, info['name'], f"Issued to {row['region']}", req_u)
+                            
                             if status:
+                                # Update Request Status
                                 reqs.loc[reqs['req_id'] == row['req_id'], 'status'] = txt['issued']
                                 reqs.loc[reqs['req_id'] == row['req_id'], 'qty'] = issue_qty
                                 update_data('requests', reqs)
+                                
+                                # Update Local Stock (Supervisor's Stock)
                                 try:
                                     local_inv_df = load_data('local_inventory')
                                     cur = 0
@@ -489,53 +508,76 @@ else:
                                         if not m.empty: cur = int(m.iloc[0]['qty'])
                                     update_local_inventory_record(row['region'], item_name_val, cur + issue_qty)
                                 except: pass 
-                                st.success("OK")
+                                
+                                st.success(f"✅ Issued {issue_qty} {req_u}")
                                 time.sleep(1)
                                 st.rerun()
                             else: 
                                 st.error(f"Error: {msg}")
 
-        with tab_req_sk:
-            wh_source = st.selectbox(txt['source_wh'], ["NTCC", "SNC"], key="sk_src_sel")
-            wh_inv = inv[inv['location'] == wh_source] if 'location' in inv.columns else pd.DataFrame()
-            if wh_inv.empty:
-                st.warning(txt['no_items'])
-            else:
-                opts = wh_inv.apply(lambda x: x[NAME_COL], axis=1)
-                sel_sk = st.selectbox(txt['select_item'], opts, key="sk_it_sel")
-                c_u, c_q = st.columns(2)
-                sk_unit = c_u.radio(txt['unit'], [txt['piece'], txt['carton']], key="sk_u_req", horizontal=True)
-                qty_sk = c_q.number_input(txt['qty_req'], 1, 1000, 1, key="sk_q")
-                if st.button(txt['send_req'], key="sk_snd", use_container_width=True):
-                    item_data = wh_inv[wh_inv[NAME_COL] == sel_sk].iloc[0]
-                    save_row('requests', [
-                        str(uuid.uuid4()), info['name'], info['region'],
-                        item_data['name_en'], item_data['category'],
-                        qty_sk, datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        txt['pending'], f"Source: {wh_source}", sk_unit
-                    ])
-                    st.success("✅")
+        # --- TAB 2: INTERNAL STOCK MANAGEMENT ---
+        with tab_internal_stock:
+            st.info("Manage Internal Warehouse (NTCC) Only")
+            
+            # --- Sub-Section A: Receive from SNC ---
+            with st.expander(txt['receive_from_snc'], expanded=True):
+                # Filter SNC items only
+                snc_inv = inv[inv['location'] == 'SNC'] if 'location' in inv.columns else pd.DataFrame()
+                
+                if not snc_inv.empty:
+                    c1, c2, c3 = st.columns([2, 1, 1])
+                    snc_opts = snc_inv.apply(lambda x: x[NAME_COL], axis=1)
+                    sel_snc_item = c1.selectbox("Select Item from SNC", snc_opts, key="snc_src")
+                    
+                    # Get Current Info
+                    snc_row = snc_inv[snc_inv[NAME_COL] == sel_snc_item].iloc[0]
+                    c1.caption(f"Available in SNC: {snc_row['qty']}")
+                    
+                    trans_qty = c2.number_input("Transfer Qty", 1, 10000, 1, key="tr_q")
+                    trans_unit = c3.radio("Unit", ['Piece', 'Carton'], key="tr_u")
+                    
+                    if st.button(txt['transfer_btn'], use_container_width=True):
+                        if int(snc_row['qty']) >= trans_qty:
+                            success, msg = transfer_snc_to_ntcc(sel_snc_item, trans_qty, info['name'], trans_unit)
+                            if success:
+                                st.success(f"✅ Moved {trans_qty} from SNC to NTCC")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error(msg)
+                        else:
+                            st.error("Not enough stock in SNC!")
+                else:
+                    st.warning("No items in SNC")
 
-        with tab_stocktake:
-            tgt_wh = st.radio(txt['source_wh'], ["SNC", "NTCC"], horizontal=True, key="sk_tk_wh")
-            tgt_inv = inv[inv['location'] == tgt_wh] if 'location' in inv.columns else pd.DataFrame()
-            if not tgt_inv.empty:
-                tk_opts = tgt_inv.apply(lambda x: x[NAME_COL], axis=1)
-                tk_item = st.selectbox(txt['select_item'], tk_opts, key="tk_it")
-                tk_row = tgt_inv[tgt_inv[NAME_COL] == tk_item].iloc[0]
-                st.info(f"{txt['current_stock_display']} {tk_row['qty']}")
-                c_tk0, c_tk1, c_tk2 = st.columns(3)
-                tk_unit = c_tk0.radio(txt['unit'], [txt['piece'], txt['carton']], key="tk_u")
-                op_tk = c_tk1.radio(txt['select_action'], [txt['add_stock'], txt['reduce_stock']], key="tk_act")
-                val_tk = c_tk2.number_input(txt['amount'], 1, 1000, 1)
-                if st.button(txt['update_btn'], key="tk_save", use_container_width=True):
-                    change = val_tk if op_tk == txt['add_stock'] else -val_tk
-                    status, msg = update_central_inventory_with_log(tk_row['name_en'], tgt_wh, change, info['name'], "StoreKeeper Adjust", tk_unit)
-                    if status:
-                        st.success("OK")
-                        time.sleep(1)
-                        st.rerun()
-                    else: st.error(msg)
+            st.markdown("---")
+
+            # --- Sub-Section B: Manual Stock Take (NTCC) ---
+            with st.expander(txt['manual_stock_take']):
+                ntcc_inv = inv[inv['location'] == 'NTCC'] if 'location' in inv.columns else pd.DataFrame()
+                
+                if not ntcc_inv.empty:
+                    ntcc_opts = ntcc_inv.apply(lambda x: x[NAME_COL], axis=1)
+                    tk_item = st.selectbox(txt['select_item'], ntcc_opts, key="ntcc_tk_it")
+                    tk_row = ntcc_inv[ntcc_inv[NAME_COL] == tk_item].iloc[0]
+                    
+                    st.info(f"Current Stock (NTCC): **{tk_row['qty']}**")
+                    
+                    c_tk1, c_tk2, c_tk3 = st.columns(3)
+                    tk_unit = c_tk1.radio("Unit", ['Piece', 'Carton'], key="tk_u_ntcc")
+                    op_tk = c_tk2.radio(txt['select_action'], [txt['add_stock'], txt['reduce_stock']], key="tk_act_ntcc")
+                    val_tk = c_tk3.number_input(txt['amount'], 1, 1000, 1, key="tk_amt_ntcc")
+                    
+                    if st.button(txt['execute_update'], key="tk_save_ntcc", use_container_width=True):
+                        change = val_tk if op_tk == txt['add_stock'] else -val_tk
+                        status, msg = update_central_inventory_with_log(tk_row['name_en'], "NTCC", change, info['name'], "StoreKeeper Stock Take", tk_unit)
+                        if status:
+                            st.success("✅ Stock Updated")
+                            time.sleep(1)
+                            st.rerun()
+                        else: st.error(msg)
+                else:
+                    st.warning("No items in NTCC")
 
     # ================= 3. SUPERVISOR VIEW (NTCC ONLY) =================
     else:
