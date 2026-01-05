@@ -33,7 +33,7 @@ AREAS = [
     "Service area", "OPD", "E.R", "x-rays", "neurodiagnostic"
 ]
 
-# --- Dictionary ---
+# --- Dictionary (Fixed KeyError) ---
 txt = {
     "app_title": "Unified WMS System (SQL)",
     "login_page": "Login", "register_page": "Register",
@@ -45,6 +45,7 @@ txt = {
     "qty": "Qty", "location": "Location",
     "requests_log": "Log", "inventory": "Inventory",
     "req_form": "Request Items", "select_item": "Select Item",
+    "local_inv": "My Stock",  # <--- تمت الإضافة هنا لحل المشكلة
     "current_local": "You have:", "update_local": "Update",
     "qty_req": "Request Qty", "qty_local": "Actual Qty",
     "send_req": "Send Request", "update_btn": "Save",
@@ -201,11 +202,6 @@ def transfer_stock(item_name, qty, user, unit):
     return True, "Transfer Complete"
 
 def update_local_inventory(region, item_name, new_qty):
-    # Upsert logic (Insert or Update if exists)
-    # Since Postgres 9.5+ supports ON CONFLICT
-    # Note: We need a unique constraint on (region, item_name) for ON CONFLICT to work perfectly.
-    # Alternatively, we check then insert/update.
-    
     df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
     if not df.empty:
         return run_action("UPDATE local_inventory SET qty = :q, last_updated = NOW() WHERE region = :r AND item_name = :i", params={"q": new_qty, "r": region, "i": item_name})
@@ -257,12 +253,10 @@ if not st.session_state.logged_in and not st.session_state.get('logout_pressed',
     time.sleep(0.1)
     cookie_user = cookie_manager.get(cookie="wms_user_pro_sql")
     if cookie_user:
-        u_data = login_user(cookie_user, "") # We can't verify pass here, so we trust cookie or fetch user
-        # Security Note: Ideally, cookie stores a token, not username. For this scale, fetch user details by username.
-        df = run_query("SELECT * FROM users WHERE username = :u", params={"u": cookie_user})
-        if not df.empty:
+        u_data = login_user(cookie_user, "")
+        if u_data:
             st.session_state.logged_in = True
-            st.session_state.user_info = df.iloc[0].to_dict()
+            st.session_state.user_info = u_data
             st.rerun()
 
 # === LOGIN PAGE ===
@@ -537,8 +531,6 @@ else:
                             qty = int(match.iloc[0]['qty'])
                     items_list.append({"Item": item, "Qty": qty})
                 
-                # Show Editable Table? Or Selectbox to update?
-                # Keeping it simple: Select to update
                 df_view = pd.DataFrame(items_list)
                 
                 item_up = st.selectbox("Update Item Stock", df_view['Item'].unique())
