@@ -16,6 +16,10 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
+# هذا المتغير هو سر حل مشكلة تسجيل الخروج
+if 'logout_clicked' not in st.session_state:
+    st.session_state.logout_clicked = False
+
 # --- Cookie Manager ---
 def get_manager():
     return stx.CookieManager()
@@ -26,7 +30,7 @@ cookie_manager = get_manager()
 def inject_security_css():
     st.markdown("""
         <style>
-        /* Hide Toolbar (3 dots), Deploy button, and Manage App button ONLY */
+        /* Hide Toolbar, Deploy, Manage App */
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         .stDeployButton {visibility: hidden !important; display: none !important;}
         [data-testid="manage-app-button"] {visibility: hidden !important; display: none !important;}
@@ -39,6 +43,7 @@ def inject_security_css():
         </style>
     """, unsafe_allow_html=True)
 
+# Apply Security (Hide by default, Show for 'abdulaziz')
 should_hide = True
 if st.session_state.logged_in:
     username = str(st.session_state.user_info.get('username', '')).lower()
@@ -185,7 +190,6 @@ def update_request_data(req_id, new_qty, new_unit):
         ws = sh.worksheet('requests')
         cell = ws.find(str(req_id))
         if cell:
-            # Qty is Col 6 (F), Unit is Col 10 (J)
             ws.update_cell(cell.row, 6, int(new_qty))
             ws.update_cell(cell.row, 10, str(new_unit))
             return True
@@ -207,7 +211,6 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
     try:
         sh = get_connection()
         ws_inv = sh.worksheet('inventory')
-        
         try:
             ws_log = sh.worksheet('stock_logs')
         except:
@@ -217,7 +220,6 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
         inv_data = ws_inv.get_all_records()
         df_inv = pd.DataFrame(inv_data)
         
-        # Find Qty Column Index
         headers = ws_inv.row_values(1)
         try:
             qty_col_idx = next(i for i, v in enumerate(headers) if str(v).lower().strip() == 'qty') + 1
@@ -281,18 +283,24 @@ def update_local_inventory_record(region, item_en, new_qty):
         return True
     except: return False
 
-# --- Cookie Auto-Login ---
+# --- Auto-Login Logic (Fix for Logout Bug) ---
+# We check cookies ONLY if we are logged out AND the logout button wasn't just clicked
 if not st.session_state.logged_in:
-    cookie_user = cookie_manager.get(cookie="wms_user_pro")
-    if cookie_user:
-        users = load_data('users')
-        if not users.empty:
-            users['username'] = users['username'].astype(str)
-            match = users[users['username'] == str(cookie_user)]
-            if not match.empty:
-                st.session_state.logged_in = True
-                st.session_state.user_info = match.iloc[0].to_dict()
-                st.rerun()
+    # If the user just clicked logout, we skip this block to allow the browser to clear the cookie
+    if st.session_state.get('logout_clicked', False):
+        st.session_state.logout_clicked = False # Reset flag for next run
+    else:
+        # Standard auto-login check
+        cookie_user = cookie_manager.get(cookie="wms_user_pro")
+        if cookie_user:
+            users = load_data('users')
+            if not users.empty:
+                users['username'] = users['username'].astype(str)
+                match = users[users['username'] == str(cookie_user)]
+                if not match.empty:
+                    st.session_state.logged_in = True
+                    st.session_state.user_info = match.iloc[0].to_dict()
+                    st.rerun()
 
 # === LOGIN PAGE ===
 if not st.session_state.logged_in:
@@ -344,17 +352,24 @@ else:
         if st.button(txt['save_changes'], use_container_width=True):
             if update_user_profile_in_db(info['username'], new_name_input, new_pass_input):
                 st.success(txt['profile_updated'])
+                # Force logout on change to refresh data
                 cookie_manager.delete("wms_user_pro")
+                st.session_state.logged_in = False
+                st.session_state.logout_clicked = True
                 time.sleep(1)
-                st.session_state.logged_in = False 
                 st.rerun()
             else: st.error("Error Updating")
 
+    # --- LOGOUT BUTTON (FIXED) ---
     if st.sidebar.button(txt['logout'], use_container_width=True):
+        # 1. Delete cookie
         cookie_manager.delete("wms_user_pro")
-        st.session_state['logged_in'] = False
-        st.session_state['user_info'] = {}
-        time.sleep(0.5) 
+        # 2. Clear state
+        st.session_state.logged_in = False
+        st.session_state.user_info = {}
+        # 3. Set flag to ignore cookies on next immediate run
+        st.session_state.logout_clicked = True
+        # 4. Rerun
         st.rerun()
 
     # ================= 1. MANAGER VIEW =================
@@ -389,7 +404,7 @@ else:
                         change = amount if action == txt['add_stock'] else -amount
                         status, msg = update_central_inventory_with_log(current_row['name_en'], warehouse_name, change, info['name'], "Manager Update", mgr_unit)
                         if status:
-                            st.success(txt['success_update'])
+                            st.success(f"{txt['success_update']}: {msg}")
                             time.sleep(1)
                             st.rerun()
                         else: st.error(f"Error: {msg}")
@@ -494,10 +509,9 @@ else:
                 qty_sk = c_q.number_input(txt['qty_req'], 1, 1000, 1, key="sk_q")
                 if st.button(txt['send_req'], key="sk_snd", use_container_width=True):
                     item_data = wh_inv[wh_inv[NAME_COL] == sel_sk].iloc[0]
-                    # FIX: Correct column order
                     save_row('requests', [
                         str(uuid.uuid4()), info['name'], info['region'],
-                        item_data['name_en'], item_data['category'], 
+                        item_data['name_en'], item_data['category'],
                         qty_sk, datetime.now().strftime("%Y-%m-%d %H:%M"),
                         txt['pending'], f"Source: {wh_source}", sk_unit
                     ])
@@ -545,7 +559,6 @@ else:
                     qty = c_q.number_input(txt['qty_req'], 1, 1000, 1)
                     if st.button(txt['send_req'], use_container_width=True):
                         item = ntcc_items[ntcc_items[NAME_COL] == sel].iloc[0]
-                        # FIX: Correct column order [ID, Name, Region, Item, Cat, Qty, Date, Status, Reason, Unit]
                         save_row('requests', [
                             str(uuid.uuid4()), info['name'], req_area,
                             item['name_en'], item['category'],
