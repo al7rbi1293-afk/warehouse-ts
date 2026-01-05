@@ -26,20 +26,14 @@ cookie_manager = get_manager()
 def inject_security_css():
     st.markdown("""
         <style>
-        /* Hide Toolbar (3 dots), Deploy button, and Manage App button ONLY */
         [data-testid="stToolbar"] {visibility: hidden !important; display: none !important;}
         .stDeployButton {visibility: hidden !important; display: none !important;}
         [data-testid="manage-app-button"] {visibility: hidden !important; display: none !important;}
-        
-        /* Hide Footer */
         footer {visibility: hidden !important;}
-        
-        /* Hide Top Decoration */
         [data-testid="stDecoration"] {display: none;}
         </style>
     """, unsafe_allow_html=True)
 
-# Apply security settings (Hide by default, Show for 'abdulaziz')
 should_hide = True
 if st.session_state.logged_in:
     username = str(st.session_state.user_info.get('username', '')).lower()
@@ -143,15 +137,12 @@ def get_connection():
         return sheet
     except: return None
 
-# --- Data Loading (NO CACHE) ---
 def load_data(worksheet_name):
     try:
         sh = get_connection()
         ws = sh.worksheet(worksheet_name)
         data = ws.get_all_records()
         df = pd.DataFrame(data)
-        
-        # Standardize Columns
         if not df.empty:
             if 'item_en' in df.columns: df = df.rename(columns={'item_en': 'name_en'})
             if 'item_ar' in df.columns: df = df.rename(columns={'item_ar': 'name_ar'})
@@ -206,22 +197,32 @@ def delete_request_data(req_id):
         return False
     except: return False
 
-# --- FIXED: Robust Inventory Logic ---
+# --- FIXED: Robust Inventory Logic (Finds Correct Column) ---
 def update_central_inventory_with_log(item_en, location, change_qty, user, action_desc, unit_type="Piece"):
     try:
         sh = get_connection()
         ws_inv = sh.worksheet('inventory')
         
-        # 1. Safely get or create stock_logs
+        # 1. Safely get stock_logs
         try:
             ws_log = sh.worksheet('stock_logs')
         except:
             ws_log = sh.add_worksheet(title="stock_logs", rows="1000", cols="10")
             ws_log.append_row(["Date", "User", "Action", "Item", "Location", "Change", "New Qty"])
 
+        # 2. Get Data & Find Column Index Dynamically
         inv_data = ws_inv.get_all_records()
         df_inv = pd.DataFrame(inv_data)
         
+        # Find index of 'qty' column (header row is 1 in gspread)
+        headers = ws_inv.row_values(1)
+        try:
+            # Try to find 'qty' or 'Qty' (case insensitive)
+            qty_col_idx = next(i for i, v in enumerate(headers) if str(v).lower().strip() == 'qty') + 1
+        except:
+            return False, "Column 'qty' not found in Inventory sheet."
+
+        # Cleaning
         target_item = str(item_en).strip().lower()
         target_loc = str(location).strip().lower()
         
@@ -236,25 +237,27 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
             try:
                 current_qty = int(str(raw_qty).replace(',', '').split('.')[0])
             except: current_qty = 0
-                
-            new_qty = max(0, current_qty + int(change_qty))
-            ws_inv.update_cell(idx + 2, 4, new_qty) 
             
-            # Safe JSON compatible types
-            log_desc = f"{action_desc} ({unit_type})"
+            # Apply Change
+            new_qty = max(0, current_qty + int(change_qty))
+            
+            # Update specific cell using dynamic column index
+            ws_inv.update_cell(idx + 2, qty_col_idx, new_qty) 
+            
+            # Log
             log_entry = [
                 datetime.now().strftime("%Y-%m-%d %H:%M"), 
                 str(user), 
-                str(log_desc), 
+                f"{action_desc} ({unit_type})", 
                 str(item_en), 
                 str(location), 
                 int(change_qty), 
                 int(new_qty)
             ]
             ws_log.append_row(log_entry)
-            return True, "Success"
+            return True, f"Stock updated: {current_qty} -> {new_qty}"
         else:
-            return False, f"Item '{item_en}' not found in location '{location}'"
+            return False, f"Item '{item_en}' not found in '{location}'"
     except Exception as e:
         return False, str(e)
 
@@ -389,7 +392,7 @@ else:
                         change = amount if action == txt['add_stock'] else -amount
                         status, msg = update_central_inventory_with_log(current_row['name_en'], warehouse_name, change, info['name'], "Manager Update", mgr_unit)
                         if status:
-                            st.success(txt['success_update'])
+                            st.success(f"{txt['success_update']}: {msg}")
                             time.sleep(1)
                             st.rerun()
                         else: st.error(f"Error: {msg}")
@@ -533,6 +536,7 @@ else:
         with t_req:
             req_area = st.selectbox(txt['select_area'], AREAS, key="sup_req_area")
             
+            # --- Form to Add New Request ---
             if ntcc_items.empty:
                 st.warning(txt['no_items'])
             else:
@@ -547,7 +551,7 @@ else:
                         # Safe Save: English name only
                         save_row('requests', [
                             str(uuid.uuid4()), info['name'], req_area,
-                            item['name_en'], item['category'],
+                            item['name_en'], item['name_en'], item['category'],
                             qty, datetime.now().strftime("%Y-%m-%d %H:%M"),
                             txt['pending'], "", req_unit
                         ])
@@ -557,6 +561,7 @@ else:
             
             st.markdown("---")
             
+            # --- My Pending Requests (EDIT/CANCEL) ---
             reqs = load_data('requests')
             if not reqs.empty:
                 my_reqs = reqs[reqs['supervisor'] == info['name']]
