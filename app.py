@@ -122,9 +122,16 @@ lang = "ar" if lang_choice == "العربية" else "en"
 txt = T[lang]
 NAME_COL = 'name_ar' if lang == 'ar' else 'name_en'
 
-# --- CSS وتذييل الحقوق ---
+# --- CSS: إخفاء القوائم + تحسين الجوال + التذييل ---
 st.markdown(f"""
     <style>
+    /* 1. إخفاء قوائم Streamlit الافتراضية (الحل للمشكلة) */
+    #MainMenu {{visibility: hidden;}}
+    header {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+    [data-testid="stToolbar"] {{visibility: hidden !important;}}
+    
+    /* 2. تنسيق النصوص حسب اللغة */
     .stMarkdown, .stTextInput, .stNumberInput, .stSelectbox, .stDataFrame, .stRadio {{ 
         direction: {'rtl' if lang == 'ar' else 'ltr'}; 
         text-align: {'right' if lang == 'ar' else 'left'}; 
@@ -134,6 +141,8 @@ st.markdown(f"""
         text-align: {'right' if lang == 'ar' else 'left'}; 
     }}
     .stButton button {{ width: 100%; }}
+    
+    /* 3. تنسيق حقوق الملكية (ثابت أسفل اليسار) */
     .copyright-footer {{
         position: fixed; left: 10px; bottom: 5px;
         background-color: rgba(255, 255, 255, 0.9);
@@ -144,6 +153,7 @@ st.markdown(f"""
         .copyright-footer {{ background-color: rgba(14, 17, 23, 0.9); color: #fafafa; border: 1px solid #444; }}
     }}
     </style>
+    
     <div class="copyright-footer">{txt['copyright']}</div>
 """, unsafe_allow_html=True)
 
@@ -243,8 +253,8 @@ if not st.session_state.logged_in:
                 else: st.error("DB Error")
     with t2:
         with st.form("reg"):
-            nu = st.text_input(txt['username'], key='r_u').strip()
-            np = st.text_input(txt['password'], type='password', key='r_p').strip()
+            nu = st.text_input(txt['username']).strip()
+            np = st.text_input(txt['password'], type='password').strip()
             nn = st.text_input(txt['fullname'])
             nr = st.text_input(txt['region'])
             if st.form_submit_button(txt['register_btn'], use_container_width=True):
@@ -282,10 +292,8 @@ else:
             if wh_data.empty:
                 st.info(f"{txt['no_items']} - {warehouse_name}")
             else:
-                # إضافة 'unit' للعرض إذا كانت موجودة
                 base_cols = ['name_ar', 'name_en', 'qty', 'unit', 'category']
                 display_cols = [c for c in base_cols if c in wh_data.columns]
-                
                 st.dataframe(wh_data[display_cols], use_container_width=True)
                 
                 with st.expander(f"🛠 {txt['modify_stock']} ({warehouse_name})"):
