@@ -7,8 +7,8 @@ import time
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- إعدادات الصفحة ---
-st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="collapsed")
+# --- إعدادات الصفحة (تم إرجاع القائمة الجانبية للظهور) ---
+st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="expanded")
 
 # --- القوائم والبيانات الثابتة ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
@@ -67,7 +67,8 @@ T = {
         "copyright": "جميع الحقوق محفوظة © لمساعد مدير مشروع الأعصاب عبدالعزيز الحازمي. يمنع النشر أو الاستغلال بدون إذن.",
         "select_area": "📍 القسم / المنطقة المستهدفة",
         "area_label": "القسم",
-        "unit": "الوحدة", "piece": "حبة", "carton": "كرتون"
+        "unit": "الوحدة", "piece": "حبة", "carton": "كرتون",
+        "edit_profile": "تعديل بياناتي", "new_name": "الاسم الجديد", "new_pass": "كلمة المرور الجديدة", "save_changes": "حفظ التغييرات", "profile_updated": "تم تحديث البيانات بنجاح، الرجاء تسجيل الدخول مجدداً"
     },
     "en": {
         "app_title": "Unified WMS System",
@@ -113,7 +114,8 @@ T = {
         "copyright": "All rights reserved © to Assistant Project Manager of Nerves Project, Abdulaziz Alhazmi. Unauthorized use prohibited.",
         "select_area": "📍 Target Area / Section",
         "area_label": "Area",
-        "unit": "Unit", "piece": "Piece", "carton": "Carton"
+        "unit": "Unit", "piece": "Piece", "carton": "Carton",
+        "edit_profile": "Edit Profile", "new_name": "New Name", "new_pass": "New Password", "save_changes": "Save Changes", "profile_updated": "Profile updated, please login again"
     }
 }
 
@@ -122,16 +124,10 @@ lang = "ar" if lang_choice == "العربية" else "en"
 txt = T[lang]
 NAME_COL = 'name_ar' if lang == 'ar' else 'name_en'
 
-# --- CSS: إخفاء القوائم + تحسين الجوال + التذييل ---
-st.markdown(f"""
+# --- CSS ذكي (إخفاء للمستخدمين / إظهار لـ abdulaziz) ---
+# سيتم تطبيق هذا CSS لاحقاً بعد تسجيل الدخول والتحقق من الاسم
+BASE_CSS = f"""
     <style>
-    /* 1. إخفاء قوائم Streamlit الافتراضية (الحل للمشكلة) */
-    #MainMenu {{visibility: hidden;}}
-    header {{visibility: hidden;}}
-    footer {{visibility: hidden;}}
-    [data-testid="stToolbar"] {{visibility: hidden !important;}}
-    
-    /* 2. تنسيق النصوص حسب اللغة */
     .stMarkdown, .stTextInput, .stNumberInput, .stSelectbox, .stDataFrame, .stRadio {{ 
         direction: {'rtl' if lang == 'ar' else 'ltr'}; 
         text-align: {'right' if lang == 'ar' else 'left'}; 
@@ -141,8 +137,6 @@ st.markdown(f"""
         text-align: {'right' if lang == 'ar' else 'left'}; 
     }}
     .stButton button {{ width: 100%; }}
-    
-    /* 3. تنسيق حقوق الملكية (ثابت أسفل اليسار) */
     .copyright-footer {{
         position: fixed; left: 10px; bottom: 5px;
         background-color: rgba(255, 255, 255, 0.9);
@@ -153,9 +147,9 @@ st.markdown(f"""
         .copyright-footer {{ background-color: rgba(14, 17, 23, 0.9); color: #fafafa; border: 1px solid #444; }}
     }}
     </style>
-    
     <div class="copyright-footer">{txt['copyright']}</div>
-""", unsafe_allow_html=True)
+"""
+st.markdown(BASE_CSS, unsafe_allow_html=True)
 
 # --- الاتصال بـ Google Sheets ---
 @st.cache_resource
@@ -187,6 +181,30 @@ def update_data(worksheet_name, df):
     ws = sh.worksheet(worksheet_name)
     ws.clear()
     ws.update([df.columns.values.tolist()] + df.values.tolist())
+
+# --- دالة تحديث بيانات المستخدم (الاسم/الرمز) ---
+def update_user_profile_in_db(username, new_name, new_pass):
+    try:
+        sh = get_connection()
+        ws = sh.worksheet('users')
+        data = ws.get_all_records()
+        df = pd.DataFrame(data)
+        
+        # البحث عن صف المستخدم
+        # ملاحظة: username هو العمود الأول في جوجل شيت (رقم 1)
+        # password (2), name (3)
+        cell = ws.find(str(username))
+        
+        if cell:
+            # تحديث كلمة المرور (العمود 2)
+            ws.update_cell(cell.row, 2, str(new_pass))
+            # تحديث الاسم (العمود 3)
+            ws.update_cell(cell.row, 3, new_name)
+            return True
+        return False
+    except Exception as e:
+        print(e)
+        return False
 
 def update_central_inventory_with_log(item_en, location, change_qty, user, action_desc, unit_type="Piece"):
     try:
@@ -270,8 +288,41 @@ if not st.session_state.logged_in:
 # === النظام الرئيسي ===
 else:
     info = st.session_state.user_info
+    
+    # --- منطق الإخفاء (الأمان) ---
+    # إذا كان المستخدم هو "abdulaziz"، لن نخفي شيئاً.
+    # إذا كان أي شخص آخر، نخفي الهيدر والقوائم.
+    if str(info['username']).lower() == "abdulaziz":
+        pass # لا تفعل شيئاً، اظهر كل شيء للمطور/المالك
+    else:
+        # إخفاء القوائم للآخرين
+        HIDE_MENU_CSS = """
+        <style>
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        [data-testid="stToolbar"] {visibility: hidden !important;}
+        </style>
+        """
+        st.markdown(HIDE_MENU_CSS, unsafe_allow_html=True)
+
+    # --- القائمة الجانبية (معلومات + تعديل) ---
     st.sidebar.markdown(f"### 👤 {info['name']}")
     st.sidebar.caption(f"📍 {info['region']} | 🔑 {info['role']}")
+    
+    # خيار تعديل البيانات في السلايدر
+    with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
+        new_name_input = st.text_input(txt['new_name'], value=info['name'])
+        new_pass_input = st.text_input(txt['new_pass'], type="password", value=info['password'])
+        
+        if st.button(txt['save_changes'], use_container_width=True):
+            if update_user_profile_in_db(info['username'], new_name_input, new_pass_input):
+                st.success(txt['profile_updated'])
+                time.sleep(2)
+                st.session_state.logged_in = False # تسجيل خروج اجباري للتحديث
+                st.rerun()
+            else:
+                st.error("Error Updating")
+
     if st.sidebar.button(txt['logout'], use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
