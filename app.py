@@ -107,7 +107,7 @@ txt = {
     "edit_profile": "Edit Profile", "new_name": "New Name", "new_pass": "New Password", 
     "save_changes": "Save Changes", "profile_updated": "Profile updated, please login again",
     "my_pending": "My Pending Requests (Edit/Cancel)",
-    "update_req": "Update",
+    "update_req": "Update Qty",
     "cancel_req": "Delete 🗑️",
     "cancel_confirm": "Deleted successfully",
     "receive_from_snc": "📥 Receive from External (SNC) to Internal (NTCC)",
@@ -182,14 +182,13 @@ def update_user_profile_in_db(username, new_name, new_pass):
         return False
     except: return False
 
-def update_request_data(req_id, new_qty, new_unit):
+def update_request_data(req_id, new_qty):
     try:
         sh = get_connection()
         ws = sh.worksheet('requests')
         cell = ws.find(str(req_id))
         if cell:
             ws.update_cell(cell.row, 6, int(new_qty))
-            ws.update_cell(cell.row, 10, str(new_unit))
             return True
         return False
     except: return False
@@ -238,7 +237,6 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
                 current_qty = int(str(raw_qty).replace(',', '').split('.')[0])
             except: current_qty = 0
             
-            # If reducing stock, check if we have enough
             if int(change_qty) < 0 and abs(int(change_qty)) > current_qty:
                  return False, f"Insufficient stock! Available: {current_qty}"
 
@@ -296,7 +294,7 @@ def update_local_inventory_record(region, item_en, new_qty):
         return True
     except: return False
 
-# --- Auto-Login Logic (Safe Get) ---
+# --- Auto-Login Logic ---
 if not st.session_state.logged_in:
     if not st.session_state.get('logout_pressed', False):
         time.sleep(0.1)
@@ -402,13 +400,18 @@ else:
                     current_row = wh_data[wh_data[NAME_COL] == sel_item].iloc[0]
                     st.write(f"{txt['current_stock_display']} **{current_row['qty']}**")
                     st.write("---")
-                    c_unit, c_act, c_amt = st.columns(3)
-                    mgr_unit = c_unit.radio(txt['unit'], [txt['piece'], txt['carton']], key=f"u_{warehouse_name}")
+                    
+                    # Auto-fetch unit from Item
+                    item_unit = current_row.get('unit', 'Piece')
+                    st.caption(f"Unit: {item_unit}")
+                    
+                    c_act, c_amt = st.columns(2)
                     action = c_act.radio(txt['select_action'], [txt['add_stock'], txt['reduce_stock']], key=f"act_{warehouse_name}")
                     amount = c_amt.number_input(txt['amount'], 1, 10000, 1, key=f"amt_{warehouse_name}")
+                    
                     if st.button(txt['execute_update'], key=f"btn_{warehouse_name}", use_container_width=True):
                         change = amount if action == txt['add_stock'] else -amount
-                        status, msg = update_central_inventory_with_log(current_row['name_en'], warehouse_name, change, info['name'], "Manager Update", mgr_unit)
+                        status, msg = update_central_inventory_with_log(current_row['name_en'], warehouse_name, change, info['name'], "Manager Update", item_unit)
                         if status:
                             st.success(f"{txt['success_update']}: {msg}")
                             time.sleep(1)
@@ -443,8 +446,6 @@ else:
                             st.caption(f"{txt['area_label']}: **{row['region']}** | {txt['qty']}: **{req_qty} ({req_u})**")
                             st.caption(f"👤 {row['supervisor']}")
                             
-                            # --- STOCK CHECK LOGIC ADDED HERE ---
-                            # Get current stock in NTCC
                             stock_match = inv[(inv['name_en'] == disp_name) & (inv['location'] == 'NTCC')]
                             current_stock_in_ntcc = 0
                             if not stock_match.empty:
@@ -456,7 +457,6 @@ else:
                             
                             b1, b2 = st.columns(2)
                             if b1.button(txt['approve'], key=f"ap_{row['req_id']}", use_container_width=True):
-                                # VALIDATION: Check if we have enough stock
                                 if current_stock_in_ntcc >= req_qty:
                                     reqs.loc[reqs['req_id'] == row['req_id'], 'status'] = txt['approved']
                                     update_data('requests', reqs)
@@ -474,7 +474,7 @@ else:
         with st.expander(f"📜 {txt['logs']}"):
             if not logs.empty: st.dataframe(logs, use_container_width=True)
 
-    # ================= 2. STORE KEEPER VIEW (NEW LAYOUT) =================
+    # ================= 2. STORE KEEPER VIEW =================
     elif info['role'] == 'storekeeper':
         st.header(txt['storekeeper_role'])
         inv = load_data('inventory')
@@ -495,10 +495,9 @@ else:
                 for index, row in approved.iterrows():
                     with st.container(border=True):
                         disp_name = row.get('name_en', row.get('item_en', 'Unknown Item'))
-                        st.markdown(f"**📦 {disp_name}**")
                         req_u = row['unit'] if 'unit' in row else '-'
+                        st.markdown(f"**📦 {disp_name}**")
                         st.caption(f"📍 {row['region']} | Requested: **{row['qty']} ({req_u})**")
-                        st.caption(f"SOURCE: NTCC (Internal)")
                         
                         issue_qty = st.number_input(txt['issue_qty_input'], 1, 9999, int(row['qty']), key=f"iq_{row['req_id']}")
                         
@@ -519,7 +518,9 @@ else:
                                         local_inv_col = 'item_en' if 'item_en' in local_inv_df.columns else 'name_en'
                                         local_inv_df['clean_item'] = local_inv_df[local_inv_col].astype(str).str.strip()
                                         m = local_inv_df[(local_inv_df['clean_reg']==str(row['region']).strip()) & (local_inv_df['clean_item']==str(item_name_val).strip())]
-                                        if not m.empty: cur = int(m.iloc[0]['qty'])
+                                        if not m.empty: 
+                                            val = str(m.iloc[0]['qty']).strip().replace(',', '')
+                                            cur = int(float(val)) if val else 0
                                     update_local_inventory_record(row['region'], item_name_val, cur + issue_qty)
                                 except: pass 
                                 
@@ -537,19 +538,19 @@ else:
                 snc_inv = inv[inv['location'] == 'SNC'] if 'location' in inv.columns else pd.DataFrame()
                 
                 if not snc_inv.empty:
-                    c1, c2, c3 = st.columns([2, 1, 1])
+                    c1, c2 = st.columns([2, 1])
                     snc_opts = snc_inv.apply(lambda x: x[NAME_COL], axis=1)
                     sel_snc_item = c1.selectbox("Select Item from SNC", snc_opts, key="snc_src")
                     
                     snc_row = snc_inv[snc_inv[NAME_COL] == sel_snc_item].iloc[0]
-                    c1.caption(f"Available in SNC: {snc_row['qty']}")
+                    item_unit = snc_row.get('unit', 'Piece')
+                    c1.caption(f"Available in SNC: {snc_row['qty']} ({item_unit})")
                     
                     trans_qty = c2.number_input("Transfer Qty", 1, 10000, 1, key="tr_q")
-                    trans_unit = c3.radio("Unit", ['Piece', 'Carton'], key="tr_u")
                     
                     if st.button(txt['transfer_btn'], use_container_width=True):
                         if int(snc_row['qty']) >= trans_qty:
-                            success, msg = transfer_snc_to_ntcc(sel_snc_item, trans_qty, info['name'], trans_unit)
+                            success, msg = transfer_snc_to_ntcc(sel_snc_item, trans_qty, info['name'], item_unit)
                             if success:
                                 st.success(f"✅ Moved {trans_qty} from SNC to NTCC")
                                 time.sleep(1)
@@ -571,10 +572,10 @@ else:
                     tk_item = st.selectbox(txt['select_item'], ntcc_opts, key="ntcc_tk_it")
                     tk_row = ntcc_inv[ntcc_inv[NAME_COL] == tk_item].iloc[0]
                     
-                    st.info(f"Current Stock (NTCC): **{tk_row['qty']}**")
+                    tk_unit = tk_row.get('unit', 'Piece')
+                    st.info(f"Current Stock (NTCC): **{tk_row['qty']} ({tk_unit})**")
                     
-                    c_tk1, c_tk2, c_tk3 = st.columns(3)
-                    tk_unit = c_tk1.radio("Unit", ['Piece', 'Carton'], key="tk_u_ntcc")
+                    c_tk2, c_tk3 = st.columns(2)
                     op_tk = c_tk2.radio(txt['select_action'], [txt['add_stock'], txt['reduce_stock']], key="tk_act_ntcc")
                     val_tk = c_tk3.number_input(txt['amount'], 1, 1000, 1, key="tk_amt_ntcc")
                     
@@ -605,17 +606,20 @@ else:
                 with st.container(border=True):
                     opts = ntcc_items.apply(lambda x: x[NAME_COL], axis=1)
                     sel = st.selectbox(txt['select_item'], opts)
-                    c_u, c_q = st.columns(2)
-                    req_unit = c_u.radio(txt['unit'], [txt['piece'], txt['carton']], horizontal=True)
-                    qty = c_q.number_input(txt['qty_req'], 1, 1000, 1)
+                    
+                    # Auto-Fetch Unit for Supervisor
+                    item = ntcc_items[ntcc_items[NAME_COL] == sel].iloc[0]
+                    item_unit = item.get('unit', 'Piece')
+                    st.write(f"Unit: **{item_unit}**")
+                    
+                    qty = st.number_input(txt['qty_req'], 1, 1000, 1)
+                    
                     if st.button(txt['send_req'], use_container_width=True):
-                        item = ntcc_items[ntcc_items[NAME_COL] == sel].iloc[0]
-                        # Safe Save: English name only
                         save_row('requests', [
                             str(uuid.uuid4()), info['name'], req_area,
                             item['name_en'], item['category'],
                             qty, datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            txt['pending'], "", req_unit
+                            txt['pending'], "", item_unit
                         ])
                         st.success("✅")
                         time.sleep(1)
@@ -634,20 +638,19 @@ else:
                     st.subheader(txt['my_pending'])
                     for idx, row in pending_reqs.iterrows():
                         with st.expander(f"⚙️ {row.get('name_en', 'Item')} ({row['qty']}) - Click to Manage"):
-                            c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+                            c1, c3, c4 = st.columns([2, 1, 1])
                             
                             new_qty_edit = c1.number_input("New Qty", 1, 1000, int(row['qty']), key=f"edit_q_{row['req_id']}")
-                            curr_unit = row.get('unit', 'Piece')
-                            u_idx = 0 if curr_unit == 'Piece' else 1
-                            new_unit_edit = c2.radio("Unit", ['Piece', 'Carton'], index=u_idx, key=f"edit_u_{row['req_id']}", horizontal=True)
                             
+                            # Update Button (No Unit Edit)
                             if c3.button(txt['update_req'], key=f"save_{row['req_id']}"):
-                                if update_request_data(row['req_id'], new_qty_edit, new_unit_edit):
+                                if update_request_data(row['req_id'], new_qty_edit):
                                     st.success("Updated")
                                     time.sleep(1)
                                     st.rerun()
                                 else: st.error("Error")
                             
+                            # Delete Button
                             if c4.button(txt['cancel_req'], key=f"del_{row['req_id']}"):
                                 if delete_request_data(row['req_id']):
                                     st.success(txt['cancel_confirm'])
