@@ -15,39 +15,47 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
-# --- 2. التحكم الأمني في الواجهة (CSS) ---
-# المنطق: نخفي زر "Manage App" وخيارات المطور افتراضياً للجميع
-# ولكن لا نخفي الـ Header بالكامل لكي لا يختفي زر السلايدر
+# --- 2. الحل الجذري للإخفاء (CSS) ---
+# هذا الكود يخفي أدوات المطور وزر Manage App ولكنه يترك زر القائمة الجانبية يعمل
 
-hide_dev_style = """
-    <style>
-    /* إخفاء القائمة العلوية اليمين (3 نقاط + Deploy + Manage App) */
-    [data-testid="stToolbar"] {
-        visibility: hidden !important;
-        display: none !important;
-    }
-    
-    /* إخفاء الفوتر */
-    footer {visibility: hidden !important;}
-    
-    /* إخفاء الخط الملون العلوي */
-    [data-testid="stDecoration"] {display: none;}
-    
-    /* هام: لا نخفي header بالكامل للحفاظ على زر السلايدر */
-    </style>
-"""
+def inject_security_css():
+    st.markdown("""
+        <style>
+        /* إخفاء القائمة العلوية اليمين (3 نقاط) */
+        [data-testid="stToolbar"] {
+            visibility: hidden !important;
+            display: none !important;
+        }
+        
+        /* إخفاء زر Deploy و Manage App */
+        .stDeployButton {
+            display: none !important;
+        }
+        [data-testid="manage-app-button"] {
+            display: none !important;
+        }
+        
+        /* إخفاء الفوتر */
+        footer {visibility: hidden !important;}
+        
+        /* إخفاء الخط الملون العلوي (اختياري) */
+        [data-testid="stDecoration"] {display: none;}
+        
+        /* تنويه: لم نقم بإخفاء header بالكامل لضمان بقاء زر السلايدر ظاهراً */
+        </style>
+    """, unsafe_allow_html=True)
 
-# تطبيق الإخفاء افتراضياً
-inject_css = True
+# المنطق: نطبق الإخفاء على الجميع (بما فيهم صفحة الدخول)
+# ونلغيه فقط إذا تم تسجيل الدخول وكان المستخدم هو abdulaziz
+should_hide = True
 
-# إذا سجل الدخول وكان اسمه abdulaziz -> نلغي الإخفاء
 if st.session_state.logged_in:
     username = str(st.session_state.user_info.get('username', '')).lower()
     if username == 'abdulaziz':
-        inject_css = False
+        should_hide = False
 
-if inject_css:
-    st.markdown(hide_dev_style, unsafe_allow_html=True)
+if should_hide:
+    inject_security_css()
 
 # --- القوائم والبيانات الثابتة ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
@@ -163,7 +171,7 @@ lang = "ar" if lang_choice == "العربية" else "en"
 txt = T[lang]
 NAME_COL = 'name_ar' if lang == 'ar' else 'name_en'
 
-# --- CSS التنسيق العام وحقوق الملكية ---
+# --- CSS وتذييل الحقوق ---
 st.markdown(f"""
     <style>
     .stMarkdown, .stTextInput, .stNumberInput, .stSelectbox, .stDataFrame, .stRadio {{ 
