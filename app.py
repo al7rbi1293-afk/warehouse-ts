@@ -7,55 +7,8 @@ import time
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- 1. إعدادات الصفحة (السلايدر مفتوح للجميع) ---
-st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="expanded")
-
-# --- إدارة الجلسة ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.user_info = {}
-
-# --- 2. الحل الجذري للإخفاء (CSS) ---
-# هذا الكود يخفي أدوات المطور وزر Manage App ولكنه يترك زر القائمة الجانبية يعمل
-
-def inject_security_css():
-    st.markdown("""
-        <style>
-        /* إخفاء القائمة العلوية اليمين (3 نقاط) */
-        [data-testid="stToolbar"] {
-            visibility: hidden !important;
-            display: none !important;
-        }
-        
-        /* إخفاء زر Deploy و Manage App */
-        .stDeployButton {
-            display: none !important;
-        }
-        [data-testid="manage-app-button"] {
-            display: none !important;
-        }
-        
-        /* إخفاء الفوتر */
-        footer {visibility: hidden !important;}
-        
-        /* إخفاء الخط الملون العلوي (اختياري) */
-        [data-testid="stDecoration"] {display: none;}
-        
-        /* تنويه: لم نقم بإخفاء header بالكامل لضمان بقاء زر السلايدر ظاهراً */
-        </style>
-    """, unsafe_allow_html=True)
-
-# المنطق: نطبق الإخفاء على الجميع (بما فيهم صفحة الدخول)
-# ونلغيه فقط إذا تم تسجيل الدخول وكان المستخدم هو abdulaziz
-should_hide = True
-
-if st.session_state.logged_in:
-    username = str(st.session_state.user_info.get('username', '')).lower()
-    if username == 'abdulaziz':
-        should_hide = False
-
-if should_hide:
-    inject_security_css()
+# --- إعدادات الصفحة ---
+st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="collapsed")
 
 # --- القوائم والبيانات الثابتة ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
@@ -114,8 +67,7 @@ T = {
         "copyright": "جميع الحقوق محفوظة © لمساعد مدير مشروع الأعصاب عبدالعزيز الحازمي. يمنع النشر أو الاستغلال بدون إذن.",
         "select_area": "📍 القسم / المنطقة المستهدفة",
         "area_label": "القسم",
-        "unit": "الوحدة", "piece": "حبة", "carton": "كرتون",
-        "edit_profile": "تعديل بياناتي", "new_name": "الاسم الجديد", "new_pass": "كلمة المرور الجديدة", "save_changes": "حفظ التغييرات", "profile_updated": "تم تحديث البيانات بنجاح، الرجاء تسجيل الدخول مجدداً"
+        "unit": "الوحدة", "piece": "حبة", "carton": "كرتون"
     },
     "en": {
         "app_title": "Unified WMS System",
@@ -161,8 +113,7 @@ T = {
         "copyright": "All rights reserved © to Assistant Project Manager of Nerves Project, Abdulaziz Alhazmi. Unauthorized use prohibited.",
         "select_area": "📍 Target Area / Section",
         "area_label": "Area",
-        "unit": "Unit", "piece": "Piece", "carton": "Carton",
-        "edit_profile": "Edit Profile", "new_name": "New Name", "new_pass": "New Password", "save_changes": "Save Changes", "profile_updated": "Profile updated, please login again"
+        "unit": "Unit", "piece": "Piece", "carton": "Carton"
     }
 }
 
@@ -227,19 +178,6 @@ def update_data(worksheet_name, df):
     ws.clear()
     ws.update([df.columns.values.tolist()] + df.values.tolist())
 
-def update_user_profile_in_db(username, new_name, new_pass):
-    try:
-        sh = get_connection()
-        ws = sh.worksheet('users')
-        data = ws.get_all_records()
-        cell = ws.find(str(username))
-        if cell:
-            ws.update_cell(cell.row, 2, str(new_pass))
-            ws.update_cell(cell.row, 3, new_name)
-            return True
-        return False
-    except Exception as e: return False
-
 def update_central_inventory_with_log(item_en, location, change_qty, user, action_desc, unit_type="Piece"):
     try:
         sh = get_connection()
@@ -278,6 +216,11 @@ def update_local_inventory_record(region, item_en, item_ar, new_qty):
         return True
     except: return False
 
+# --- إدارة الجلسة ---
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+    st.session_state.user_info = {}
+
 # === تسجيل الدخول ===
 if not st.session_state.logged_in:
     st.title(f"🔐 {txt['app_title']}")
@@ -300,8 +243,8 @@ if not st.session_state.logged_in:
                 else: st.error("DB Error")
     with t2:
         with st.form("reg"):
-            nu = st.text_input(txt['username']).strip()
-            np = st.text_input(txt['password'], type='password').strip()
+            nu = st.text_input(txt['username'], key='r_u').strip()
+            np = st.text_input(txt['password'], type='password', key='r_p').strip()
             nn = st.text_input(txt['fullname'])
             nr = st.text_input(txt['region'])
             if st.form_submit_button(txt['register_btn'], use_container_width=True):
@@ -317,23 +260,8 @@ if not st.session_state.logged_in:
 # === النظام الرئيسي ===
 else:
     info = st.session_state.user_info
-    
-    # --- السلايدر (Sidebar) للجميع ---
     st.sidebar.markdown(f"### 👤 {info['name']}")
     st.sidebar.caption(f"📍 {info['region']} | 🔑 {info['role']}")
-    
-    # خيار تعديل الملف الشخصي
-    with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
-        new_name_input = st.text_input(txt['new_name'], value=info['name'])
-        new_pass_input = st.text_input(txt['new_pass'], type="password", value=info['password'])
-        if st.button(txt['save_changes'], use_container_width=True):
-            if update_user_profile_in_db(info['username'], new_name_input, new_pass_input):
-                st.success(txt['profile_updated'])
-                time.sleep(2)
-                st.session_state.logged_in = False 
-                st.rerun()
-            else: st.error("Error Updating")
-
     if st.sidebar.button(txt['logout'], use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
@@ -345,6 +273,7 @@ else:
         reqs = load_data('requests')
         logs = load_data('stock_logs')
 
+        # --- قسم إدارة المخزون المركزي ---
         st.subheader(txt['manage_stock'])
         tab_view_ntcc, tab_view_snc = st.tabs([txt['ntcc_label'], txt['snc_label']])
         
@@ -353,19 +282,24 @@ else:
             if wh_data.empty:
                 st.info(f"{txt['no_items']} - {warehouse_name}")
             else:
+                # إضافة 'unit' للعرض إذا كانت موجودة
                 base_cols = ['name_ar', 'name_en', 'qty', 'unit', 'category']
                 display_cols = [c for c in base_cols if c in wh_data.columns]
+                
                 st.dataframe(wh_data[display_cols], use_container_width=True)
+                
                 with st.expander(f"🛠 {txt['modify_stock']} ({warehouse_name})"):
                     item_options = wh_data.apply(lambda x: x[NAME_COL], axis=1)
                     sel_item = st.selectbox(f"{txt['select_item']} ({warehouse_name}):", item_options, key=f"sel_{warehouse_name}")
                     current_row = wh_data[wh_data[NAME_COL] == sel_item].iloc[0]
                     st.write(f"{txt['current_stock_display']} **{current_row['qty']}**")
+                    
                     st.write("---")
                     c_unit, c_act, c_amt = st.columns(3)
                     mgr_unit = c_unit.radio(txt['unit'], [txt['piece'], txt['carton']], key=f"u_{warehouse_name}")
                     action = c_act.radio(txt['select_action'], [txt['add_stock'], txt['reduce_stock']], key=f"act_{warehouse_name}")
                     amount = c_amt.number_input(txt['amount'], 1, 10000, 1, key=f"amt_{warehouse_name}")
+                    
                     if st.button(txt['execute_update'], key=f"btn_{warehouse_name}", use_container_width=True):
                         change = amount if action == txt['add_stock'] else -amount
                         if update_central_inventory_with_log(current_row['name_en'], warehouse_name, change, info['name'], "Manager Update", mgr_unit):
@@ -450,9 +384,11 @@ else:
             else:
                 opts = wh_inv.apply(lambda x: x[NAME_COL], axis=1)
                 sel_sk = st.selectbox(txt['select_item'], opts, key="sk_it_sel")
+                
                 c_u, c_q = st.columns(2)
                 sk_unit = c_u.radio(txt['unit'], [txt['piece'], txt['carton']], key="sk_u_req", horizontal=True)
                 qty_sk = c_q.number_input(txt['qty_req'], 1, 1000, 1, key="sk_q")
+                
                 if st.button(txt['send_req'], key="sk_snd", use_container_width=True):
                     item_data = wh_inv[wh_inv[NAME_COL] == sel_sk].iloc[0]
                     save_row('requests', [
@@ -471,10 +407,12 @@ else:
                 tk_item = st.selectbox(txt['select_item'], tk_opts, key="tk_it")
                 tk_row = tgt_inv[tgt_inv[NAME_COL] == tk_item].iloc[0]
                 st.info(f"{txt['current_stock_display']} {tk_row['qty']}")
+                
                 c_tk0, c_tk1, c_tk2 = st.columns(3)
                 tk_unit = c_tk0.radio(txt['unit'], [txt['piece'], txt['carton']], key="tk_u")
                 op_tk = c_tk1.radio(txt['select_action'], [txt['add_stock'], txt['reduce_stock']], key="tk_act")
                 val_tk = c_tk2.number_input(txt['amount'], 1, 1000, 1)
+                
                 if st.button(txt['update_btn'], key="tk_save", use_container_width=True):
                     change = val_tk if op_tk == txt['add_stock'] else -val_tk
                     if update_central_inventory_with_log(tk_row['name_en'], tgt_wh, change, info['name'], "StoreKeeper Adjust", tk_unit):
@@ -491,15 +429,18 @@ else:
         
         with t_req:
             req_area = st.selectbox(txt['select_area'], AREAS, key="sup_req_area")
+            
             if ntcc_items.empty:
                 st.warning(txt['no_items'])
             else:
                 with st.container(border=True):
                     opts = ntcc_items.apply(lambda x: x[NAME_COL], axis=1)
                     sel = st.selectbox(txt['select_item'], opts)
+                    
                     c_u, c_q = st.columns(2)
                     req_unit = c_u.radio(txt['unit'], [txt['piece'], txt['carton']], horizontal=True)
                     qty = c_q.number_input(txt['qty_req'], 1, 1000, 1)
+                    
                     if st.button(txt['send_req'], use_container_width=True):
                         item = ntcc_items[ntcc_items[NAME_COL] == sel].iloc[0]
                         save_row('requests', [
@@ -531,6 +472,7 @@ else:
                         if not match.empty: current_qty = int(match.iloc[0]['qty'])
                     d_name = row['name_ar'] if lang == 'ar' else row['name_en']
                     items_list.append({"disp": d_name, "name_ar": row['name_ar'], "name_en": row['name_en'], "current_qty": current_qty})
+                
                 selected_item_inv = st.selectbox(txt['select_item'], [x['disp'] for x in items_list], key="sel_inv")
                 selected_data = next((item for item in items_list if item["disp"] == selected_item_inv), None)
                 if selected_data:
