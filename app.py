@@ -33,7 +33,7 @@ AREAS = [
     "Service area", "OPD", "E.R", "x-rays", "neurodiagnostic"
 ]
 
-# --- Dictionary (Fixed KeyError) ---
+# --- Dictionary ---
 txt = {
     "app_title": "Unified WMS System (SQL)",
     "login_page": "Login", "register_page": "Register",
@@ -45,7 +45,7 @@ txt = {
     "qty": "Qty", "location": "Location",
     "requests_log": "Log", "inventory": "Inventory",
     "req_form": "Request Items", "select_item": "Select Item",
-    "local_inv": "My Stock",  # <--- تمت الإضافة هنا لحل المشكلة
+    "local_inv": "My Stock",
     "current_local": "You have:", "update_local": "Update",
     "qty_req": "Request Qty", "qty_local": "Actual Qty",
     "send_req": "Send Request", "update_btn": "Save",
@@ -82,7 +82,9 @@ txt = {
     "receive_from_snc": "📥 Receive from External (SNC) to Internal (NTCC)",
     "transfer_btn": "Transfer Stock",
     "manual_stock_take": "🛠️ Manual Stock Take (NTCC Only)",
-    "err_no_stock_approve": "❌ Cannot Approve: Insufficient Stock in NTCC!"
+    "err_no_stock_approve": "❌ Cannot Approve: Insufficient Stock in NTCC!",
+    "create_item_title": "➕ Create New Item",
+    "create_btn": "Create Item"
 }
 
 # --- Database Connection ---
@@ -146,8 +148,18 @@ def get_inventory(location=None):
         return run_query("SELECT * FROM inventory WHERE location = :loc", params={"loc": location})
     return run_query("SELECT * FROM inventory")
 
+def create_new_item(name, category, unit, location, qty):
+    # Check if exists
+    df = run_query("SELECT id FROM inventory WHERE name_en = :n AND location = :l", params={"n": name, "l": location})
+    if not df.empty:
+        return False, "Item already exists in this location"
+    
+    return run_action(
+        "INSERT INTO inventory (name_en, category, unit, location, qty, status) VALUES (:n, :c, :u, :l, :q, 'Available')",
+        params={"n": name, "c": category, "u": unit, "l": location, "q": qty}
+    ), "Created Successfully"
+
 def update_central_stock(item_name, location, change, user, action_desc, unit):
-    # 1. Check current stock
     df = run_query(
         "SELECT qty FROM inventory WHERE name_en = :name AND location = :loc",
         params={"name": item_name, "loc": location}
@@ -158,13 +170,11 @@ def update_central_stock(item_name, location, change, user, action_desc, unit):
     
     current_qty = int(df.iloc[0]['qty'])
     
-    # 2. Validation
     if change < 0 and abs(change) > current_qty:
         return False, f"Insufficient stock. Available: {current_qty}"
     
     new_qty = current_qty + change
     
-    # 3. Transaction: Update Stock & Insert Log
     try:
         with conn.session as s:
             s.execute(
@@ -181,16 +191,11 @@ def update_central_stock(item_name, location, change, user, action_desc, unit):
         return False, str(e)
 
 def transfer_stock(item_name, qty, user, unit):
-    # SNC -> NTCC
-    # Step 1: Remove from SNC
     ok, msg = update_central_stock(item_name, "SNC", -qty, user, "Transfer Out", unit)
     if not ok: return False, msg
     
-    # Step 2: Add to NTCC
-    # Check if item exists in NTCC first
     df = run_query("SELECT * FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": item_name})
     if df.empty:
-        # Auto-create item in NTCC if not exists (Optional but good for robustness)
         run_action(
             "INSERT INTO inventory (name_en, category, unit, qty, location) VALUES (:n, 'Transferred', :u, 0, 'NTCC')",
             params={"n": item_name, "u": unit}
@@ -323,7 +328,25 @@ else:
         tab_inv, tab_reqs, tab_logs = st.tabs(["📦 Central Stock", "⏳ Pending Requests", "📜 Logs"])
         
         with tab_inv:
-            st.subheader(txt['manage_stock'])
+            # --- New Feature: Create Item ---
+            with st.expander(txt['create_item_title'], expanded=False):
+                c_n, c_c, c_u, c_l, c_q = st.columns(5)
+                new_i_name = c_n.text_input("Name")
+                new_i_cat = c_c.selectbox("Category", CATS_EN)
+                new_i_unit = c_u.selectbox("Unit", ["Piece", "Carton", "Set"])
+                new_i_loc = c_l.selectbox("Location", ["NTCC", "SNC"])
+                new_i_qty = c_q.number_input("Initial Qty", 0, 10000, 0)
+                
+                if st.button(txt['create_btn'], use_container_width=True):
+                    if new_i_name:
+                        ok_cr, msg_cr = create_new_item(new_i_name, new_i_cat, new_i_unit, new_i_loc, new_i_qty)
+                        if ok_cr: st.success(msg_cr); time.sleep(1); st.rerun()
+                        else: st.error(msg_cr)
+                    else: st.warning("Enter Name")
+            
+            st.divider()
+            
+            # --- Manage Stock ---
             col_ntcc, col_snc = st.columns(2)
             
             with col_ntcc:
@@ -346,6 +369,7 @@ else:
                             ok, msg = update_central_stock(item_ntcc, "NTCC", change, info['name'], "Manager Update", row_n['unit'])
                             if ok: st.success(msg); time.sleep(1); st.rerun()
                             else: st.error(msg)
+                    else: st.info("No items in NTCC")
 
             with col_snc:
                 st.markdown("### 🏭 SNC")
@@ -367,6 +391,7 @@ else:
                             ok, msg = update_central_stock(item_snc, "SNC", change, info['name'], "Manager Update", row_s['unit'])
                             if ok: st.success(msg); time.sleep(1); st.rerun()
                             else: st.error(msg)
+                    else: st.info("No items in SNC")
 
         with tab_reqs:
             reqs = get_requests(status_filter="Pending")
@@ -389,7 +414,7 @@ else:
                                 update_request_status(row['req_id'], "Approved")
                                 st.success("Approved"); time.sleep(1); st.rerun()
                             else:
-                                st.error(f"Insufficient Stock! Need {row['qty']}, have {avail}")
+                                st.error(f"{txt['err_no_stock_approve']} (Req: {row['qty']}, Avail: {avail})")
                         
                         if b2.button(txt['reject'], key=f"rj_{row['req_id']}"):
                             update_request_status(row['req_id'], "Rejected")
@@ -418,16 +443,11 @@ else:
                         final_qty = st.number_input("Actual Issue Qty", 1, 1000, int(row['qty']), key=f"iq_{row['req_id']}")
                         
                         if st.button(txt['issue'], key=f"btn_iss_{row['req_id']}"):
-                            # 1. Decrease Central Stock
                             ok, msg = update_central_stock(row['item_name'], "NTCC", -final_qty, info['name'], f"Issued to {row['region']}", row['unit'])
                             if ok:
-                                # 2. Update Request
                                 update_request_status(row['req_id'], "Issued", final_qty)
-                                
-                                # 3. Increase Local Stock
                                 cur_local = get_local_inventory(row['region'], row['item_name'])
                                 update_local_inventory(row['region'], row['item_name'], cur_local + final_qty)
-                                
                                 st.success("Issued Successfully"); time.sleep(1); st.rerun()
                             else:
                                 st.error(msg)
@@ -435,7 +455,6 @@ else:
         with tab_stock:
             st.info("Manage NTCC Inventory")
             
-            # Transfer
             with st.expander(txt['receive_from_snc'], expanded=True):
                 snc_inv = get_inventory("SNC")
                 if not snc_inv.empty:
@@ -451,10 +470,10 @@ else:
                             if ok: st.success("Transferred"); time.sleep(1); st.rerun()
                             else: st.error(msg)
                         else: st.error("Low Stock in SNC")
+                else: st.warning("No items in SNC")
             
             st.divider()
             
-            # Manual Stock Take
             with st.expander(txt['manual_stock_take']):
                 ntcc_inv = get_inventory("NTCC")
                 if not ntcc_inv.empty:
@@ -471,6 +490,7 @@ else:
                         ok, msg = update_central_stock(item_tk, "NTCC", change, info['name'], "Stock Take", row_tk['unit'])
                         if ok: st.success("Updated"); time.sleep(1); st.rerun()
                         else: st.error(msg)
+                else: st.warning("No items in NTCC")
 
     # --- 3. SUPERVISOR ---
     else:
@@ -491,10 +511,11 @@ else:
                     if st.button(txt['send_req'], use_container_width=True):
                         create_request(info['name'], req_area, item_req, row_item['category'], qty_req, row_item['unit'])
                         st.success("✅ Request Sent"); time.sleep(1); st.rerun()
+            else:
+                st.warning("⚠️ Central Inventory (NTCC) is empty. Please contact Manager to add items.")
             
             st.divider()
             
-            # My Pending Requests
             my_reqs = get_requests(supervisor_filter=info['name'])
             if not my_reqs.empty:
                 pending = my_reqs[my_reqs['status'] == 'Pending']
@@ -517,10 +538,8 @@ else:
 
         with tab_my_inv:
             view_area = st.selectbox("View Area Stock", AREAS, key="v_area")
-            # Get local inventory for this area
             df_local = run_query("SELECT * FROM local_inventory WHERE region = :r", params={"r": view_area})
             
-            # Merge with NTCC list to show items even if qty is 0
             if not ntcc_inv.empty:
                 items_list = []
                 for item in ntcc_inv['name_en'].unique():
@@ -542,3 +561,5 @@ else:
                     if st.button("Update Local Stock"):
                         update_local_inventory(view_area, item_up, new_val)
                         st.success("Updated"); time.sleep(1); st.rerun()
+            else:
+                st.warning("Central Inventory is empty.")
