@@ -40,7 +40,7 @@ txt = {
     "fullname": "Full Name", "region": "Main Region",
     "login_btn": "Login", "register_btn": "Sign Up", "logout": "Logout",
     "manager_role": "Manager", "supervisor_role": "Supervisor", "storekeeper_role": "Store Keeper",
-    "name_en": "Name", "category": "Category",
+    "name_ar": "Name (Ar)", "name_en": "Name (En)", "category": "Category",
     "qty": "Qty", "cats": CATS_EN, "location": "Location",
     "requests_log": "Log", "inventory": "Inventory",
     "local_inv": "My Stock", "local_inv_mgr": "Branch Reports",
@@ -84,7 +84,7 @@ txt = {
 
 NAME_COL = 'name_en'
 
-# --- 2. CSS & Security ---
+# --- 2. Security & CSS Control ---
 def inject_security_css():
     st.markdown("""
         <style>
@@ -105,7 +105,7 @@ if st.session_state.logged_in:
 if should_hide:
     inject_security_css()
 
-# --- General CSS ---
+# --- General CSS & Copyright ---
 st.markdown(f"""
     <style>
     .stButton button {{ width: 100%; }}
@@ -139,7 +139,15 @@ def load_data(worksheet_name):
         sh = get_connection()
         ws = sh.worksheet(worksheet_name)
         data = ws.get_all_records()
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        # --- FIX: Standardize Column Names ---
+        # This prevents KeyError if the sheet has 'item_en' instead of 'name_en'
+        if not df.empty:
+            if 'item_en' in df.columns:
+                df = df.rename(columns={'item_en': 'name_en'})
+            if 'item_ar' in df.columns:
+                df = df.rename(columns={'item_ar': 'name_ar'})
+        return df
     except: return pd.DataFrame()
 
 def save_row(worksheet_name, row_data_list):
@@ -150,6 +158,8 @@ def save_row(worksheet_name, row_data_list):
 def update_data(worksheet_name, df):
     sh = get_connection()
     ws = sh.worksheet(worksheet_name)
+    # Important: If we renamed columns in memory, we must revert before saving? 
+    # Or simply update. Updating with 'name_en' is better for consistency.
     ws.clear()
     ws.update([df.columns.values.tolist()] + df.values.tolist())
 
@@ -190,6 +200,7 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
                 current_qty = 0
             new_qty = max(0, current_qty + change_qty)
             ws_inv.update_cell(idx + 2, 4, new_qty) 
+            
             log_desc = f"{action_desc} ({unit_type})"
             log_entry = [datetime.now().strftime("%Y-%m-%d %H:%M"), user, log_desc, item_en, location, change_qty, new_qty]
             ws_log.append_row(log_entry)
@@ -199,8 +210,7 @@ def update_central_inventory_with_log(item_en, location, change_qty, user, actio
     except Exception as e:
         return False, str(e)
 
-# Updated Function: Uses ONLY name_en (Replaced item_ar with name_en)
-def update_local_inventory_record(region, item_en, new_qty):
+def update_local_inventory_record(region, item_en, item_ar, new_qty):
     try:
         sh = get_connection()
         ws = sh.worksheet('local_inventory')
@@ -209,7 +219,9 @@ def update_local_inventory_record(region, item_en, new_qty):
         
         if not df.empty:
             df['clean_reg'] = df['region'].astype(str).str.strip()
-            df['clean_item'] = df['item_en'].astype(str).str.strip()
+            # Handle item_en column check
+            col_name = 'item_en' if 'item_en' in df.columns else 'name_en'
+            df['clean_item'] = df[col_name].astype(str).str.strip()
             mask = (df['clean_reg'] == str(region).strip()) & (df['clean_item'] == str(item_en).strip())
         else: mask = pd.Series([False])
         
@@ -218,8 +230,7 @@ def update_local_inventory_record(region, item_en, new_qty):
             ws.update_cell(row_idx + 2, 4, int(new_qty))
             ws.update_cell(row_idx + 2, 5, datetime.now().strftime("%Y-%m-%d %H:%M"))
         else:
-            # We use item_en for both English and Arabic columns in sheet to avoid errors
-            ws.append_row([region, item_en, item_en, int(new_qty), datetime.now().strftime("%Y-%m-%d %H:%M")])
+            ws.append_row([region, item_en, item_ar, int(new_qty), datetime.now().strftime("%Y-%m-%d %H:%M")])
         return True
     except: return False
 
@@ -314,7 +325,6 @@ else:
             if wh_data.empty:
                 st.info(f"{txt['no_items']} - {warehouse_name}")
             else:
-                # Removed 'name_ar' from columns
                 base_cols = ['name_en', 'qty', 'unit', 'category']
                 display_cols = [c for c in base_cols if c in wh_data.columns]
                 st.dataframe(wh_data[display_cols], use_container_width=True)
@@ -352,7 +362,8 @@ else:
                     region_reqs = pending_all[pending_all['region'] == region]
                     for index, row in region_reqs.iterrows():
                         with st.container(border=True):
-                            disp_name = row['name_en'] # Always English
+                            # Safe Get for name_en to avoid KeyError
+                            disp_name = row.get('name_en', row.get('item_en', 'Unknown Item'))
                             st.markdown(f"**📦 {disp_name}**")
                             req_u = row['unit'] if 'unit' in row else '-'
                             st.caption(f"{txt['area_label']}: **{row['region']}** | {txt['qty']}: **{row['qty']} ({req_u})**")
@@ -384,7 +395,8 @@ else:
             else:
                 for index, row in approved.iterrows():
                     with st.container(border=True):
-                        disp_name = row['name_en'] # Always English
+                        # Safe Get
+                        disp_name = row.get('name_en', row.get('item_en', 'Unknown Item'))
                         st.markdown(f"**📦 {disp_name}**")
                         req_u = row['unit'] if 'unit' in row else '-'
                         st.caption(f"📍 {row['region']} | {txt['qty_req']}: **{row['qty']} ({req_u})**")
@@ -392,7 +404,9 @@ else:
                         issue_qty = st.number_input(txt['issue_qty_input'], 1, 9999, int(row['qty']), key=f"iq_{row['req_id']}")
                         
                         if st.button(txt['issue'], key=f"btn_is_{row['req_id']}", use_container_width=True):
-                            status, msg = update_central_inventory_with_log(row['item_en'], "NTCC", -issue_qty, info['name'], f"Issued to {row['region']}", req_u)
+                            # Use safe get for item_en passing to function
+                            item_name_val = row.get('name_en', row.get('item_en'))
+                            status, msg = update_central_inventory_with_log(item_name_val, "NTCC", -issue_qty, info['name'], f"Issued to {row['region']}", req_u)
                             if status:
                                 reqs.loc[reqs['req_id'] == row['req_id'], 'status'] = txt['issued']
                                 reqs.loc[reqs['req_id'] == row['req_id'], 'qty'] = issue_qty
@@ -402,11 +416,11 @@ else:
                                     cur = 0
                                     if not local_inv_df.empty:
                                         local_inv_df['clean_reg'] = local_inv_df['region'].astype(str).str.strip()
-                                        local_inv_df['clean_item'] = local_inv_df['item_en'].astype(str).str.strip()
-                                        m = local_inv_df[(local_inv_df['clean_reg']==str(row['region']).strip()) & (local_inv_df['clean_item']==str(row['item_en']).strip())]
+                                        local_inv_col = 'item_en' if 'item_en' in local_inv_df.columns else 'name_en'
+                                        local_inv_df['clean_item'] = local_inv_df[local_inv_col].astype(str).str.strip()
+                                        m = local_inv_df[(local_inv_df['clean_reg']==str(row['region']).strip()) & (local_inv_df['clean_item']==str(item_name_val).strip())]
                                         if not m.empty: cur = int(m.iloc[0]['qty'])
-                                    # Fix: Passed 'name_en' only
-                                    update_local_inventory_record(row['region'], row['item_en'], cur + issue_qty)
+                                    update_local_inventory_record(row['region'], item_name_val, item_name_val, cur + issue_qty)
                                 except: pass 
                                 st.success("OK")
                                 time.sleep(1)
@@ -429,7 +443,7 @@ else:
                     item_data = wh_inv[wh_inv[NAME_COL] == sel_sk].iloc[0]
                     save_row('requests', [
                         str(uuid.uuid4()), info['name'], info['region'],
-                        item_data['name_en'], item_data['name_en'], item_data['category'], # Save EN name twice
+                        item_data['name_en'], item_data['name_en'], item_data['category'],
                         qty_sk, datetime.now().strftime("%Y-%m-%d %H:%M"),
                         txt['pending'], f"Source: {wh_source}", sk_unit
                     ])
@@ -476,7 +490,6 @@ else:
                     qty = c_q.number_input(txt['qty_req'], 1, 1000, 1)
                     if st.button(txt['send_req'], use_container_width=True):
                         item = ntcc_items[ntcc_items[NAME_COL] == sel].iloc[0]
-                        # Fix: Saving name_en only (removed name_ar reference)
                         save_row('requests', [
                             str(uuid.uuid4()), info['name'], req_area,
                             item['name_en'], item['name_en'], item['category'],
@@ -494,10 +507,6 @@ else:
                 cols_to_show = ['name_en', 'qty', 'status', 'region']
                 if 'unit' in my_reqs.columns: cols_to_show.insert(2, 'unit')
                 
-                # Handling old data if exists
-                if 'item_en' in my_reqs.columns:
-                    my_reqs = my_reqs.rename(columns={'item_en': 'name_en'})
-                
                 st.dataframe(my_reqs[[c for c in cols_to_show if c in my_reqs.columns]], use_container_width=True)
 
         with t_inv:
@@ -510,11 +519,12 @@ else:
                     current_qty = 0
                     if not local_inv.empty:
                         local_inv['clean_reg'] = local_inv['region'].astype(str).str.strip()
-                        local_inv['clean_item'] = local_inv['item_en'].astype(str).str.strip()
+                        # Handle varied column names in local_inventory
+                        li_item_col = 'item_en' if 'item_en' in local_inv.columns else 'name_en'
+                        local_inv['clean_item'] = local_inv[li_item_col].astype(str).str.strip()
                         match = local_inv[(local_inv['clean_reg'] == str(view_area).strip()) & (local_inv['clean_item'] == str(row['name_en']).strip())]
                         if not match.empty: current_qty = int(match.iloc[0]['qty'])
-                    d_name = row['name_en']
-                    # Removed name_ar from dictionary to fix KeyError
+                    d_name = row['name_en'] # English Name
                     items_list.append({"disp": d_name, "name_en": row['name_en'], "current_qty": current_qty})
                 
                 selected_item_inv = st.selectbox(txt['select_item'], [x['disp'] for x in items_list], key="sel_inv")
@@ -525,8 +535,7 @@ else:
                         st.caption(f"{txt['current_local']} {selected_data['current_qty']} (in {view_area})")
                         new_val = st.number_input(txt['qty_local'], 0, 9999, selected_data['current_qty'])
                         if st.button(txt['update_btn'], use_container_width=True):
-                            # Fix: Update using only name_en
-                            update_local_inventory_record(view_area, selected_data['name_en'], new_val)
+                            update_local_inventory_record(view_area, selected_data['name_en'], selected_data['name_en'], new_val)
                             st.success("✅")
                             time.sleep(1)
                             st.rerun()
