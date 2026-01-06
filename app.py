@@ -143,13 +143,11 @@ def register_user(username, password, name, region):
     )
 
 def update_user_profile_full(old_username, new_username, new_name, new_pass):
-    # 1. Check if new username exists (if changed)
     if new_username != old_username:
         check = run_query("SELECT username FROM users WHERE username = :u", params={"u": new_username})
         if not check.empty:
             return False, "Username already taken!"
     
-    # 2. Update
     try:
         with conn.session as s:
             s.execute(
@@ -214,12 +212,15 @@ def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, uni
 def receive_from_cww(item_name, dest_loc, qty, user, unit):
     return update_central_stock(item_name, dest_loc, qty, user, "Received from CWW", unit)
 
-def update_local_inventory(region, item_name, new_qty):
+# --- Modified to include User Name ---
+def update_local_inventory(region, item_name, new_qty, user):
     df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
     if not df.empty:
-        return run_action("UPDATE local_inventory SET qty = :q, last_updated = NOW() WHERE region = :r AND item_name = :i", params={"q": new_qty, "r": region, "i": item_name})
+        return run_action("UPDATE local_inventory SET qty = :q, last_updated = NOW(), updated_by = :u WHERE region = :r AND item_name = :i", 
+                          params={"q": new_qty, "u": user, "r": region, "i": item_name})
     else:
-        return run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated) VALUES (:r, :i, :q, NOW())", params={"r": region, "i": item_name, "q": new_qty})
+        return run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)", 
+                          params={"r": region, "i": item_name, "q": new_qty, "u": user})
 
 def get_local_inventory_all():
     return run_query("SELECT * FROM local_inventory ORDER BY last_updated DESC")
@@ -325,7 +326,6 @@ else:
         st.rerun()
     
     with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
-        # Added: Username editing
         new_user_input = st.text_input(txt['username'], value=info['username'])
         new_name_input = st.text_input(txt['new_name'], value=info['name'])
         new_pass_input = st.text_input(txt['new_pass'], type="password", value=info['password'])
@@ -385,7 +385,7 @@ else:
                 df_snc = get_inventory("SNC")
                 st.dataframe(df_snc[['name_en', 'qty', 'unit', 'category']], use_container_width=True)
 
-        # TAB 2: EXTERNAL & CWW (Added Lists)
+        # TAB 2: EXTERNAL & CWW
         with tab_ext:
             c1, c2 = st.columns(2)
             with c1:
@@ -421,14 +421,12 @@ else:
             
             st.divider()
             st.markdown("### 📊 Project Loan History")
-            # Query logs for Loans
             loan_logs = run_query("SELECT log_date, item_name, change_amount, location, action_type FROM stock_logs WHERE action_type LIKE '%Loan%' ORDER BY log_date DESC")
             
             if not loan_logs.empty:
                 c_lent, c_borrowed = st.columns(2)
                 with c_lent:
                     st.markdown("**➡️ Items We LENT (Out)**")
-                    # Filter for Loan OUT (negative numbers in logic, but logs might show abs, let's check text)
                     lent_df = loan_logs[loan_logs['action_type'].str.contains("Loan OUT")]
                     st.dataframe(lent_df, use_container_width=True)
                 
@@ -477,11 +475,12 @@ else:
                                         update_request_status(row['req_id'], "Rejected", notes=mgr_notes)
                                         st.rerun()
 
-        # TAB 4: LOCAL REPORTS
+        # TAB 4: LOCAL REPORTS (Updated to show 'Updated By')
         with tab_reports:
             st.subheader("📊 Detailed Branch Inventory")
             selected_report_area = st.selectbox("Select Area to View Report", AREAS)
-            df_report = run_query("SELECT item_name, qty, last_updated FROM local_inventory WHERE region = :r ORDER BY item_name", params={"r": selected_report_area})
+            # Query updated to include 'updated_by' column
+            df_report = run_query("SELECT item_name, qty, last_updated, updated_by FROM local_inventory WHERE region = :r ORDER BY item_name", params={"r": selected_report_area})
             if df_report.empty:
                 st.info(f"No inventory data recorded for **{selected_report_area}** yet.")
             else:
@@ -535,7 +534,8 @@ else:
                                                 final_note = f"{row['notes']} | SK: {sk_notes}" if row['notes'] else sk_notes
                                                 update_request_status(row['req_id'], "Issued", final_qty, final_note)
                                                 cur_local = get_local_inventory_by_item(row['region'], row['item_name'])
-                                                update_local_inventory(row['region'], row['item_name'], cur_local + final_qty)
+                                                # Pass user info to update local inventory
+                                                update_local_inventory(row['region'], row['item_name'], cur_local + final_qty, info['name'])
                                                 st.success("Issued"); time.sleep(0.5); st.rerun()
                                             else: st.error(msg)
 
@@ -625,5 +625,6 @@ else:
                     st.metric("Current Registered", cur_q)
                     new_val = st.number_input("New Actual Count", 0, 10000, cur_q)
                     if st.button("Submit Count"):
-                        update_local_inventory(selected_area_inv, item_up, new_val)
+                        # Pass info['name'] to update local inventory with user
+                        update_local_inventory(selected_area_inv, item_up, new_val, info['name'])
                         st.success("Updated"); time.sleep(0.5); st.rerun()
