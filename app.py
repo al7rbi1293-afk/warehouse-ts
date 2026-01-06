@@ -212,7 +212,6 @@ def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, uni
 def receive_from_cww(item_name, dest_loc, qty, user, unit):
     return update_central_stock(item_name, dest_loc, qty, user, "Received from CWW", unit)
 
-# --- Modified to include User Name ---
 def update_local_inventory(region, item_name, new_qty, user):
     df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
     if not df.empty:
@@ -286,33 +285,42 @@ if not st.session_state.logged_in:
             st.session_state.user_info = u_data
             st.rerun()
 
-# === LOGIN PAGE ===
+# === LOGIN PAGE (FIXED GHOSTING ISSUE) ===
 if not st.session_state.logged_in:
-    st.title(f"🔐 {txt['app_title']}")
-    t1, t2 = st.tabs([txt['login_page'], txt['register_page']])
-    with t1:
-        with st.form("log"):
-            u = st.text_input(txt['username']).strip()
-            p = st.text_input(txt['password'], type="password").strip()
-            if st.form_submit_button(txt['login_btn'], use_container_width=True):
-                user_data = login_user(u, p)
-                if user_data:
-                    st.session_state.logged_in = True
-                    st.session_state.user_info = user_data
-                    cookie_manager.set("wms_user_pro_sql", u, expires_at=datetime.now() + timedelta(days=7))
-                    time.sleep(0.5)
-                    st.rerun()
-                else: st.error(txt['error_login'])
-    with t2:
-        with st.form("reg"):
-            nu = st.text_input(txt['username'], key='r_u').strip()
-            np = st.text_input(txt['password'], type='password', key='r_p').strip()
-            nn = st.text_input(txt['fullname'])
-            nr = st.selectbox(txt['region'], AREAS)
-            if st.form_submit_button(txt['register_btn'], use_container_width=True):
-                if register_user(nu, np, nn, nr):
-                    st.success(txt['success_reg'])
-                else: st.error("Error: Username might exist")
+    # Use a placeholder to contain the entire login UI
+    login_holder = st.empty()
+    
+    with login_holder.container():
+        st.title(f"🔐 {txt['app_title']}")
+        t1, t2 = st.tabs([txt['login_page'], txt['register_page']])
+        
+        with t1:
+            with st.form("log"):
+                u = st.text_input(txt['username']).strip()
+                p = st.text_input(txt['password'], type="password").strip()
+                if st.form_submit_button(txt['login_btn'], use_container_width=True):
+                    user_data = login_user(u, p)
+                    if user_data:
+                        # Success: Clear the UI *BEFORE* waiting/rerunning
+                        login_holder.empty() 
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = user_data
+                        cookie_manager.set("wms_user_pro_sql", u, expires_at=datetime.now() + timedelta(days=7))
+                        st.success("Welcome back!")
+                        time.sleep(0.5)
+                        st.rerun()
+                    else: st.error(txt['error_login'])
+        
+        with t2:
+            with st.form("reg"):
+                nu = st.text_input(txt['username'], key='r_u').strip()
+                np = st.text_input(txt['password'], type='password', key='r_p').strip()
+                nn = st.text_input(txt['fullname'])
+                nr = st.selectbox(txt['region'], AREAS)
+                if st.form_submit_button(txt['register_btn'], use_container_width=True):
+                    if register_user(nu, np, nn, nr):
+                        st.success(txt['success_reg'])
+                    else: st.error("Error: Username might exist")
 
 # === MAIN APP ===
 else:
@@ -475,11 +483,10 @@ else:
                                         update_request_status(row['req_id'], "Rejected", notes=mgr_notes)
                                         st.rerun()
 
-        # TAB 4: LOCAL REPORTS (Updated to show 'Updated By')
+        # TAB 4: LOCAL REPORTS
         with tab_reports:
             st.subheader("📊 Detailed Branch Inventory")
             selected_report_area = st.selectbox("Select Area to View Report", AREAS)
-            # Query updated to include 'updated_by' column
             df_report = run_query("SELECT item_name, qty, last_updated, updated_by FROM local_inventory WHERE region = :r ORDER BY item_name", params={"r": selected_report_area})
             if df_report.empty:
                 st.info(f"No inventory data recorded for **{selected_report_area}** yet.")
@@ -534,7 +541,6 @@ else:
                                                 final_note = f"{row['notes']} | SK: {sk_notes}" if row['notes'] else sk_notes
                                                 update_request_status(row['req_id'], "Issued", final_qty, final_note)
                                                 cur_local = get_local_inventory_by_item(row['region'], row['item_name'])
-                                                # Pass user info to update local inventory
                                                 update_local_inventory(row['region'], row['item_name'], cur_local + final_qty, info['name'])
                                                 st.success("Issued"); time.sleep(0.5); st.rerun()
                                             else: st.error(msg)
@@ -625,6 +631,5 @@ else:
                     st.metric("Current Registered", cur_q)
                     new_val = st.number_input("New Actual Count", 0, 10000, cur_q)
                     if st.button("Submit Count"):
-                        # Pass info['name'] to update local inventory with user
                         update_local_inventory(selected_area_inv, item_up, new_val, info['name'])
                         st.success("Updated"); time.sleep(0.5); st.rerun()
