@@ -285,15 +285,12 @@ if not st.session_state.logged_in:
             st.session_state.user_info = u_data
             st.rerun()
 
-# === LOGIN PAGE (FIXED GHOSTING ISSUE) ===
+# === LOGIN PAGE ===
 if not st.session_state.logged_in:
-    # Use a placeholder to contain the entire login UI
     login_holder = st.empty()
-    
     with login_holder.container():
         st.title(f"🔐 {txt['app_title']}")
         t1, t2 = st.tabs([txt['login_page'], txt['register_page']])
-        
         with t1:
             with st.form("log"):
                 u = st.text_input(txt['username']).strip()
@@ -301,7 +298,6 @@ if not st.session_state.logged_in:
                 if st.form_submit_button(txt['login_btn'], use_container_width=True):
                     user_data = login_user(u, p)
                     if user_data:
-                        # Success: Clear the UI *BEFORE* waiting/rerunning
                         login_holder.empty() 
                         st.session_state.logged_in = True
                         st.session_state.user_info = user_data
@@ -310,7 +306,6 @@ if not st.session_state.logged_in:
                         time.sleep(0.5)
                         st.rerun()
                     else: st.error(txt['error_login'])
-        
         with t2:
             with st.form("reg"):
                 nu = st.text_input(txt['username'], key='r_u').strip()
@@ -633,3 +628,29 @@ else:
                     if st.button("Submit Count"):
                         update_local_inventory(selected_area_inv, item_up, new_val, info['name'])
                         st.success("Updated"); time.sleep(0.5); st.rerun()
+            
+            # --- NEW FEATURE: SHOW SUBMITTED COUNTS BY TAB ---
+            st.divider()
+            st.markdown("### 📋 My Submitted Counts")
+            
+            # 1. Fetch data specific to this user
+            my_data = run_query(
+                "SELECT region, item_name, qty, last_updated FROM local_inventory WHERE updated_by = :u ORDER BY last_updated DESC",
+                params={"u": info['name']}
+            )
+            
+            if not my_data.empty:
+                # 2. Get unique regions this user has actually touched
+                my_regions = my_data['region'].unique()
+                
+                if len(my_regions) > 0:
+                    # 3. Create tabs dynamically based on existing regions
+                    count_tabs = st.tabs(list(my_regions))
+                    
+                    for i, r_name in enumerate(my_regions):
+                        with count_tabs[i]:
+                            # 4. Filter data for the specific tab
+                            r_df = my_data[my_data['region'] == r_name]
+                            st.dataframe(r_df[['item_name', 'qty', 'last_updated']], use_container_width=True)
+            else:
+                st.info("You haven't submitted any inventory counts yet.")
