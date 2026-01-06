@@ -6,37 +6,34 @@ import uuid
 from sqlalchemy import text
 import extra_streamlit_components as stx
 
-# --- 1. Page Configuration ---
-st.set_page_config(page_title="WMS Pro (SQL)", layout="wide", initial_sidebar_state="expanded")
+# --- 1. Page Configuration & Performance Fixes ---
+st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="expanded")
 
-# --- Session Management ---
+# --- Session State Initialization ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
-if 'logout_pressed' not in st.session_state:
-    st.session_state.logout_pressed = False
-
-# --- Cookie Manager ---
+# --- Cookie Manager (Session Persistence Fix) ---
 def get_manager():
     return stx.CookieManager()
 
 cookie_manager = get_manager()
 
-# --- Constants ---
+# --- Constants (UPDATED AREA NAMES) ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 LOCATIONS = ["NTCC", "SNC"]
-EXTERNAL_PROJECTS = ["KASCH", "KAMC", "Altaif Project"] # مشاريع الحرس
+EXTERNAL_PROJECTS = ["KASCH", "KAMC", "KSSH Altaif"] # Updated Project Name
 AREAS = [
-    "Ground floor", "1st floor", 
-    "2nd floor O.R", "2nd floor ICU 28", "2nd floor RT and Waiting area", "2nd floor ICU 29",
-    "Ward 30", "Ward 31", "Ward 40", "Ward 41", "Ward 50", "Ward 51",
-    "Service area", "OPD", "E.R", "x-rays", "neurodiagnostic"
+    "OPD", "Imeging", "Neurodiangnostic", "E.R", 
+    "1s floor", "Service Area", "ICU 28", "ICU 29", 
+    "O.R", "Recovery", "RT and Waiting area", 
+    "Ward 30-31", "Ward 40-41", "Ward50-51"
 ]
 
 # --- Dictionary ---
 txt = {
-    "app_title": "Unified WMS System (SQL)",
+    "app_title": "Unified WMS System",
     "login_page": "Login", "register_page": "Register",
     "username": "Username", "password": "Password",
     "fullname": "Full Name", "region": "Region",
@@ -46,11 +43,12 @@ txt = {
     "qty": "Qty", "location": "Location",
     "requests_log": "Log", "inventory": "Inventory",
     "req_form": "Request Items", "select_item": "Select Item",
-    "local_inv": "My Stock",
+    "local_inv": "Branch Inventory Reports", # Updated Title
     "current_local": "You have:", "update_local": "Update",
     "qty_req": "Request Qty", "qty_local": "Actual Qty",
     "send_req": "Send Request", "update_btn": "Save",
-    "pending_reqs": "⏳ Supervisor Requests", "approved_reqs": "📦 Requests to Issue",
+    "pending_reqs": "⏳ Pending Requests (By Area)",
+    "approved_reqs": "📦 Requests to Issue",
     "approve": "Approve ✅", "reject": "Reject ❌", "issue": "Confirm Issue 📦",
     "status": "Status", "pending": "Pending", "approved": "Approved", 
     "rejected": "Rejected", "issued": "Issued",
@@ -87,14 +85,15 @@ txt = {
     "create_item_title": "➕ Create New Item",
     "create_btn": "Create Item",
     "ext_tab": "🔄 External & CWW",
-    "project_loans": "🤝 Project Loans (KASCH, KAMC, Altaif)",
+    "project_loans": "🤝 Project Loans",
     "cww_supply": "🏭 Central Warehouse Supply (CWW)",
     "lend_out": "➡️ Lend To (Out)",
     "borrow_in": "⬅️ Borrow From (In)",
-    "exec_trans": "Execute Transfer"
+    "exec_trans": "Execute Transfer",
+    "refresh_data": "🔄 Refresh Data"
 }
 
-# --- Database Connection ---
+# --- Database Connection (Performance Fix: ttl=0 for instant updates) ---
 conn = st.connection("supabase", type="sql")
 
 # --- CSS ---
@@ -111,9 +110,9 @@ st.markdown(f"""
     <div class="copyright-footer">{txt['copyright']}</div>
 """, unsafe_allow_html=True)
 
-# --- Database Functions (SQL) ---
-
+# --- Database Functions ---
 def run_query(query, params=None):
+    # ttl=0 ensures we always get fresh data (Solving Point 9)
     try:
         return conn.query(query, params=params, ttl=0)
     except Exception as e:
@@ -130,7 +129,7 @@ def run_action(query, params=None):
         st.error(f"DB Action Error: {e}")
         return False
 
-# --- User Functions ---
+# --- User & Session Logic ---
 def login_user(username, password):
     df = run_query("SELECT * FROM users WHERE username = :u AND password = :p", params={"u": username, "p": password})
     return df.iloc[0].to_dict() if not df.empty else None
@@ -147,11 +146,11 @@ def update_user_profile(username, new_name, new_pass):
         params={"n": new_name, "p": new_pass, "u": username}
     )
 
-# --- Inventory Functions ---
+# --- Inventory Core Logic ---
 def get_inventory(location=None):
     if location:
-        return run_query("SELECT * FROM inventory WHERE location = :loc", params={"loc": location})
-    return run_query("SELECT * FROM inventory")
+        return run_query("SELECT * FROM inventory WHERE location = :loc ORDER BY name_en", params={"loc": location})
+    return run_query("SELECT * FROM inventory ORDER BY name_en")
 
 def create_new_item(name, category, unit, location, qty):
     df = run_query("SELECT id FROM inventory WHERE name_en = :n AND location = :l", params={"n": name, "l": location})
@@ -163,57 +162,39 @@ def create_new_item(name, category, unit, location, qty):
     ), "Created Successfully"
 
 def update_central_stock(item_name, location, change, user, action_desc, unit):
-    df = run_query(
-        "SELECT qty FROM inventory WHERE name_en = :name AND location = :loc",
-        params={"name": item_name, "loc": location}
-    )
-    if df.empty:
-        return False, f"Item not found: {item_name} in {location}"
-    
+    df = run_query("SELECT qty FROM inventory WHERE name_en = :name AND location = :loc", params={"name": item_name, "loc": location})
+    if df.empty: return False, f"Item not found: {item_name} in {location}"
     current_qty = int(df.iloc[0]['qty'])
+    
     if change < 0 and abs(change) > current_qty:
         return False, f"Insufficient stock. Available: {current_qty}"
     
     new_qty = current_qty + change
     try:
         with conn.session as s:
-            s.execute(
-                text("UPDATE inventory SET qty = :nq WHERE name_en = :name AND location = :loc"),
-                {"nq": new_qty, "name": item_name, "loc": location}
-            )
-            s.execute(
-                text("INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :act, :item, :loc, :chg, :nq)"),
-                {"u": user, "act": f"{action_desc} ({unit})", "item": item_name, "loc": location, "chg": change, "nq": new_qty}
-            )
+            s.execute(text("UPDATE inventory SET qty = :nq WHERE name_en = :name AND location = :loc"), {"nq": new_qty, "name": item_name, "loc": location})
+            s.execute(text("INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :act, :item, :loc, :chg, :nq)"),
+                      {"u": user, "act": f"{action_desc} ({unit})", "item": item_name, "loc": location, "chg": change, "nq": new_qty})
             s.commit()
         return True, "Success"
-    except Exception as e:
-        return False, str(e)
+    except Exception as e: return False, str(e)
 
 def transfer_stock(item_name, qty, user, unit):
     ok, msg = update_central_stock(item_name, "SNC", -qty, user, "Transfer Out", unit)
     if not ok: return False, msg
     
+    # Ensure item exists in NTCC
     df = run_query("SELECT * FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": item_name})
     if df.empty:
-        run_action(
-            "INSERT INTO inventory (name_en, category, unit, qty, location) VALUES (:n, 'Transferred', :u, 0, 'NTCC')",
-            params={"n": item_name, "u": unit}
-        )
+        run_action("INSERT INTO inventory (name_en, category, unit, qty, location) VALUES (:n, 'Transferred', :u, 0, 'NTCC')", params={"n": item_name, "u": unit})
         
     ok2, msg2 = update_central_stock(item_name, "NTCC", qty, user, "Transfer In", unit)
     if not ok2: return False, f"SNC deducted but NTCC failed: {msg2}"
     return True, "Transfer Complete"
 
 def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, unit):
-    # Action: 'Lend' (Out) or 'Borrow' (In)
-    if action == "Lend":
-        desc = f"Loan OUT to {ext_proj}"
-        change = -qty
-    else:
-        desc = f"Loan IN from {ext_proj}"
-        change = qty
-        
+    desc = f"Loan OUT to {ext_proj}" if action == "Lend" else f"Loan IN from {ext_proj}"
+    change = -qty if action == "Lend" else qty
     return update_central_stock(item_name, my_loc, change, user, desc, unit)
 
 def receive_from_cww(item_name, dest_loc, qty, user, unit):
@@ -226,7 +207,10 @@ def update_local_inventory(region, item_name, new_qty):
     else:
         return run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated) VALUES (:r, :i, :q, NOW())", params={"r": region, "i": item_name, "q": new_qty})
 
-def get_local_inventory(region, item_name):
+def get_local_inventory_all():
+    return run_query("SELECT * FROM local_inventory ORDER BY last_updated DESC")
+
+def get_local_inventory_by_item(region, item_name):
     df = run_query("SELECT qty FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
     return int(df.iloc[0]['qty']) if not df.empty else 0
 
@@ -247,7 +231,6 @@ def get_requests(status_filter=None, supervisor_filter=None):
     if supervisor_filter:
         conditions.append("supervisor_name = :sup")
         params["sup"] = supervisor_filter
-        
     if conditions:
         q += " WHERE " + " AND ".join(conditions)
     q += " ORDER BY request_date DESC"
@@ -264,8 +247,8 @@ def update_request_status(req_id, status, final_qty=None):
 def delete_request(req_id):
     return run_action("DELETE FROM requests WHERE req_id = :id", params={"id": req_id})
 
-# --- Auto Login ---
-if not st.session_state.logged_in and not st.session_state.get('logout_pressed', False):
+# --- Auto Login Fix (Run Check BEFORE Interface) ---
+if not st.session_state.logged_in:
     time.sleep(0.1)
     cookie_user = cookie_manager.get(cookie="wms_user_pro_sql")
     if cookie_user:
@@ -288,7 +271,6 @@ if not st.session_state.logged_in:
                 if user_data:
                     st.session_state.logged_in = True
                     st.session_state.user_info = user_data
-                    st.session_state.logout_pressed = False 
                     cookie_manager.set("wms_user_pro_sql", u, expires_at=datetime.now() + timedelta(days=7))
                     time.sleep(0.5)
                     st.rerun()
@@ -298,7 +280,7 @@ if not st.session_state.logged_in:
             nu = st.text_input(txt['username'], key='r_u').strip()
             np = st.text_input(txt['password'], type='password', key='r_p').strip()
             nn = st.text_input(txt['fullname'])
-            nr = st.text_input(txt['region'])
+            nr = st.selectbox(txt['region'], AREAS)
             if st.form_submit_button(txt['register_btn'], use_container_width=True):
                 if register_user(nu, np, nn, nr):
                     st.success(txt['success_reg'])
@@ -308,8 +290,13 @@ if not st.session_state.logged_in:
 else:
     info = st.session_state.user_info
     
+    # Sidebar
     st.sidebar.markdown(f"### 👤 {info['name']}")
     st.sidebar.caption(f"📍 {info['region']} | 🔑 {info['role']}")
+    
+    # Refresh Button (Point 9 Fix)
+    if st.sidebar.button(txt['refresh_data'], use_container_width=True):
+        st.rerun()
     
     with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
         new_name_input = st.text_input(txt['new_name'], value=info['name'])
@@ -320,25 +307,26 @@ else:
                 try: cookie_manager.delete("wms_user_pro_sql")
                 except: pass
                 st.session_state.logged_in = False
-                st.session_state.logout_pressed = True
-                time.sleep(1)
                 st.rerun()
             else: st.error("Error")
 
     if st.sidebar.button(txt['logout'], use_container_width=True):
         try: cookie_manager.delete("wms_user_pro_sql")
-        except KeyError: pass
+        except: pass
         st.session_state.logged_in = False
         st.session_state.user_info = {}
-        st.session_state.logout_pressed = True
-        time.sleep(0.5) 
         st.rerun()
 
-    # --- 1. MANAGER ---
+    # --- 1. MANAGER VIEW ---
     if info['role'] == 'manager':
         st.header(txt['manager_role'])
-        
-        tab_inv, tab_ext, tab_reqs, tab_logs = st.tabs(["📦 Central Stock", txt['ext_tab'], "⏳ Pending Requests", "📜 Logs"])
+        tab_inv, tab_ext, tab_reqs, tab_reports, tab_logs = st.tabs([
+            "📦 Central Stock", 
+            txt['ext_tab'], 
+            "⏳ Pending Requests", 
+            txt['local_inv'], 
+            "📜 Logs"
+        ])
         
         # TAB 1: CENTRAL STOCK
         with tab_inv:
@@ -352,7 +340,7 @@ else:
                 if st.button(txt['create_btn'], use_container_width=True):
                     if new_i_name:
                         ok_cr, msg_cr = create_new_item(new_i_name, new_i_cat, new_i_unit, new_i_loc, new_i_qty)
-                        if ok_cr: st.success(msg_cr); time.sleep(1); st.rerun()
+                        if ok_cr: st.success(msg_cr); time.sleep(0.5); st.rerun()
                         else: st.error(msg_cr)
                     else: st.warning("Enter Name")
             st.divider()
@@ -362,188 +350,173 @@ else:
                 st.markdown("### 🏢 NTCC")
                 df_ntcc = get_inventory("NTCC")
                 st.dataframe(df_ntcc[['name_en', 'qty', 'unit', 'category']], use_container_width=True)
-                with st.expander("🛠 Update NTCC"):
-                    if not df_ntcc.empty:
-                        item_ntcc = st.selectbox("Item", df_ntcc['name_en'].unique(), key="sel_ntcc")
-                        row_n = df_ntcc[df_ntcc['name_en'] == item_ntcc].iloc[0]
-                        st.caption(f"Current: {row_n['qty']} {row_n['unit']}")
-                        c1, c2 = st.columns(2)
-                        act_n = c1.radio("Action", ["Add", "Remove"], key="act_n")
-                        amt_n = c2.number_input("Qty", 1, 1000, 1, key="amt_n")
-                        if st.button("Update NTCC"):
-                            change = amt_n if act_n == "Add" else -amt_n
-                            ok, msg = update_central_stock(item_ntcc, "NTCC", change, info['name'], "Manager Update", row_n['unit'])
-                            if ok: st.success(msg); time.sleep(1); st.rerun()
-                            else: st.error(msg)
-                    else: st.info("No items in NTCC")
-
             with col_snc:
                 st.markdown("### 🏭 SNC")
                 df_snc = get_inventory("SNC")
                 st.dataframe(df_snc[['name_en', 'qty', 'unit', 'category']], use_container_width=True)
-                with st.expander("🛠 Update SNC"):
-                    if not df_snc.empty:
-                        item_snc = st.selectbox("Item", df_snc['name_en'].unique(), key="sel_snc")
-                        row_s = df_snc[df_snc['name_en'] == item_snc].iloc[0]
-                        st.caption(f"Current: {row_s['qty']} {row_s['unit']}")
-                        c3, c4 = st.columns(2)
-                        act_s = c3.radio("Action", ["Add", "Remove"], key="act_s")
-                        amt_s = c4.number_input("Qty", 1, 1000, 1, key="amt_s")
-                        if st.button("Update SNC"):
-                            change = amt_s if act_s == "Add" else -amt_s
-                            ok, msg = update_central_stock(item_snc, "SNC", change, info['name'], "Manager Update", row_s['unit'])
-                            if ok: st.success(msg); time.sleep(1); st.rerun()
-                            else: st.error(msg)
-                    else: st.info("No items in SNC")
 
         # TAB 2: EXTERNAL & CWW
         with tab_ext:
-            st.info("Manage Loans with External Projects & CWW Supply")
-            
-            # 1. Project Loans
-            with st.container(border=True):
+            c1, c2 = st.columns(2)
+            with c1:
                 st.subheader(txt['project_loans'])
-                c_wh, c_proj = st.columns(2)
-                sel_wh = c_wh.selectbox("Internal Warehouse", ["NTCC", "SNC"], key="loan_wh")
-                sel_proj = c_proj.selectbox("External Project", EXTERNAL_PROJECTS, key="loan_proj")
-                
-                # Fetch items for selected WH
-                wh_inv = get_inventory(sel_wh)
-                if not wh_inv.empty:
-                    c_it, c_act, c_qty = st.columns(3)
-                    sel_item_loan = c_it.selectbox("Item", wh_inv['name_en'].unique(), key="loan_it")
-                    row_loan = wh_inv[wh_inv['name_en'] == sel_item_loan].iloc[0]
-                    c_it.caption(f"Avail: {row_loan['qty']} {row_loan['unit']}")
-                    
-                    sel_action_loan = c_act.radio("Operation", ["Lend", "Borrow"], key="loan_op")
-                    if sel_action_loan == "Lend":
-                        c_act.caption(txt['lend_out'])
-                    else:
-                        c_act.caption(txt['borrow_in'])
-                        
-                    qty_loan = c_qty.number_input("Quantity", 1, 10000, 1, key="loan_q")
-                    
-                    if st.button(txt['exec_trans'], use_container_width=True):
-                        ok_l, msg_l = handle_external_transfer(sel_item_loan, sel_wh, sel_proj, sel_action_loan, qty_loan, info['name'], row_loan['unit'])
-                        if ok_l: st.success("Transfer Successful"); time.sleep(1); st.rerun()
-                        else: st.error(msg_l)
-                else:
-                    st.warning(f"No items in {sel_wh}")
-
-            st.divider()
-
-            # 2. CWW Supply
-            with st.container(border=True):
+                with st.container(border=True):
+                    sel_wh = st.selectbox("Internal Warehouse", ["NTCC", "SNC"], key="loan_wh")
+                    sel_proj = st.selectbox("External Project", EXTERNAL_PROJECTS, key="loan_proj")
+                    wh_inv = get_inventory(sel_wh)
+                    if not wh_inv.empty:
+                        sel_item_loan = st.selectbox("Item", wh_inv['name_en'].unique(), key="loan_it")
+                        row_loan = wh_inv[wh_inv['name_en'] == sel_item_loan].iloc[0]
+                        st.caption(f"Avail: {row_loan['qty']} {row_loan['unit']}")
+                        sel_action_loan = st.radio("Operation", ["Lend", "Borrow"], key="loan_op", horizontal=True)
+                        qty_loan = st.number_input("Quantity", 1, 10000, 1, key="loan_q")
+                        if st.button(txt['exec_trans'], use_container_width=True):
+                            ok_l, msg_l = handle_external_transfer(sel_item_loan, sel_wh, sel_proj, sel_action_loan, qty_loan, info['name'], row_loan['unit'])
+                            if ok_l: st.success("Success"); time.sleep(0.5); st.rerun()
+                            else: st.error(msg_l)
+            
+            with c2:
                 st.subheader(txt['cww_supply'])
-                c_cww_wh, c_cww_it = st.columns(2)
-                dest_wh_cww = c_cww_wh.selectbox("Destination Warehouse", ["NTCC", "SNC"], key="cww_wh")
-                
-                dest_inv = get_inventory(dest_wh_cww)
-                if not dest_inv.empty:
-                    item_cww = c_cww_it.selectbox("Item Received", dest_inv['name_en'].unique(), key="cww_it")
-                    row_cww = dest_inv[dest_inv['name_en'] == item_cww].iloc[0]
-                    c_cww_it.caption(f"Current: {row_cww['qty']} {row_cww['unit']}")
-                    
-                    qty_cww = st.number_input("Qty Received from CWW", 1, 10000, 1, key="cww_q")
-                    
-                    if st.button("📥 Receive from CWW", use_container_width=True):
-                        ok_c, msg_c = receive_from_cww(item_cww, dest_wh_cww, qty_cww, info['name'], row_cww['unit'])
-                        if ok_c: st.success("Stock Received from CWW"); time.sleep(1); st.rerun()
-                        else: st.error(msg_c)
-                else:
-                    st.warning(f"No items defined in {dest_wh_cww}. Create item first.")
+                with st.container(border=True):
+                    dest_wh_cww = st.selectbox("Destination Warehouse", ["NTCC", "SNC"], key="cww_wh")
+                    dest_inv = get_inventory(dest_wh_cww)
+                    if not dest_inv.empty:
+                        item_cww = st.selectbox("Item Received", dest_inv['name_en'].unique(), key="cww_it")
+                        row_cww = dest_inv[dest_inv['name_en'] == item_cww].iloc[0]
+                        qty_cww = st.number_input("Qty Received", 1, 10000, 1, key="cww_q")
+                        if st.button("📥 Receive from CWW", use_container_width=True):
+                            ok_c, msg_c = receive_from_cww(item_cww, dest_wh_cww, qty_cww, info['name'], row_cww['unit'])
+                            if ok_c: st.success("Received"); time.sleep(0.5); st.rerun()
+                            else: st.error(msg_c)
 
-        # TAB 3: REQUESTS
+        # TAB 3: REQUESTS (Grouped by Area)
         with tab_reqs:
             reqs = get_requests(status_filter="Pending")
-            if reqs.empty: st.success("✅ No pending requests")
+            if reqs.empty:
+                st.success("✅ No pending requests")
             else:
-                for idx, row in reqs.iterrows():
-                    with st.container(border=True):
-                        st.markdown(f"**📦 {row['item_name']}**")
-                        st.caption(f"Requested: **{row['qty']} {row['unit']}** | By: {row['supervisor_name']} ({row['region']})")
-                        inv_check = run_query("SELECT qty FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": row['item_name']})
-                        avail = inv_check.iloc[0]['qty'] if not inv_check.empty else 0
-                        st.info(f"Available in NTCC: **{avail}**")
-                        b1, b2 = st.columns(2)
-                        if b1.button(txt['approve'], key=f"ap_{row['req_id']}"):
-                            if avail >= row['qty']:
-                                update_request_status(row['req_id'], "Approved")
-                                st.success("Approved"); time.sleep(1); st.rerun()
-                            else: st.error(f"{txt['err_no_stock_approve']} (Req: {row['qty']}, Avail: {avail})")
-                        if b2.button(txt['reject'], key=f"rj_{row['req_id']}"):
-                            update_request_status(row['req_id'], "Rejected")
-                            st.rerun()
+                # Group by Region (Point 3 Fix)
+                unique_regions = reqs['region'].unique()
+                tabs = st.tabs(list(unique_regions))
+                
+                for i, region_name in enumerate(unique_regions):
+                    with tabs[i]:
+                        region_data = reqs[reqs['region'] == region_name]
+                        for idx, row in region_data.iterrows():
+                            with st.container(border=True):
+                                c_info, c_act = st.columns([3, 1])
+                                with c_info:
+                                    st.markdown(f"**{row['item_name']}**")
+                                    st.caption(f"Qty: **{row['qty']} {row['unit']}** | By: {row['supervisor_name']}")
+                                    # Stock Check
+                                    inv_check = run_query("SELECT qty FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": row['item_name']})
+                                    avail = inv_check.iloc[0]['qty'] if not inv_check.empty else 0
+                                    st.info(f"NTCC Stock: {avail}")
+                                with c_act:
+                                    if st.button("✅", key=f"ap_{row['req_id']}"):
+                                        if avail >= row['qty']:
+                                            update_request_status(row['req_id'], "Approved")
+                                            st.rerun()
+                                        else: st.error("Stock!")
+                                    if st.button("❌", key=f"rj_{row['req_id']}"):
+                                        update_request_status(row['req_id'], "Rejected")
+                                        st.rerun()
 
-        # TAB 4: LOGS
+        # TAB 4: LOCAL REPORTS (Grouped by Area)
+        with tab_reports:
+            reports = get_local_inventory_all()
+            if reports.empty:
+                st.info("No reports yet")
+            else:
+                # Group by Region (Point 4 Fix)
+                rep_regions = reports['region'].unique()
+                rep_tabs = st.tabs(list(rep_regions))
+                for i, r_name in enumerate(rep_regions):
+                    with rep_tabs[i]:
+                        r_data = reports[reports['region'] == r_name]
+                        st.dataframe(r_data[['item_name', 'qty', 'last_updated']], use_container_width=True)
+
+        # TAB 5: LOGS
         with tab_logs:
             logs = run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 100")
             st.dataframe(logs, use_container_width=True)
 
-    # --- 2. STORE KEEPER ---
+    # --- 2. STORE KEEPER VIEW ---
     elif info['role'] == 'storekeeper':
         st.header(txt['storekeeper_role'])
-        tab_issue, tab_stock = st.tabs([txt['approved_reqs'], txt['stock_take_central']])
+        tab_issue, tab_stock_ntcc, tab_stock_snc = st.tabs([
+            txt['approved_reqs'], 
+            "📦 Manage NTCC", 
+            "🏭 Manage SNC"
+        ])
         
+        # TAB 1: ISSUE (Grouped by Area for easier packing)
         with tab_issue:
             reqs = get_requests(status_filter="Approved")
-            if reqs.empty: st.info("✅ No approved requests")
+            if reqs.empty: st.info("✅ No requests to issue")
             else:
-                for idx, row in reqs.iterrows():
-                    with st.container(border=True):
-                        st.markdown(f"**📦 {row['item_name']}**")
-                        st.caption(f"Region: {row['region']} | Requested: {row['qty']} {row['unit']}")
-                        final_qty = st.number_input("Actual Issue Qty", 1, 1000, int(row['qty']), key=f"iq_{row['req_id']}")
-                        if st.button(txt['issue'], key=f"btn_iss_{row['req_id']}"):
-                            ok, msg = update_central_stock(row['item_name'], "NTCC", -final_qty, info['name'], f"Issued to {row['region']}", row['unit'])
-                            if ok:
-                                update_request_status(row['req_id'], "Issued", final_qty)
-                                cur_local = get_local_inventory(row['region'], row['item_name'])
-                                update_local_inventory(row['region'], row['item_name'], cur_local + final_qty)
-                                st.success("Issued Successfully"); time.sleep(1); st.rerun()
-                            else: st.error(msg)
+                unique_regions = reqs['region'].unique()
+                tabs_issue = st.tabs(list(unique_regions))
+                for i, r_name in enumerate(unique_regions):
+                    with tabs_issue[i]:
+                        r_data = reqs[reqs['region'] == r_name]
+                        for idx, row in r_data.iterrows():
+                            with st.container(border=True):
+                                st.markdown(f"**{row['item_name']}** ({row['qty']} {row['unit']})")
+                                final_qty = st.number_input("Issued Qty", 1, 1000, int(row['qty']), key=f"iq_{row['req_id']}")
+                                if st.button(txt['issue'], key=f"btn_iss_{row['req_id']}"):
+                                    ok, msg = update_central_stock(row['item_name'], "NTCC", -final_qty, info['name'], f"Issued to {row['region']}", row['unit'])
+                                    if ok:
+                                        update_request_status(row['req_id'], "Issued", final_qty)
+                                        cur_local = get_local_inventory_by_item(row['region'], row['item_name'])
+                                        update_local_inventory(row['region'], row['item_name'], cur_local + final_qty)
+                                        st.success("Issued"); time.sleep(0.5); st.rerun()
+                                    else: st.error(msg)
 
-        with tab_stock:
-            st.info("Manage NTCC Inventory")
-            with st.expander(txt['receive_from_snc'], expanded=True):
-                snc_inv = get_inventory("SNC")
-                if not snc_inv.empty:
-                    c1, c2 = st.columns([2, 1])
-                    item_tr = c1.selectbox("Select Item", snc_inv['name_en'].unique(), key="tr_it")
+        # TAB 2: NTCC
+        with tab_stock_ntcc:
+            st.subheader("Internal Warehouse (NTCC)")
+            # Manual Stock Take
+            ntcc_inv = get_inventory("NTCC")
+            if not ntcc_inv.empty:
+                st.dataframe(ntcc_inv[['name_en', 'qty', 'unit']], use_container_width=True)
+                with st.expander("🛠 Manual Adjustment"):
+                    item_tk = st.selectbox("Item", ntcc_inv['name_en'].unique(), key="tk_it")
+                    row_tk = ntcc_inv[ntcc_inv['name_en'] == item_tk].iloc[0]
+                    c1, c2, c3 = st.columns(3)
+                    act_tk = c1.radio("Action", ["Add", "Remove"], key="act_tk")
+                    amt_tk = c2.number_input("Qty", 1, 1000, 1, key="amt_tk")
+                    if c3.button("Update", key="btn_tk"):
+                        change = amt_tk if act_tk == "Add" else -amt_tk
+                        ok, msg = update_central_stock(item_tk, "NTCC", change, info['name'], "Stock Take", row_tk['unit'])
+                        if ok: st.success("Updated"); time.sleep(0.5); st.rerun()
+
+        # TAB 3: SNC
+        with tab_stock_snc:
+            st.subheader("External Warehouse (SNC)")
+            snc_inv = get_inventory("SNC")
+            if not snc_inv.empty:
+                st.dataframe(snc_inv[['name_en', 'qty', 'unit']], use_container_width=True)
+                with st.expander("🛠 SNC Transfer to NTCC"):
+                    item_tr = st.selectbox("Transfer Item", snc_inv['name_en'].unique(), key="tr_it")
                     row_tr = snc_inv[snc_inv['name_en'] == item_tr].iloc[0]
-                    c1.caption(f"SNC Stock: {row_tr['qty']} {row_tr['unit']}")
-                    qty_tr = c2.number_input("Transfer Qty", 1, 1000, 1, key="tr_qn")
+                    qty_tr = st.number_input("Transfer Qty", 1, 1000, 1, key="tr_qn")
                     if st.button(txt['transfer_btn']):
                         if row_tr['qty'] >= qty_tr:
                             ok, msg = transfer_stock(item_tr, qty_tr, info['name'], row_tr['unit'])
-                            if ok: st.success("Transferred"); time.sleep(1); st.rerun()
+                            if ok: st.success("Transferred"); time.sleep(0.5); st.rerun()
                             else: st.error(msg)
-                        else: st.error("Low Stock in SNC")
-                else: st.warning("No items in SNC")
-            st.divider()
-            with st.expander(txt['manual_stock_take']):
-                ntcc_inv = get_inventory("NTCC")
-                if not ntcc_inv.empty:
-                    item_tk = st.selectbox("Select Item", ntcc_inv['name_en'].unique(), key="tk_it")
-                    row_tk = ntcc_inv[ntcc_inv['name_en'] == item_tk].iloc[0]
-                    st.info(f"Current: {row_tk['qty']} {row_tk['unit']}")
-                    c1, c2 = st.columns(2)
-                    act_tk = c1.radio("Action", ["Add", "Remove"], key="act_tk")
-                    amt_tk = c2.number_input("Qty", 1, 1000, 1, key="amt_tk")
-                    if st.button("Update Stock", key="btn_tk"):
-                        change = amt_tk if act_tk == "Add" else -amt_tk
-                        ok, msg = update_central_stock(item_tk, "NTCC", change, info['name'], "Stock Take", row_tk['unit'])
-                        if ok: st.success("Updated"); time.sleep(1); st.rerun()
-                        else: st.error(msg)
-                else: st.warning("No items in NTCC")
+                        else: st.error("Low Stock")
 
-    # --- 3. SUPERVISOR ---
+    # --- 3. SUPERVISOR VIEW ---
     else:
         tab_req, tab_my_inv = st.tabs([txt['req_form'], txt['local_inv']])
         ntcc_inv = get_inventory("NTCC")
         
         with tab_req:
-            req_area = st.selectbox(txt['select_area'], AREAS)
+            # Fixed Area Selection (Point 2 Fix)
+            st.info(f"Working Area: **{info['region']}**") 
+            
             if not ntcc_inv.empty:
                 with st.container(border=True):
                     item_req = st.selectbox(txt['select_item'], ntcc_inv['name_en'].unique())
@@ -551,33 +524,31 @@ else:
                     st.caption(f"Unit: {row_item['unit']}")
                     qty_req = st.number_input(txt['qty_req'], 1, 1000, 1)
                     if st.button(txt['send_req'], use_container_width=True):
-                        create_request(info['name'], req_area, item_req, row_item['category'], qty_req, row_item['unit'])
-                        st.success("✅ Request Sent"); time.sleep(1); st.rerun()
-            else: st.warning("⚠️ Central Inventory (NTCC) is empty.")
+                        create_request(info['name'], info['region'], item_req, row_item['category'], qty_req, row_item['unit'])
+                        st.success("Sent"); time.sleep(0.5); st.rerun()
             
             st.divider()
             my_reqs = get_requests(supervisor_filter=info['name'])
             if not my_reqs.empty:
                 pending = my_reqs[my_reqs['status'] == 'Pending']
                 if not pending.empty:
-                    st.subheader(txt['my_pending'])
+                    st.subheader("My Pending Requests")
                     for idx, row in pending.iterrows():
-                        with st.expander(f"⚙️ {row['item_name']} ({row['qty']})"):
-                            new_q = st.number_input("New Qty", 1, 1000, int(row['qty']), key=f"ed_{row['req_id']}")
+                        with st.expander(f"{row['item_name']} ({row['qty']})"):
+                            new_q = st.number_input("Edit Qty", 1, 1000, int(row['qty']), key=f"ed_{row['req_id']}")
                             c1, c2 = st.columns(2)
                             if c1.button("Update", key=f"up_{row['req_id']}"):
                                 update_request(row['req_id'], new_q)
-                                st.success("Updated"); time.sleep(1); st.rerun()
+                                st.rerun()
                             if c2.button("Delete", key=f"del_{row['req_id']}"):
                                 delete_request(row['req_id'])
-                                st.success("Deleted"); time.sleep(1); st.rerun()
-                st.divider()
-                st.caption("All Requests History")
-                st.dataframe(my_reqs[['item_name', 'qty', 'status', 'region', 'request_date']], use_container_width=True)
+                                st.rerun()
 
         with tab_my_inv:
-            view_area = st.selectbox("View Area Stock", AREAS, key="v_area")
-            df_local = run_query("SELECT * FROM local_inventory WHERE region = :r", params={"r": view_area})
+            # Only show own region inventory
+            df_local = run_query("SELECT * FROM local_inventory WHERE region = :r", params={"r": info['region']})
+            
+            # Show all items from NTCC to allow reporting on them even if 0
             if not ntcc_inv.empty:
                 items_list = []
                 for item in ntcc_inv['name_en'].unique():
@@ -586,13 +557,16 @@ else:
                         match = df_local[df_local['item_name'] == item]
                         if not match.empty: qty = int(match.iloc[0]['qty'])
                     items_list.append({"Item": item, "Qty": qty})
+                
                 df_view = pd.DataFrame(items_list)
-                item_up = st.selectbox("Update Item Stock", df_view['Item'].unique())
+                
+                # Simple Update Form
+                item_up = st.selectbox("Update Weekly Count", df_view['Item'].unique())
                 cur_q = df_view[df_view['Item'] == item_up].iloc[0]['Qty']
+                
                 with st.container(border=True):
-                    st.info(f"Current Stock: {cur_q}")
-                    new_val = st.number_input("New Actual Qty", 0, 10000, cur_q)
-                    if st.button("Update Local Stock"):
-                        update_local_inventory(view_area, item_up, new_val)
-                        st.success("Updated"); time.sleep(1); st.rerun()
-            else: st.warning("Central Inventory is empty.")
+                    st.metric("Current Registered", cur_q)
+                    new_val = st.number_input("New Actual Count", 0, 10000, cur_q)
+                    if st.button("Submit Count"):
+                        update_local_inventory(info['region'], item_up, new_val)
+                        st.success("Updated"); time.sleep(0.5); st.rerun()
