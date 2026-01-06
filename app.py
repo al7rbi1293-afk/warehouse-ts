@@ -26,6 +26,7 @@ cookie_manager = get_manager()
 # --- Constants ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 LOCATIONS = ["NTCC", "SNC"]
+EXTERNAL_PROJECTS = ["KASCH", "KAMC", "Altaif Project"] # مشاريع الحرس
 AREAS = [
     "Ground floor", "1st floor", 
     "2nd floor O.R", "2nd floor ICU 28", "2nd floor RT and Waiting area", "2nd floor ICU 29",
@@ -84,7 +85,13 @@ txt = {
     "manual_stock_take": "🛠️ Manual Stock Take (NTCC Only)",
     "err_no_stock_approve": "❌ Cannot Approve: Insufficient Stock in NTCC!",
     "create_item_title": "➕ Create New Item",
-    "create_btn": "Create Item"
+    "create_btn": "Create Item",
+    "ext_tab": "🔄 External & CWW",
+    "project_loans": "🤝 Project Loans (KASCH, KAMC, Altaif)",
+    "cww_supply": "🏭 Central Warehouse Supply (CWW)",
+    "lend_out": "➡️ Lend To (Out)",
+    "borrow_in": "⬅️ Borrow From (In)",
+    "exec_trans": "Execute Transfer"
 }
 
 # --- Database Connection ---
@@ -198,6 +205,20 @@ def transfer_stock(item_name, qty, user, unit):
     if not ok2: return False, f"SNC deducted but NTCC failed: {msg2}"
     return True, "Transfer Complete"
 
+def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, unit):
+    # Action: 'Lend' (Out) or 'Borrow' (In)
+    if action == "Lend":
+        desc = f"Loan OUT to {ext_proj}"
+        change = -qty
+    else:
+        desc = f"Loan IN from {ext_proj}"
+        change = qty
+        
+    return update_central_stock(item_name, my_loc, change, user, desc, unit)
+
+def receive_from_cww(item_name, dest_loc, qty, user, unit):
+    return update_central_stock(item_name, dest_loc, qty, user, "Received from CWW", unit)
+
 def update_local_inventory(region, item_name, new_qty):
     df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
     if not df.empty:
@@ -296,7 +317,6 @@ else:
         if st.button(txt['save_changes'], use_container_width=True):
             if update_user_profile(info['username'], new_name_input, new_pass_input):
                 st.success(txt['profile_updated'])
-                # Safe Logout
                 try: cookie_manager.delete("wms_user_pro_sql")
                 except: pass
                 st.session_state.logged_in = False
@@ -306,12 +326,8 @@ else:
             else: st.error("Error")
 
     if st.sidebar.button(txt['logout'], use_container_width=True):
-        # FIX: Try/Except to prevent KeyError on logout
-        try:
-            cookie_manager.delete("wms_user_pro_sql")
-        except KeyError:
-            pass # Cookie already gone, ignore
-        
+        try: cookie_manager.delete("wms_user_pro_sql")
+        except KeyError: pass
         st.session_state.logged_in = False
         st.session_state.user_info = {}
         st.session_state.logout_pressed = True
@@ -321,8 +337,10 @@ else:
     # --- 1. MANAGER ---
     if info['role'] == 'manager':
         st.header(txt['manager_role'])
-        tab_inv, tab_reqs, tab_logs = st.tabs(["📦 Central Stock", "⏳ Pending Requests", "📜 Logs"])
         
+        tab_inv, tab_ext, tab_reqs, tab_logs = st.tabs(["📦 Central Stock", txt['ext_tab'], "⏳ Pending Requests", "📜 Logs"])
+        
+        # TAB 1: CENTRAL STOCK
         with tab_inv:
             with st.expander(txt['create_item_title'], expanded=False):
                 c_n, c_c, c_u, c_l, c_q = st.columns(5)
@@ -378,6 +396,64 @@ else:
                             else: st.error(msg)
                     else: st.info("No items in SNC")
 
+        # TAB 2: EXTERNAL & CWW
+        with tab_ext:
+            st.info("Manage Loans with External Projects & CWW Supply")
+            
+            # 1. Project Loans
+            with st.container(border=True):
+                st.subheader(txt['project_loans'])
+                c_wh, c_proj = st.columns(2)
+                sel_wh = c_wh.selectbox("Internal Warehouse", ["NTCC", "SNC"], key="loan_wh")
+                sel_proj = c_proj.selectbox("External Project", EXTERNAL_PROJECTS, key="loan_proj")
+                
+                # Fetch items for selected WH
+                wh_inv = get_inventory(sel_wh)
+                if not wh_inv.empty:
+                    c_it, c_act, c_qty = st.columns(3)
+                    sel_item_loan = c_it.selectbox("Item", wh_inv['name_en'].unique(), key="loan_it")
+                    row_loan = wh_inv[wh_inv['name_en'] == sel_item_loan].iloc[0]
+                    c_it.caption(f"Avail: {row_loan['qty']} {row_loan['unit']}")
+                    
+                    sel_action_loan = c_act.radio("Operation", ["Lend", "Borrow"], key="loan_op")
+                    if sel_action_loan == "Lend":
+                        c_act.caption(txt['lend_out'])
+                    else:
+                        c_act.caption(txt['borrow_in'])
+                        
+                    qty_loan = c_qty.number_input("Quantity", 1, 10000, 1, key="loan_q")
+                    
+                    if st.button(txt['exec_trans'], use_container_width=True):
+                        ok_l, msg_l = handle_external_transfer(sel_item_loan, sel_wh, sel_proj, sel_action_loan, qty_loan, info['name'], row_loan['unit'])
+                        if ok_l: st.success("Transfer Successful"); time.sleep(1); st.rerun()
+                        else: st.error(msg_l)
+                else:
+                    st.warning(f"No items in {sel_wh}")
+
+            st.divider()
+
+            # 2. CWW Supply
+            with st.container(border=True):
+                st.subheader(txt['cww_supply'])
+                c_cww_wh, c_cww_it = st.columns(2)
+                dest_wh_cww = c_cww_wh.selectbox("Destination Warehouse", ["NTCC", "SNC"], key="cww_wh")
+                
+                dest_inv = get_inventory(dest_wh_cww)
+                if not dest_inv.empty:
+                    item_cww = c_cww_it.selectbox("Item Received", dest_inv['name_en'].unique(), key="cww_it")
+                    row_cww = dest_inv[dest_inv['name_en'] == item_cww].iloc[0]
+                    c_cww_it.caption(f"Current: {row_cww['qty']} {row_cww['unit']}")
+                    
+                    qty_cww = st.number_input("Qty Received from CWW", 1, 10000, 1, key="cww_q")
+                    
+                    if st.button("📥 Receive from CWW", use_container_width=True):
+                        ok_c, msg_c = receive_from_cww(item_cww, dest_wh_cww, qty_cww, info['name'], row_cww['unit'])
+                        if ok_c: st.success("Stock Received from CWW"); time.sleep(1); st.rerun()
+                        else: st.error(msg_c)
+                else:
+                    st.warning(f"No items defined in {dest_wh_cww}. Create item first.")
+
+        # TAB 3: REQUESTS
         with tab_reqs:
             reqs = get_requests(status_filter="Pending")
             if reqs.empty: st.success("✅ No pending requests")
@@ -399,6 +475,7 @@ else:
                             update_request_status(row['req_id'], "Rejected")
                             st.rerun()
 
+        # TAB 4: LOGS
         with tab_logs:
             logs = run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 100")
             st.dataframe(logs, use_container_width=True)
