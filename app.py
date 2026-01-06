@@ -240,7 +240,6 @@ def get_requests(status_filter=None, supervisor_filter=None):
 def update_request(req_id, new_qty):
     return run_action("UPDATE requests SET qty = :q WHERE req_id = :id", params={"q": new_qty, "id": req_id})
 
-# Updated to handle Notes
 def update_request_details(req_id, new_qty, notes):
     return run_action(
         "UPDATE requests SET qty = :q, notes = :n WHERE req_id = :id",
@@ -454,17 +453,21 @@ else:
                                         update_request_status(row['req_id'], "Rejected", notes=mgr_notes)
                                         st.rerun()
 
-        # TAB 4: LOCAL REPORTS
+        # TAB 4: LOCAL REPORTS (Detailed Single Select View)
         with tab_reports:
-            reports = get_local_inventory_all()
-            if reports.empty: st.info("No reports yet")
+            st.subheader("📊 Detailed Branch Inventory")
+            
+            # Select Area to View
+            selected_report_area = st.selectbox("Select Area to View Report", AREAS)
+            
+            # Query specific area
+            df_report = run_query("SELECT item_name, qty, last_updated FROM local_inventory WHERE region = :r ORDER BY item_name", params={"r": selected_report_area})
+            
+            if df_report.empty:
+                st.info(f"No inventory data recorded for **{selected_report_area}** yet.")
             else:
-                rep_regions = reports['region'].unique()
-                rep_tabs = st.tabs(list(rep_regions))
-                for i, r_name in enumerate(rep_regions):
-                    with rep_tabs[i]:
-                        r_data = reports[reports['region'] == r_name]
-                        st.dataframe(r_data[['item_name', 'qty', 'last_updated']], use_container_width=True)
+                st.dataframe(df_report, use_container_width=True)
+                st.caption(f"Total Items Counted: {len(df_report)}")
 
         # TAB 5: LOGS
         with tab_logs:
@@ -563,7 +566,7 @@ else:
         
         with tab_req:
             # Area Selection for Supervisors (Req #1)
-            req_region = st.selectbox("Select Area", AREAS, index=AREAS.index(info['region']) if info['region'] in AREAS else 0)
+            req_region = st.selectbox("Select Area for Request", AREAS, index=AREAS.index(info['region']) if info['region'] in AREAS else 0)
             
             if not ntcc_inv.empty:
                 with st.container(border=True):
@@ -593,7 +596,10 @@ else:
                                 st.rerun()
 
         with tab_my_inv:
-            df_local = run_query("SELECT * FROM local_inventory WHERE region = :r", params={"r": info['region']})
+            # Added: Select Area for Inventory Count
+            selected_area_inv = st.selectbox("Select Area for Count", AREAS, index=AREAS.index(info['region']) if info['region'] in AREAS else 0, key="inv_reg_sel")
+            
+            df_local = run_query("SELECT * FROM local_inventory WHERE region = :r", params={"r": selected_area_inv})
             if not ntcc_inv.empty:
                 items_list = []
                 for item in ntcc_inv['name_en'].unique():
@@ -611,5 +617,5 @@ else:
                     st.metric("Current Registered", cur_q)
                     new_val = st.number_input("New Actual Count", 0, 10000, cur_q)
                     if st.button("Submit Count"):
-                        update_local_inventory(info['region'], item_up, new_val)
+                        update_local_inventory(selected_area_inv, item_up, new_val)
                         st.success("Updated"); time.sleep(0.5); st.rerun()
