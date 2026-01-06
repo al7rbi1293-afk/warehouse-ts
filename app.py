@@ -96,22 +96,8 @@ txt = {
     "insufficient_stock_sk": "❌ STOP: Issue Qty > NTCC Stock!"
 }
 
-# --- Database Connection (Hybrid: Works on Streamlit Cloud & Railway) ---
-import os
-
-# 1. حاول جلب الرابط من متغيرات البيئة (خاص بـ Railway)
-db_url = os.getenv("SUPABASE_URL")
-
-# 2. إذا لم تجده (يعني أننا في Streamlit Cloud أو Local)، اجلبه من ملف الأسرار
-if not db_url:
-    try:
-        db_url = st.secrets["connections"]["supabase"]["url"]
-    except (KeyError, FileNotFoundError):
-        st.error("❌ Database URL not found! Please check Secrets or Env Variables.")
-        st.stop()
-
-# 3. إنشاء الاتصال باستخدام الرابط الذي تم العثور عليه
-conn = st.connection("supabase", type="sql", url=db_url)
+# --- Database Connection ---
+conn = st.connection("supabase", type="sql")
 
 # --- CSS ---
 st.markdown(f"""
