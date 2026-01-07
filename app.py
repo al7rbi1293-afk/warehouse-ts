@@ -36,9 +36,9 @@ txt = {
     "refresh_data": "🔄 Refresh Data", "notes": "Notes / Remarks",
     "save_mod": "💾 Save Changes", "insufficient_stock_sk": "❌ STOP: Issue Qty > NTCC Stock!",
     "error_login": "Invalid Username or Password", "success_reg": "Registered successfully",
-    "local_inv": "Branch Inventory Reports", "req_form": "Request Items", 
-    "select_item": "Select Item", "qty_req": "Request Qty", "send_req": "Send Request",
-    "approved_reqs": "📦 Requests to Issue", "issue": "Confirm Issue 📦",
+    "local_inv": "Branch Inventory Reports", "req_form": "Bulk Order Form", 
+    "select_item": "Select Item", "qty_req": "Request Qty", "send_req": "🚀 Send Bulk Order",
+    "approved_reqs": "📦 Pending Issue (Bulk)", "issue": "Confirm Issue 📦",
     "transfer_btn": "Transfer Stock", "edit_profile": "Edit Profile", 
     "new_name": "New Name", "new_pass": "New Password", "save_changes": "Save Changes",
     "update_btn": "Update", "cancel_req": "Cancel Request 🗑️"
@@ -116,7 +116,6 @@ def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, uni
 def receive_from_cww(item_name, dest_loc, qty, user, unit):
     return update_central_stock(item_name, dest_loc, int(qty), user, "Received from CWW", unit)
 
-# الدالة السحرية لتحديث المخزون المحلي (إما إضافة أو تعديل مباشر)
 def update_local_inventory(region, item_name, new_qty, user):
     new_qty = int(new_qty)
     df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
@@ -222,7 +221,7 @@ def show_main_app():
 # ==========================================
 def manager_view():
     st.header(txt['manager_role'])
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Stock", txt['ext_tab'], "⏳ Requests", txt['local_inv'], "📜 Logs"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Stock", txt['ext_tab'], "⏳ Bulk Review", txt['local_inv'], "📜 Logs"])
     
     with tab1: # Central Stock
         with st.expander(txt['create_item_title'], expanded=False):
@@ -292,40 +291,72 @@ def manager_view():
                 st.markdown("**⬅️ Borrow (In)**")
                 st.dataframe(loan_logs[loan_logs['action_type'].str.contains("Borrow")], use_container_width=True)
 
-    with tab3: # Requests
-        reqs = run_query("SELECT * FROM requests WHERE status='Pending' ORDER BY request_date DESC")
+    with tab3: # Requests (TABLE EDITOR MODE)
+        reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
         if reqs.empty: st.info("No pending requests")
         else:
             regions = reqs['region'].unique()
             region_tabs = st.tabs(list(regions))
+            
             for i, region in enumerate(regions):
                 with region_tabs[i]:
-                    region_reqs = reqs[reqs['region'] == region]
-                    for _, r in region_reqs.iterrows():
-                        with st.container(border=True):
-                            c1, c2 = st.columns([1, 1])
-                            with c1:
-                                st.markdown(f"**{r['item_name']}**")
-                                st.caption(f"Requested: **{r['qty']} {r['unit']}** | By: {r['supervisor_name']}")
-                                stock = run_query("SELECT qty FROM inventory WHERE name_en=:n AND location='NTCC'", {"n":r['item_name']})
+                    # Filter data for this region
+                    reg_df = reqs[reqs['region'] == region].copy()
+                    
+                    # Add Action Column for Editor
+                    reg_df['Action'] = "Keep Pending"
+                    reg_df['Mgr Qty'] = reg_df['qty']
+                    reg_df['Mgr Note'] = reg_df['notes']
+                    
+                    # Columns to show
+                    display_df = reg_df[['req_id', 'item_name', 'supervisor_name', 'qty', 'unit', 'Mgr Qty', 'Mgr Note', 'Action']]
+                    
+                    st.info("💡 Edit 'Mgr Qty' or 'Mgr Note' directly in the table. Select 'Approve' or 'Reject' in Action column.")
+                    
+                    edited_df = st.data_editor(
+                        display_df,
+                        key=f"editor_{region}",
+                        column_config={
+                            "req_id": st.column_config.NumberColumn(disabled=True),
+                            "item_name": st.column_config.TextColumn(disabled=True),
+                            "qty": st.column_config.NumberColumn(disabled=True, label="Req Qty"),
+                            "Mgr Qty": st.column_config.NumberColumn(min_value=1, max_value=10000, required=True),
+                            "Action": st.column_config.SelectboxColumn(
+                                options=["Keep Pending", "Approve", "Reject"],
+                                required=True
+                            )
+                        },
+                        disabled=["item_name", "supervisor_name", "qty", "unit"],
+                        hide_index=True,
+                        use_container_width=True
+                    )
+                    
+                    if st.button(f"Process {region} Updates", key=f"btn_{region}"):
+                        count_changes = 0
+                        for index, row in edited_df.iterrows():
+                            rid = row['req_id']
+                            action = row['Action']
+                            new_q = int(row['Mgr Qty'])
+                            new_n = row['Mgr Note']
+                            
+                            # Fetch current stock to check
+                            if action == "Approve":
+                                stock = run_query("SELECT qty FROM inventory WHERE name_en=:n AND location='NTCC'", {"n":row['item_name']})
                                 avail = stock.iloc[0]['qty'] if not stock.empty else 0
-                                st.info(f"NTCC Stock: {avail}")
-                            with c2:
-                                new_q = st.number_input("Approve Qty", 1, 10000, int(r['qty']), key=f"q_{r['req_id']}")
-                                note = st.text_input("Manager Note (Reason if Short)", key=f"n_{r['req_id']}")
-                                c_a, c_b, c_c = st.columns(3)
-                                if c_a.button("✅ Approve", key=f"ap_{r['req_id']}"):
-                                    if avail >= new_q:
-                                        final_note = f"Manager: {note}" if note else ""
-                                        run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":int(new_q), "n":final_note, "id":r['req_id']})
-                                        st.rerun()
-                                    else: st.error("Low Stock")
-                                if c_b.button("❌ Reject", key=f"rj_{r['req_id']}"):
-                                    run_action("UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", {"n":note, "id":r['req_id']})
-                                    st.rerun()
-                                if c_c.button("💾 Save", key=f"sv_{r['req_id']}"):
-                                    update_request_details(r['req_id'], int(new_q), note)
-                                    st.success("Saved"); st.rerun()
+                                
+                                if avail >= new_q:
+                                    final_note = f"Manager: {new_n}" if new_n else ""
+                                    run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":new_q, "n":final_note, "id":rid})
+                                    count_changes += 1
+                                else:
+                                    st.toast(f"❌ Low Stock for {row['item_name']}. Skipped.", icon="⚠️")
+                            
+                            elif action == "Reject":
+                                run_action("UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", {"n":new_n, "id":rid})
+                                count_changes += 1
+                        
+                        if count_changes > 0:
+                            st.success(f"Processed {count_changes} requests!"); time.sleep(1); st.rerun()
 
     with tab4: # Reports
         st.subheader("📊 Detailed Branch Inventory")
@@ -352,29 +383,52 @@ def storekeeper_view():
                 rtabs = st.tabs(list(regions))
                 for i, region in enumerate(regions):
                     with rtabs[i]:
-                        r_data = reqs[reqs['region'] == region]
-                        for _, r in r_data.iterrows():
-                            with st.container(border=True):
-                                c1, c2 = st.columns([1, 1])
-                                with c1:
-                                    st.markdown(f"**{r['item_name']}**")
-                                    st.markdown(f"Approved Qty: **{r['qty']} {r['unit']}**")
-                                    if r['notes']: st.warning(f"📝 {r['notes']}")
-                                with c2:
-                                    final_issue_qty = st.number_input("Final Issue Qty", 1, 10000, int(r['qty']), key=f"sk_q_{r['req_id']}")
-                                    sk_note = st.text_input("Storekeeper Note", key=f"sk_n_{r['req_id']}")
+                        # Bulk Processing Table for Storekeeper
+                        sk_df = reqs[reqs['region'] == region].copy()
+                        sk_df['Issue Qty'] = sk_df['qty']
+                        sk_df['SK Note'] = ""
+                        sk_df['Process'] = False
+                        
+                        display_sk = sk_df[['req_id', 'item_name', 'qty', 'unit', 'notes', 'Issue Qty', 'SK Note', 'Process']]
+                        
+                        st.info("Select 'Process' checkbox to Issue items.")
+                        
+                        edited_sk = st.data_editor(
+                            display_sk,
+                            key=f"sk_editor_{region}",
+                            column_config={
+                                "req_id": st.column_config.NumberColumn(disabled=True),
+                                "notes": st.column_config.TextColumn(disabled=True, label="Manager Note"),
+                                "Issue Qty": st.column_config.NumberColumn(min_value=1, max_value=10000),
+                                "Process": st.column_config.CheckboxColumn(label="Confirm Issue?", default=False)
+                            },
+                            disabled=["req_id", "item_name", "qty", "unit", "notes"],
+                            hide_index=True,
+                            use_container_width=True
+                        )
+                        
+                        if st.button(f"Confirm Issue for {region}", key=f"sk_btn_{region}"):
+                            issued_count = 0
+                            for index, row in edited_sk.iterrows():
+                                if row['Process']:
+                                    rid = row['req_id']
+                                    iq = int(row['Issue Qty'])
+                                    sn = row['SK Note']
                                     
-                                    if st.button("Confirm Issue 📦", key=f"iss_{r['req_id']}"):
-                                        existing_note = r['notes'] if r['notes'] else ""
-                                        final_note = f"{existing_note} | Storekeeper: {sk_note}" if sk_note else existing_note
-                                        
-                                        res, msg = update_central_stock(r['item_name'], "NTCC", -final_issue_qty, st.session_state.user_info['name'], f"Issued {r['region']}", r['unit'])
-                                        if res:
-                                            # Update status to 'Issued' (Ready for Pickup)
-                                            run_action("UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id", 
-                                                      {"q":int(final_issue_qty), "n":final_note, "id":r['req_id']})
-                                            st.success("Issued & Ready for Pickup"); st.rerun()
-                                        else: st.error(msg)
+                                    # Perform Issue
+                                    existing_note = row['notes'] if row['notes'] else ""
+                                    final_note = f"{existing_note} | SK: {sn}" if sn else existing_note
+                                    
+                                    res, msg = update_central_stock(row['item_name'], "NTCC", -iq, st.session_state.user_info['name'], f"Issued {region}", row['unit'])
+                                    if res:
+                                        run_action("UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id", 
+                                                  {"q":iq, "n":final_note, "id":rid})
+                                        issued_count += 1
+                                    else:
+                                        st.toast(f"Error {row['item_name']}: {msg}", icon="❌")
+                            
+                            if issued_count > 0:
+                                st.success(f"Issued {issued_count} items!"); time.sleep(1); st.rerun()
 
     with t2: # Issued Today
         st.subheader("📋 Items Issued Today")
@@ -394,67 +448,139 @@ def storekeeper_view():
         st.dataframe(get_inventory("SNC"), use_container_width=True)
 
 # ==========================================
-# ============ SUPERVISOR VIEW =============
+# ============ SUPERVISOR VIEW ============
 # ==========================================
 def supervisor_view():
     user = st.session_state.user_info
     st.header(txt['supervisor_role'])
     t1, t2, t3, t4 = st.tabs([txt['req_form'], "🚚 Ready for Pickup", "⏳ My Pending", txt['local_inv']])
     
+    # Tab 1: BULK REQUEST FORM (New)
     with t1:
-        reg = st.selectbox("Region", AREAS, index=AREAS.index(user['region']) if user['region'] in AREAS else 0)
+        st.markdown("### 🛒 Bulk Order Form")
+        reg = st.selectbox("Ordering for Area:", AREAS, index=AREAS.index(user['region']) if user['region'] in AREAS else 0)
+        
+        # 1. Get Inventory
         inv = get_inventory("NTCC")
+        
         if not inv.empty:
-            it = st.selectbox("Item", inv['name_en'].unique())
-            row = inv[inv['name_en']==it].iloc[0]
-            q = st.number_input("Qty", 1, 1000)
+            # 2. Add 'Order Qty' column
+            inv_df = inv[['name_en', 'category', 'qty', 'unit']].copy()
+            inv_df.rename(columns={'qty': 'Stock Available', 'name_en': 'Item Name'}, inplace=True)
+            inv_df['Order Qty'] = 0  # Default 0
+            
+            st.info("Enter quantities in 'Order Qty' column. Leave 0 for items you don't need.")
+            
+            # 3. Display Data Editor
+            edited_order = st.data_editor(
+                inv_df,
+                key="order_editor",
+                column_config={
+                    "Item Name": st.column_config.TextColumn(disabled=True),
+                    "category": st.column_config.TextColumn(disabled=True),
+                    "Stock Available": st.column_config.NumberColumn(disabled=True),
+                    "unit": st.column_config.TextColumn(disabled=True),
+                    "Order Qty": st.column_config.NumberColumn(min_value=0, max_value=1000, step=1)
+                },
+                hide_index=True,
+                use_container_width=True,
+                height=500
+            )
+            
+            # 4. Submit Button
             if st.button(txt['send_req'], use_container_width=True):
-                run_action("INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
-                          {"s":user['name'], "r":reg, "i":it, "c":row['category'], "q":int(q), "u":row['unit']})
-                st.success("Sent"); st.rerun()
+                # Filter items where Order Qty > 0
+                items_to_order = edited_order[edited_order['Order Qty'] > 0]
+                
+                if items_to_order.empty:
+                    st.warning("Please enter quantity for at least one item.")
+                else:
+                    success_count = 0
+                    for index, row in items_to_order.iterrows():
+                        create_request(
+                            supervisor=user['name'],
+                            region=reg,
+                            item=row['Item Name'],
+                            category=row['category'],
+                            qty=int(row['Order Qty']),
+                            unit=row['unit']
+                        )
+                        success_count += 1
+                    
+                    st.balloons()
+                    st.success(f"Successfully sent {success_count} item requests!"); time.sleep(2); st.rerun()
 
     with t2: # Ready for Pickup
         ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued'", {"s": user['name']})
         if ready.empty: st.info("No items ready for pickup.")
         else:
-            for _, r in ready.iterrows():
-                with st.container(border=True):
-                    st.success(f"✅ **Ready:** {r['item_name']} ({r['qty']} {r['unit']})")
-                    if r['notes']: st.warning(f"📝 Notes: {r['notes']}")
-                    
-                    if st.button("Confirm Receipt & Add to Inventory 📥", key=f"rec_{r['req_id']}", use_container_width=True):
-                        # 1. Update Request Status
-                        run_action("UPDATE requests SET status='Received' WHERE req_id=:id", {"id":r['req_id']})
+            # Table View for Ready Items
+            st.markdown("### ✅ Items Ready for Pickup")
+            ready_df = ready[['req_id', 'item_name', 'qty', 'unit', 'notes']].copy()
+            ready_df['Confirm'] = False
+            
+            edited_ready = st.data_editor(
+                ready_df,
+                key="ready_editor",
+                column_config={
+                    "Confirm": st.column_config.CheckboxColumn("Received?", default=False)
+                },
+                disabled=["req_id", "item_name", "qty", "unit", "notes"],
+                hide_index=True
+            )
+            
+            if st.button("Confirm Receipt for Selected"):
+                rec_count = 0
+                for index, row in edited_ready.iterrows():
+                    if row['Confirm']:
+                        # Update status
+                        run_action("UPDATE requests SET status='Received' WHERE req_id=:id", {"id":row['req_id']})
                         
-                        # 2. AUTO UPDATE LOCAL INVENTORY (ADDITION LOGIC)
-                        current_local_qty = get_local_inventory_by_item(r['region'], r['item_name'])
-                        new_total_qty = current_local_qty + int(r['qty'])
-                        
-                        update_local_inventory(r['region'], r['item_name'], new_total_qty, user['name'])
-                        
-                        st.balloons()
-                        st.success(f"Received! Local stock updated from {current_local_qty} to {new_total_qty}"); time.sleep(2); st.rerun()
+                        # Auto Add to Local Inv
+                        current_local_qty = get_local_inventory_by_item(user['region'], row['item_name'])
+                        new_total_qty = current_local_qty + int(row['qty'])
+                        update_local_inventory(user['region'], row['item_name'], new_total_qty, user['name'])
+                        rec_count += 1
+                
+                if rec_count > 0:
+                    st.success(f"Confirmed receipt of {rec_count} items."); st.rerun()
 
     with t3: # Edit Pending
-        pending = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Pending' ORDER BY request_date DESC", {"s": user['name']})
+        pending = run_query("SELECT req_id, item_name, qty, unit, request_date FROM requests WHERE supervisor_name=:s AND status='Pending' ORDER BY request_date DESC", {"s": user['name']})
         if pending.empty: st.info("No pending requests.")
         else:
-            for _, r in pending.iterrows():
-                with st.container(border=True):
-                    c1, c2 = st.columns([2, 1])
-                    with c1:
-                        st.markdown(f"**{r['item_name']}**")
-                    with c2:
-                        new_q_sup = st.number_input("Edit Qty", 1, 1000, int(r['qty']), key=f"sup_q_{r['req_id']}")
-                        c_up, c_del = st.columns(2)
-                        if c_up.button("Update", key=f"sup_up_{r['req_id']}"):
-                            update_request(r['req_id'], int(new_q_sup))
-                            st.success("Updated"); st.rerun()
-                        if c_del.button("Cancel 🗑️", key=f"sup_del_{r['req_id']}"):
-                            delete_request(r['req_id'])
-                            st.success("Deleted"); st.rerun()
+            pending_df = pending.copy()
+            pending_df['New Qty'] = pending_df['qty']
+            pending_df['Action'] = "Keep"
+            
+            edited_pending = st.data_editor(
+                pending_df,
+                key="sup_pending_edit",
+                column_config={
+                    "req_id": st.column_config.NumberColumn(disabled=True),
+                    "item_name": st.column_config.TextColumn(disabled=True),
+                    "qty": st.column_config.NumberColumn(disabled=True, label="Old Qty"),
+                    "New Qty": st.column_config.NumberColumn(min_value=1),
+                    "Action": st.column_config.SelectboxColumn(options=["Keep", "Update", "Cancel"])
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            if st.button("Apply Changes"):
+                p_changes = 0
+                for index, row in edited_pending.iterrows():
+                    if row['Action'] == "Update":
+                        update_request(row['req_id'], int(row['New Qty']))
+                        p_changes += 1
+                    elif row['Action'] == "Cancel":
+                        delete_request(row['req_id'])
+                        p_changes += 1
+                
+                if p_changes > 0:
+                    st.success("Changes applied."); st.rerun()
 
-    with t4: # Local Inventory (Manual Count Overwrite)
+    with t4: # Local Inventory
         st.info("Update Local Inventory (Manual Stock Take)")
         inv = get_inventory("NTCC")
         it = st.selectbox("Item Update", inv['name_en'].unique(), key="up_it")
