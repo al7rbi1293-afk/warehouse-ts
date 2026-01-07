@@ -241,10 +241,10 @@ def manager_view():
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("### 🏢 NTCC")
-            st.dataframe(get_inventory("NTCC"), use_container_width=True)
+            st.dataframe(get_inventory("NTCC"), width="stretch")
         with c2:
             st.markdown("### 🏭 SNC")
-            st.dataframe(get_inventory("SNC"), use_container_width=True)
+            st.dataframe(get_inventory("SNC"), width="stretch")
 
     with tab2: # External
         c1, c2 = st.columns(2)
@@ -286,10 +286,10 @@ def manager_view():
             c_lent, c_borrowed = st.columns(2)
             with c_lent:
                 st.markdown("**➡️ Lend (Out)**")
-                st.dataframe(loan_logs[loan_logs['action_type'].str.contains("Lend")], use_container_width=True)
+                st.dataframe(loan_logs[loan_logs['action_type'].str.contains("Lend")], width="stretch")
             with c_borrowed:
                 st.markdown("**⬅️ Borrow (In)**")
-                st.dataframe(loan_logs[loan_logs['action_type'].str.contains("Borrow")], use_container_width=True)
+                st.dataframe(loan_logs[loan_logs['action_type'].str.contains("Borrow")], width="stretch")
 
     with tab3: # Requests (TABLE EDITOR MODE)
         reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
@@ -300,6 +300,7 @@ def manager_view():
             
             for i, region in enumerate(regions):
                 with region_tabs[i]:
+                    # Filter data for this region
                     reg_df = reqs[reqs['region'] == region].copy()
                     
                     # Add Action Column for Editor
@@ -327,7 +328,7 @@ def manager_view():
                         },
                         disabled=["item_name", "supervisor_name", "qty", "unit"],
                         hide_index=True,
-                        use_container_width=True
+                        width="stretch"
                     )
                     
                     if st.button(f"Process {region} Updates", key=f"btn_{region}"):
@@ -338,6 +339,7 @@ def manager_view():
                             new_q = int(row['Mgr Qty'])
                             new_n = row['Mgr Note']
                             
+                            # Fetch current stock to check
                             if action == "Approve":
                                 stock = run_query("SELECT qty FROM inventory WHERE name_en=:n AND location='NTCC'", {"n":row['item_name']})
                                 avail = stock.iloc[0]['qty'] if not stock.empty else 0
@@ -360,10 +362,10 @@ def manager_view():
         st.subheader("📊 Detailed Branch Inventory")
         area = st.selectbox("Select Area", AREAS)
         df = run_query("SELECT item_name, qty, last_updated, updated_by FROM local_inventory WHERE region=:r ORDER BY item_name", {"r":area})
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
 
     with tab5: # Logs
-        st.dataframe(run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 50"), use_container_width=True)
+        st.dataframe(run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 50"), width="stretch")
 
 # ==========================================
 # ============ STOREKEEPER VIEW ============
@@ -402,7 +404,7 @@ def storekeeper_view():
                             },
                             disabled=["req_id", "item_name", "qty", "unit", "notes"],
                             hide_index=True,
-                            use_container_width=True
+                            width="stretch"
                         )
                         
                         if st.button(f"Confirm Issue for {region}", key=f"sk_btn_{region}"):
@@ -438,12 +440,12 @@ def storekeeper_view():
             ORDER BY request_date DESC
         """)
         if today_log.empty: st.info("Nothing issued today yet.")
-        else: st.dataframe(today_log, use_container_width=True)
+        else: st.dataframe(today_log, width="stretch")
 
     with t3:
-        st.dataframe(get_inventory("NTCC"), use_container_width=True)
+        st.dataframe(get_inventory("NTCC"), width="stretch")
     with t4:
-        st.dataframe(get_inventory("SNC"), use_container_width=True)
+        st.dataframe(get_inventory("SNC"), width="stretch")
 
 # ==========================================
 # ============ SUPERVISOR VIEW ============
@@ -481,7 +483,7 @@ def supervisor_view():
                     "Order Qty": st.column_config.NumberColumn(min_value=0, max_value=1000, step=1)
                 },
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 height=500
             )
             
@@ -524,7 +526,8 @@ def supervisor_view():
                     "Confirm": st.column_config.CheckboxColumn("Received?", default=False)
                 },
                 disabled=["req_id", "item_name", "qty", "unit", "notes"],
-                hide_index=True
+                hide_index=True,
+                width="stretch"
             )
             
             if st.button("Confirm Receipt for Selected"):
@@ -562,7 +565,7 @@ def supervisor_view():
                     "Action": st.column_config.SelectboxColumn(options=["Keep", "Update", "Cancel"])
                 },
                 hide_index=True,
-                use_container_width=True
+                width="stretch"
             )
             
             if st.button("Apply Changes"):
@@ -600,7 +603,7 @@ def supervisor_view():
             ctabs = st.tabs(list(regions_counted))
             for i, reg in enumerate(regions_counted):
                 with ctabs[i]:
-                    st.dataframe(my_counts[my_counts['region'] == reg], use_container_width=True)
+                    st.dataframe(my_counts[my_counts['region'] == reg], width="stretch")
         else: st.info("No counts recorded yet.")
 
 # --- 8. تشغيل التطبيق ---
