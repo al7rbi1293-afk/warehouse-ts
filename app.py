@@ -105,6 +105,7 @@ def update_central_stock(item, loc, chg, user, desc, unit):
     df = run_query("SELECT qty FROM inventory WHERE name_en = :n AND location = :l", {"n": item, "l": loc})
     if df.empty: return False, "Item Not Found"
     cur_q = int(df.iloc[0]['qty'])
+    # Validation logic (prevent negative stock if lending)
     if chg < 0 and abs(chg) > cur_q: return False, f"Insufficient stock! Avail: {cur_q}"
     
     ops = [
@@ -161,7 +162,7 @@ def render_stock_take(loc, user, key):
             if run_batch_actions(batch_ops): st.success(f"Updated {count} items!"); time.sleep(1); st.rerun()
         else: st.info("No changes")
 
-# --- Views (Managers, etc) ---
+# ================= VIEWS (DEFINED BEFORE USE) =================
 
 def manager_view():
     st.subheader(f"🚀 Manager Dashboard")
@@ -432,16 +433,36 @@ def supervisor_view():
                         if run_batch_actions(batch_ops): st.success(f"Stock updated for {area}"); time.sleep(1); st.rerun()
                     else: st.info("No changes")
 
-# --- 8. UI Wrappers (Defined Globally) ---
-def show_login_ui():
-    show_login()
+# --- 8. UI Wrappers & Main ---
 
-def show_app_ui():
-    show_main_app()
+def show_login():
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        st.markdown(f"## {txt['app_title']}")
+        t1, t2 = st.tabs([txt['login_page'], txt['register_page']])
+        with t1:
+            with st.form("login_form"):
+                u = st.text_input(txt['username'])
+                p = st.text_input(txt['password'], type="password")
+                if st.form_submit_button(txt['login_btn'], use_container_width=True):
+                    user_data = login_user(u.strip(), p.strip())
+                    if user_data:
+                        st.session_state.logged_in = True
+                        st.session_state.user_info = user_data
+                        st.rerun()
+                    else: st.error(txt['error_login'])
+        with t2:
+            with st.form("register_form"):
+                nu = st.text_input(txt['username'])
+                np = st.text_input(txt['password'], type='password')
+                nn = st.text_input(txt['fullname'])
+                nr = st.selectbox(txt['region'], AREAS)
+                if st.form_submit_button(txt['register_btn'], use_container_width=True):
+                    if register_user(nu.strip(), np.strip(), nn, nr): st.success(txt['success_reg'])
+                    else: st.error("Error: Username might exist")
 
-# --- Main Execution ---
 if __name__ == "__main__":
     if st.session_state.logged_in:
-        show_app_ui()
+        show_main_app()
     else:
-        show_login_ui()
+        show_login()
