@@ -82,7 +82,9 @@ def update_user_profile_full(old_username, new_username, new_name, new_pass):
 def get_inventory(location):
     return run_query("SELECT * FROM inventory WHERE location = :loc ORDER BY name_en", params={"loc": location})
 
+# تم التعديل: تحويل change إلى int()
 def update_central_stock(item_name, location, change, user, action_desc, unit):
+    change = int(change) # Fix numpy error
     df = run_query("SELECT qty FROM inventory WHERE name_en = :name AND location = :loc", params={"name": item_name, "loc": location})
     if df.empty: return False, "Item not found"
     current_qty = int(df.iloc[0]['qty'])
@@ -97,7 +99,9 @@ def update_central_stock(item_name, location, change, user, action_desc, unit):
         return True, "Success"
     except Exception as e: return False, str(e)
 
+# تم التعديل: تحويل qty إلى int()
 def transfer_stock(item_name, qty, user, unit):
+    qty = int(qty) # Fix numpy error
     ok, msg = update_central_stock(item_name, "SNC", -qty, user, "Transfer Out", unit)
     if not ok: return False, msg
     df = run_query("SELECT * FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": item_name})
@@ -108,13 +112,15 @@ def transfer_stock(item_name, qty, user, unit):
 
 def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, unit):
     desc = f"Loan {action} {ext_proj}"
-    change = -qty if action == "Lend" else qty
+    change = -int(qty) if action == "Lend" else int(qty)
     return update_central_stock(item_name, my_loc, change, user, desc, unit)
 
 def receive_from_cww(item_name, dest_loc, qty, user, unit):
-    return update_central_stock(item_name, dest_loc, qty, user, "Received from CWW", unit)
+    return update_central_stock(item_name, dest_loc, int(qty), user, "Received from CWW", unit)
 
+# تم التعديل: تحويل new_qty إلى int() (هذا هو سبب الخطأ الرئيسي)
 def update_local_inventory(region, item_name, new_qty, user):
+    new_qty = int(new_qty) # Fix numpy error
     df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
     if not df.empty:
         return run_action("UPDATE local_inventory SET qty = :q, last_updated = NOW(), updated_by = :u WHERE region = :r AND item_name = :i", 
@@ -123,24 +129,31 @@ def update_local_inventory(region, item_name, new_qty, user):
         return run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)", 
                           params={"r": region, "i": item_name, "q": new_qty, "u": user})
 
+# تم التعديل: تحويل qty إلى int()
 def create_request(supervisor, region, item, category, qty, unit):
     return run_action("INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
-                      params={"s": supervisor, "r": region, "i": item, "c": category, "q": qty, "u": unit})
+                      params={"s": supervisor, "r": region, "i": item, "c": category, "q": int(qty), "u": unit})
 
+# تم التعديل: تحويل new_qty إلى int()
 def update_request_details(req_id, new_qty, notes):
     query = "UPDATE requests SET qty = :q"
-    params = {"q": new_qty, "id": req_id}
+    params = {"q": int(new_qty), "id": req_id}
     if notes is not None:
         query += ", notes = :n"
         params['n'] = notes
     query += " WHERE req_id = :id"
     return run_action(query, params)
 
+# تم التعديل: تحويل final_qty إلى int()
 def update_request_status(req_id, status, final_qty=None, notes=None):
     query = "UPDATE requests SET status = :s"
     params = {"s": status, "id": req_id}
-    if final_qty is not None: query += ", qty = :q"; params["q"] = final_qty
-    if notes is not None: query += ", notes = :n"; params["n"] = notes
+    if final_qty is not None: 
+        query += ", qty = :q"
+        params["q"] = int(final_qty)
+    if notes is not None: 
+        query += ", notes = :n"
+        params["n"] = notes
     query += " WHERE req_id = :id"
     return run_action(query, params)
 
@@ -218,7 +231,7 @@ def manager_view():
     
     with tab1: # Central Stock
         with st.expander(txt['create_item_title'], expanded=False):
-            c_n, c_c, c_u, c_l, c_q = st.columns(5)
+            c1, c2, c3, c4 = st.columns(4)
             n = c1.text_input("Name")
             c = c2.selectbox("Category", CATS_EN)
             l = c3.selectbox("Location", LOCATIONS)
@@ -227,7 +240,7 @@ def manager_view():
             if st.button(txt['create_btn'], use_container_width=True):
                 if n and run_query("SELECT id FROM inventory WHERE name_en=:n AND location=:l", {"n":n, "l":l}).empty:
                     run_action("INSERT INTO inventory (name_en, category, unit, location, qty, status) VALUES (:n, :c, :u, :l, :q, 'Available')",
-                              {"n":n, "c":c, "u":u, "l":l, "q":q})
+                              {"n":n, "c":c, "u":u, "l":l, "q":int(q)})
                     st.success("Added"); st.rerun()
                 else: st.error("Exists")
         st.divider()
@@ -308,16 +321,15 @@ def manager_view():
                                 c_a, c_b, c_c = st.columns(3)
                                 if c_a.button("✅ Approve", key=f"ap_{r['req_id']}"):
                                     if avail >= new_q:
-                                        # Append Manager prefix to note if changed
                                         final_note = f"Manager: {note}" if note else ""
-                                        run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":new_q, "n":final_note, "id":r['req_id']})
+                                        run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":int(new_q), "n":final_note, "id":r['req_id']})
                                         st.rerun()
                                     else: st.error("Low Stock")
                                 if c_b.button("❌ Reject", key=f"rj_{r['req_id']}"):
                                     run_action("UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", {"n":note, "id":r['req_id']})
                                     st.rerun()
                                 if c_c.button("💾 Save", key=f"sv_{r['req_id']}"):
-                                    update_request_details(r['req_id'], new_q, note)
+                                    update_request_details(r['req_id'], int(new_q), note)
                                     st.success("Saved"); st.rerun()
 
     with tab4: # Reports
@@ -354,26 +366,22 @@ def storekeeper_view():
                                     st.markdown(f"Approved Qty: **{r['qty']} {r['unit']}**")
                                     if r['notes']: st.warning(f"📝 {r['notes']}")
                                 with c2:
-                                    # Storekeeper can edit qty before issue
                                     final_issue_qty = st.number_input("Final Issue Qty", 1, 10000, int(r['qty']), key=f"sk_q_{r['req_id']}")
                                     sk_note = st.text_input("Storekeeper Note", key=f"sk_n_{r['req_id']}")
                                     
                                     if st.button("Confirm Issue 📦", key=f"iss_{r['req_id']}"):
-                                        # Combine notes
                                         existing_note = r['notes'] if r['notes'] else ""
                                         final_note = f"{existing_note} | Storekeeper: {sk_note}" if sk_note else existing_note
                                         
                                         res, msg = update_central_stock(r['item_name'], "NTCC", -final_issue_qty, st.session_state.user_info['name'], f"Issued {r['region']}", r['unit'])
                                         if res:
-                                            # Update status to 'Issued' (Ready for Pickup)
                                             run_action("UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id", 
-                                                      {"q":final_issue_qty, "n":final_note, "id":r['req_id']})
+                                                      {"q":int(final_issue_qty), "n":final_note, "id":r['req_id']})
                                             st.success("Issued & Ready for Pickup"); st.rerun()
                                         else: st.error(msg)
 
     with t2: # Issued Today
         st.subheader("📋 Items Issued Today")
-        # Assuming database has DATE capability, otherwise fetching all and filtering in pandas
         today_log = run_query("""
             SELECT item_name, qty, unit, region, supervisor_name, notes, request_date 
             FROM requests 
@@ -406,10 +414,10 @@ def supervisor_view():
             q = st.number_input("Qty", 1, 1000)
             if st.button(txt['send_req'], use_container_width=True):
                 run_action("INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
-                          {"s":user['name'], "r":reg, "i":it, "c":row['category'], "q":q, "u":row['unit']})
+                          {"s":user['name'], "r":reg, "i":it, "c":row['category'], "q":int(q), "u":row['unit']})
                 st.success("Sent"); st.rerun()
 
-    with t2: # Ready for Pickup (Issued by Storekeeper)
+    with t2: # Ready for Pickup
         ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued'", {"s": user['name']})
         if ready.empty: st.info("No items ready for pickup.")
         else:
@@ -419,19 +427,16 @@ def supervisor_view():
                     if r['notes']: st.warning(f"📝 Notes: {r['notes']}")
                     
                     if st.button("Confirm Receipt & Add to Inventory 📥", key=f"rec_{r['req_id']}", use_container_width=True):
-                        # Update status to Received
                         run_action("UPDATE requests SET status='Received' WHERE req_id=:id", {"id":r['req_id']})
-                        
-                        # Auto-add to local inventory
                         cur = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r":r['region'], "i":r['item_name']})
                         old_q = cur.iloc[0]['qty'] if not cur.empty else 0
                         
                         if cur.empty:
                             run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
-                                      {"r":r['region'], "i":r['item_name'], "q":old_q+r['qty'], "u":user['name']})
+                                      {"r":r['region'], "i":r['item_name'], "q":old_q+int(r['qty']), "u":user['name']})
                         else:
                             run_action("UPDATE local_inventory SET qty=:q, last_updated=NOW(), updated_by=:u WHERE region=:r AND item_name=:i",
-                                      {"q":old_q+r['qty'], "u":user['name'], "r":r['region'], "i":r['item_name']})
+                                      {"q":old_q+int(r['qty']), "u":user['name'], "r":r['region'], "i":r['item_name']})
                         
                         st.balloons()
                         st.success("Received and Inventory Updated!"); time.sleep(1); st.rerun()
@@ -449,7 +454,7 @@ def supervisor_view():
                         new_q_sup = st.number_input("Edit Qty", 1, 1000, int(r['qty']), key=f"sup_q_{r['req_id']}")
                         c_up, c_del = st.columns(2)
                         if c_up.button("Update", key=f"sup_up_{r['req_id']}"):
-                            update_request(r['req_id'], new_q_sup)
+                            update_request(r['req_id'], int(new_q_sup))
                             st.success("Updated"); st.rerun()
                         if c_del.button("Cancel 🗑️", key=f"sup_del_{r['req_id']}"):
                             delete_request(r['req_id'])
@@ -469,10 +474,10 @@ def supervisor_view():
         if st.button("Update Count"):
             if cur.empty:
                 run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
-                          {"r":user['region'], "i":it, "q":new_v, "u":user['name']})
+                          {"r":user['region'], "i":it, "q":int(new_v), "u":user['name']})
             else:
                 run_action("UPDATE local_inventory SET qty=:q, last_updated=NOW(), updated_by=:u WHERE region=:r AND item_name=:i",
-                          {"r":user['region'], "i":it, "q":new_v, "u":user['name']})
+                          {"r":user['region'], "i":it, "q":int(new_v), "u":user['name']})
             st.success("Updated"); st.rerun()
             
         st.divider()
