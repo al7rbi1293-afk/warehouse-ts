@@ -12,7 +12,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
-# --- 3. الثوابت (Cached for Performance) ---
+# --- 3. الثوابت (Cached) ---
 @st.cache_data
 def get_constants():
     return {
@@ -57,15 +57,12 @@ except:
     st.error("⚠️ Connection Error. Please check secrets.")
     st.stop()
 
-# --- 5. دوال قاعدة البيانات المحسنة (Optimized DB Functions) ---
-
+# --- 5. دوال قاعدة البيانات (Optimized) ---
 def run_query(query, params=None):
-    """Fetch data (Read Only)"""
     try: return conn.query(query, params=params, ttl=0)
     except Exception as e: st.error(f"DB Read Error: {e}"); return pd.DataFrame()
 
 def run_action(query, params=None):
-    """Single Action (Write)"""
     try:
         with conn.session as session:
             session.execute(text(query), params); session.commit()
@@ -73,10 +70,7 @@ def run_action(query, params=None):
     except Exception as e: st.error(f"DB Write Error: {e}"); return False
 
 def run_batch_actions(actions_list):
-    """
-    🚀 PERFORMANCE BOOSTER: Executes multiple queries in ONE transaction.
-    actions_list = [{'query':Str, 'params':Dict}, ...]
-    """
+    """Executes multiple queries in ONE transaction."""
     if not actions_list: return True
     try:
         with conn.session as session:
@@ -88,8 +82,7 @@ def run_batch_actions(actions_list):
         st.error(f"Batch Error: {e}")
         return False
 
-# --- 6. دوال المنطق (Business Logic) ---
-
+# --- 6. المنطق (Logic) ---
 def login_user(u, p):
     df = run_query("SELECT * FROM users WHERE username = :u AND password = :p", {"u": u, "p": p})
     return df.iloc[0].to_dict() if not df.empty else None
@@ -107,27 +100,17 @@ def update_user_profile_full(old_u, new_u, new_n, new_p):
 def get_inventory(loc):
     return run_query("SELECT * FROM inventory WHERE location = :loc ORDER BY name_en", {"loc": loc})
 
-# دالة التحديث المركزية (تستخدم للعمليات الفردية)
 def update_central_stock(item, loc, chg, user, desc, unit):
     chg = int(chg)
-    # Check Stock First
     df = run_query("SELECT qty FROM inventory WHERE name_en = :n AND location = :l", {"n": item, "l": loc})
     if df.empty: return False, "Item Not Found"
-    
     cur_q = int(df.iloc[0]['qty'])
-    # Allow logic: if change is negative (Lend/Issue), check if enough stock
     if chg < 0 and abs(chg) > cur_q: return False, f"Insufficient stock! Avail: {cur_q}"
     
-    # Prepare Batch (Update Inventory + Log)
     ops = [
-        {
-            "query": "UPDATE inventory SET qty = :nq WHERE name_en = :n AND location = :l",
-            "params": {"nq": cur_q + chg, "n": item, "l": loc}
-        },
-        {
-            "query": "INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :a, :i, :l, :c, :nq)",
-            "params": {"u": user, "a": f"{desc} ({unit})", "i": item, "l": loc, "c": chg, "nq": cur_q + chg}
-        }
+        {"query": "UPDATE inventory SET qty = :nq WHERE name_en = :n AND location = :l", "params": {"nq": cur_q + chg, "n": item, "l": loc}},
+        {"query": "INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :a, :i, :l, :c, :nq)",
+         "params": {"u": user, "a": f"{desc} ({unit})", "i": item, "l": loc, "c": chg, "nq": cur_q + chg}}
     ]
     return run_batch_actions(ops), "Success"
 
@@ -135,13 +118,23 @@ def get_local_qty(reg, item):
     df = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r": reg, "i": item})
     return int(df.iloc[0]['qty']) if not df.empty else 0
 
+def update_request(req_id, new_qty):
+    return run_action("UPDATE requests SET qty = :q WHERE req_id = :id", {"q": int(new_qty), "id": req_id})
+
+def delete_request(req_id):
+    return run_action("DELETE FROM requests WHERE req_id = :id", {"id": req_id})
+
+def create_request(supervisor, region, item, category, qty, unit):
+    return run_action("INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
+                      {"s": supervisor, "r": region, "i": item, "c": category, "q": int(qty), "u": unit})
+
 # --- Helper: Render Bulk Stock Take (Optimized) ---
 def render_stock_take(loc, user, key):
     inv = get_inventory(loc)
     if inv.empty: st.warning(f"No Items in {loc}"); return
     
     df = inv[['name_en', 'category', 'qty', 'unit']].copy()
-    df['Physical'] = df['qty'] # Default
+    df['Physical'] = df['qty']
     
     edited = st.data_editor(
         df, key=key,
@@ -157,28 +150,18 @@ def render_stock_take(loc, user, key):
     if st.button(f"Update {loc}", key=f"btn_{key}"):
         batch_ops = []
         count = 0
-        # Calculate diffs locally
         for idx, row in edited.iterrows():
             diff = int(row['Physical']) - int(row['qty'])
             if diff != 0:
-                # Add Update Op
-                batch_ops.append({
-                    "query": "UPDATE inventory SET qty = :nq WHERE name_en = :n AND location = :l",
-                    "params": {"nq": int(row['Physical']), "n": row['name_en'], "l": loc}
-                })
-                # Add Log Op
-                batch_ops.append({
-                    "query": "INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, 'Stock Take', :i, :l, :c, :nq)",
-                    "params": {"u": user, "i": row['name_en'], "l": loc, "c": diff, "nq": int(row['Physical'])}
-                })
+                batch_ops.append({"query": "UPDATE inventory SET qty = :nq WHERE name_en = :n AND location = :l", "params": {"nq": int(row['Physical']), "n": row['name_en'], "l": loc}})
+                batch_ops.append({"query": "INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, 'Stock Take', :i, :l, :c, :nq)", "params": {"u": user, "i": row['name_en'], "l": loc, "c": diff, "nq": int(row['Physical'])}})
                 count += 1
         
         if batch_ops:
-            if run_batch_actions(batch_ops):
-                st.success(f"Updated {count} items!"); time.sleep(1); st.rerun()
+            if run_batch_actions(batch_ops): st.success(f"Updated {count} items!"); time.sleep(1); st.rerun()
         else: st.info("No changes")
 
-# ================= VIEWS =================
+# --- Views (Managers, etc) ---
 
 def manager_view():
     st.subheader(f"🚀 Manager Dashboard")
@@ -200,7 +183,7 @@ def manager_view():
         with c1: render_stock_take("NTCC", st.session_state.user_info['name'], "mgr_ntcc")
         with c2: render_stock_take("SNC", st.session_state.user_info['name'], "mgr_snc")
 
-    with t2: # External (LEND / BORROW logic preserved)
+    with t2: # External
         c1, c2 = st.columns(2)
         with c1:
             st.markdown(f"**{txt['project_loans']}**")
@@ -231,21 +214,17 @@ def manager_view():
                         ok, msg = update_central_stock(it, dest, int(amt), st.session_state.user_info['name'], "From CWW", row['unit'])
                         if ok: st.success("Done"); st.rerun()
     
-    with t3: # Requests (Tabs + Bulk Actions)
+    with t3: # Requests
         reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
         if reqs.empty: st.info("No pending requests")
         else:
-            # Group by region tabs
             regions = reqs['region'].unique()
             r_tabs = st.tabs(list(regions))
             for i, region in enumerate(regions):
                 with r_tabs[i]:
                     st.markdown("##### ⚡ Global Actions")
                     bulk_act = st.radio(f"Action ({region}):", ["Maintain", "Approve All", "Reject All"], key=f"bk_{region}", horizontal=True)
-                    
                     reg_df = reqs[reqs['region'] == region].copy()
-                    
-                    # Logic for default action column
                     reg_df['Action'] = "Keep Pending"
                     if bulk_act == "Approve All": reg_df['Action'] = "Approve"
                     elif bulk_act == "Reject All": reg_df['Action'] = "Reject"
@@ -265,47 +244,31 @@ def manager_view():
                         },
                         hide_index=True, width="stretch", key=f"edt_{region}"
                     )
-                    
                     if st.button(f"Process {region}", key=f"btn_{region}"):
                         batch_ops = []
                         count = 0
-                        
-                        # Optimization: Fetch ALL NTCC stock once to avoid N+1 queries
                         stock_df = get_inventory("NTCC")
                         stock_map = dict(zip(stock_df['name_en'], stock_df['qty']))
-                        
                         for _, row in edited.iterrows():
                             action = row['Action']
                             if action == "Keep Pending": continue
-                            
                             rid = row['req_id']
                             nq = int(row['Mgr Qty'])
                             note = row['Mgr Note']
-                            
                             if action == "Approve":
                                 avail = stock_map.get(row['item_name'], 0)
                                 if avail >= nq:
                                     fn = f"Manager: {note}" if note else ""
-                                    batch_ops.append({
-                                        "query": "UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id",
-                                        "params": {"q": nq, "n": fn, "id": rid}
-                                    })
+                                    batch_ops.append({"query": "UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", "params": {"q": nq, "n": fn, "id": rid}})
                                     count += 1
-                                else:
-                                    st.toast(f"Low Stock: {row['item_name']}", icon="⚠️")
-                            
+                                else: st.toast(f"Low Stock: {row['item_name']}", icon="⚠️")
                             elif action == "Reject":
-                                batch_ops.append({
-                                    "query": "UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id",
-                                    "params": {"n": note, "id": rid}
-                                })
+                                batch_ops.append({"query": "UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", "params": {"n": note, "id": rid}})
                                 count += 1
-                        
                         if batch_ops:
-                            if run_batch_actions(batch_ops):
-                                st.success(f"Processed {count} requests!"); time.sleep(1); st.rerun()
+                            if run_batch_actions(batch_ops): st.success(f"Processed {count} requests!"); time.sleep(1); st.rerun()
 
-    with t4: # Reports (Tabs per Area)
+    with t4: # Reports
         st.subheader("Inventory View")
         area_tabs = st.tabs(CONST["AREAS"])
         for i, area in enumerate(CONST["AREAS"]):
@@ -316,8 +279,6 @@ def manager_view():
 
     with t5:
         st.dataframe(run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 50"), width="stretch")
-
-# ================= STOREKEEPER =================
 
 def storekeeper_view():
     st.header(txt['storekeeper_role'])
@@ -332,8 +293,6 @@ def storekeeper_view():
             for i, region in enumerate(regions):
                 with r_tabs[i]:
                     sel_all = st.checkbox(f"Select All ({region})", key=f"sk_sel_{region}")
-                    
-                    # Process DataFrame for display
                     reg_df = reqs[reqs['region'] == region].copy()
                     reg_df['Issue Qty'] = reg_df['qty']
                     reg_df['SK Note'] = ""
@@ -355,42 +314,23 @@ def storekeeper_view():
                     if st.button(f"Confirm Issue ({region})", key=f"sk_btn_{region}"):
                         batch_ops = []
                         count = 0
-                        
                         for _, row in edited.iterrows():
                             if row['Process']:
                                 rid = row['req_id']
                                 iq = int(row['Issue Qty'])
                                 sn = row['SK Note']
                                 fn = f"{row['notes'] or ''} | SK: {sn}" if sn else (row['notes'] or "")
-                                
-                                # 1. Decrease Stock
-                                batch_ops.append({
-                                    "query": "UPDATE inventory SET qty = qty - :q WHERE name_en = :n AND location = 'NTCC'",
-                                    "params": {"q": iq, "n": row['item_name']}
-                                })
-                                # 2. Log
-                                batch_ops.append({
-                                    "query": "INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :a, :i, 'NTCC', :c, (SELECT qty FROM inventory WHERE name_en=:i AND location='NTCC'))",
-                                    "params": {"u": st.session_state.user_info['name'], "a": f"Issued {region}", "i": row['item_name'], "c": -iq}
-                                })
-                                # 3. Update Request
-                                batch_ops.append({
-                                    "query": "UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id",
-                                    "params": {"q": iq, "n": fn, "id": rid}
-                                })
+                                batch_ops.append({"query": "UPDATE inventory SET qty = qty - :q WHERE name_en = :n AND location = 'NTCC'", "params": {"q": iq, "n": row['item_name']}})
+                                batch_ops.append({"query": "INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :a, :i, 'NTCC', :c, (SELECT qty FROM inventory WHERE name_en=:i AND location='NTCC'))", "params": {"u": st.session_state.user_info['name'], "a": f"Issued {region}", "i": row['item_name'], "c": -iq}})
+                                batch_ops.append({"query": "UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id", "params": {"q": iq, "n": fn, "id": rid}})
                                 count += 1
-                        
                         if batch_ops:
-                            if run_batch_actions(batch_ops):
-                                st.success(f"Issued {count} items!"); time.sleep(1); st.rerun()
+                            if run_batch_actions(batch_ops): st.success(f"Issued {count} items!"); time.sleep(1); st.rerun()
 
     with t2:
         st.dataframe(run_query("SELECT item_name, qty, unit, region, supervisor_name, request_date FROM requests WHERE status IN ('Issued', 'Received') AND request_date::date = CURRENT_DATE"), width="stretch")
-    
     with t3: render_stock_take("NTCC", st.session_state.user_info['name'], "sk_ntcc")
     with t4: render_stock_take("SNC", st.session_state.user_info['name'], "sk_snc")
-
-# ================= SUPERVISOR =================
 
 def supervisor_view():
     user = st.session_state.user_info
@@ -403,32 +343,17 @@ def supervisor_view():
         if not inv.empty:
             df = inv[['name_en', 'category', 'unit']].copy()
             df['Order'] = 0
-            
-            edited = st.data_editor(
-                df, 
-                column_config={
-                    "name_en": st.column_config.TextColumn("Item", disabled=True),
-                    "category": st.column_config.TextColumn(disabled=True),
-                    "unit": st.column_config.TextColumn(disabled=True),
-                    "Order": st.column_config.NumberColumn("Qty Needed", min_value=0)
-                },
-                hide_index=True, width="stretch", height=500
-            )
-            
+            edited = st.data_editor(df, column_config={"name_en": st.column_config.TextColumn("Item", disabled=True), "category": st.column_config.TextColumn(disabled=True), "unit": st.column_config.TextColumn(disabled=True), "Order": st.column_config.NumberColumn("Qty Needed", min_value=0)}, hide_index=True, width="stretch", height=500)
             if st.button(txt['send_req']):
                 to_order = edited[edited['Order'] > 0]
                 if not to_order.empty:
                     batch_ops = []
                     for _, row in to_order.iterrows():
-                        batch_ops.append({
-                            "query": "INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
-                            "params": {"s": user['name'], "r": user['region'], "i": row['name_en'], "c": row['category'], "q": int(row['Order']), "u": row['unit']}
-                        })
-                    if run_batch_actions(batch_ops):
-                        st.balloons(); st.success("Sent!"); time.sleep(1); st.rerun()
+                        batch_ops.append({"query": "INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())", "params": {"s": user['name'], "r": user['region'], "i": row['name_en'], "c": row['category'], "q": int(row['Order']), "u": row['unit']}})
+                    if run_batch_actions(batch_ops): st.balloons(); st.success("Sent!"); time.sleep(1); st.rerun()
                 else: st.warning("No items selected")
 
-    with t2: # Ready for Pickup (Tabs per Region)
+    with t2: # Ready for Pickup
         ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued'", {"s": user['name']})
         if ready.empty: st.info("Nothing to pickup")
         else:
@@ -439,41 +364,20 @@ def supervisor_view():
                     sel_all = st.checkbox(f"Select All ({reg})", key=f"pk_all_{reg}")
                     reg_ready = ready[ready['region'] == reg].copy()
                     reg_ready['Confirm'] = sel_all
-                    
-                    edited = st.data_editor(
-                        reg_ready[['req_id', 'item_name', 'qty', 'unit', 'notes', 'Confirm']],
-                        column_config={"req_id": None, "item_name": st.column_config.TextColumn(disabled=True), "qty": st.column_config.NumberColumn(disabled=True), "notes": st.column_config.TextColumn(disabled=True)},
-                        hide_index=True, width="stretch", key=f"pk_edit_{reg}"
-                    )
-                    
+                    edited = st.data_editor(reg_ready[['req_id', 'item_name', 'qty', 'unit', 'notes', 'Confirm']], column_config={"req_id": None, "item_name": st.column_config.TextColumn(disabled=True), "qty": st.column_config.NumberColumn(disabled=True), "notes": st.column_config.TextColumn(disabled=True)}, hide_index=True, width="stretch", key=f"pk_edit_{reg}")
                     if st.button(f"Confirm Receipt ({reg})", key=f"pk_btn_{reg}"):
                         batch_ops = []
                         for _, row in edited.iterrows():
                             if row['Confirm']:
-                                # 1. Update Req Status
-                                batch_ops.append({
-                                    "query": "UPDATE requests SET status='Received' WHERE req_id=:id",
-                                    "params": {"id": row['req_id']}
-                                })
-                                # 2. Update Local Inventory (Upsert Simulation via SQL logic check not possible in batch easily, so we check first)
-                                # Performance: Check existence inside loop is okay for moderate volume, better than write-loop.
-                                chk = run_query("SELECT id FROM local_inventory WHERE region=:r AND item_name=:i AND updated_by=:u", 
-                                              {"r": user['region'], "i": row['item_name'], "u": user['name']})
-                                
+                                batch_ops.append({"query": "UPDATE requests SET status='Received' WHERE req_id=:id", "params": {"id": row['req_id']}})
+                                cur_qty = get_local_qty(user['region'], row['item_name'])
+                                chk = run_query("SELECT id FROM local_inventory WHERE region=:r AND item_name=:i AND updated_by=:u", {"r": user['region'], "i": row['item_name'], "u": user['name']})
                                 if chk.empty:
-                                    batch_ops.append({
-                                        "query": "INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
-                                        "params": {"r": user['region'], "i": row['item_name'], "q": int(row['qty']), "u": user['name']}
-                                    })
+                                    batch_ops.append({"query": "INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)", "params": {"r": user['region'], "i": row['item_name'], "q": int(row['qty']), "u": user['name']}})
                                 else:
-                                     batch_ops.append({
-                                            "query": "UPDATE local_inventory SET qty = qty + :q, last_updated=NOW() WHERE region=:r AND item_name=:i AND updated_by=:u",
-                                            "params": {"q": int(row['qty']), "u": user['name'], "r": user['region'], "i": row['item_name']}
-                                        })
-                        
+                                     batch_ops.append({"query": "UPDATE local_inventory SET qty = qty + :q, last_updated=NOW() WHERE region=:r AND item_name=:i AND updated_by=:u", "params": {"q": int(row['qty']), "u": user['name'], "r": user['region'], "i": row['item_name']}})
                         if batch_ops:
-                            if run_batch_actions(batch_ops):
-                                st.balloons(); st.success("Inventory Updated!"); time.sleep(1); st.rerun()
+                            if run_batch_actions(batch_ops): st.balloons(); st.success("Inventory Updated!"); time.sleep(1); st.rerun()
 
     with t3: # Edit Pending
         pending = run_query("SELECT req_id, item_name, qty, unit FROM requests WHERE supervisor_name=:s AND status='Pending'", {"s": user['name']})
@@ -481,13 +385,7 @@ def supervisor_view():
             bulk_act = st.radio("Bulk Action:", ["Maintain", "Cancel All"], horizontal=True)
             pending['New Qty'] = pending['qty']
             pending['Delete'] = True if bulk_act == "Cancel All" else False
-            
-            edited = st.data_editor(
-                pending,
-                column_config={"req_id": None, "item_name": st.column_config.TextColumn(disabled=True), "qty": st.column_config.NumberColumn(disabled=True), "New Qty": st.column_config.NumberColumn(min_value=1)},
-                hide_index=True, width="stretch"
-            )
-            
+            edited = st.data_editor(pending, column_config={"req_id": None, "item_name": st.column_config.TextColumn(disabled=True), "qty": st.column_config.NumberColumn(disabled=True), "New Qty": st.column_config.NumberColumn(min_value=1)}, hide_index=True, width="stretch")
             if st.button("Apply Updates"):
                 batch_ops = []
                 for _, row in edited.iterrows():
@@ -495,24 +393,17 @@ def supervisor_view():
                         batch_ops.append({"query": "DELETE FROM requests WHERE req_id=:id", "params": {"id": row['req_id']}})
                     elif int(row['New Qty']) != int(row['qty']):
                         batch_ops.append({"query": "UPDATE requests SET qty=:q WHERE req_id=:id", "params": {"q": int(row['New Qty']), "id": row['req_id']}})
-                
                 if batch_ops:
                     if run_batch_actions(batch_ops): st.success("Updated"); st.rerun()
         else: st.info("No pending requests")
 
-    with t4: # Stock Take (Tabs for Areas + Privacy)
+    with t4: # Stock Take
         st.info("Update actual quantities (Weekly Stock Take)")
-        
-        # Tabs for Areas (Even if supervisor has 1 area, good for structure)
         st_tabs = st.tabs(CONST["AREAS"])
         for i, area in enumerate(CONST["AREAS"]):
             with st_tabs[i]:
-                # Privacy Logic: Only show items counted by THIS user in THIS area
                 local = run_query("SELECT item_name, qty FROM local_inventory WHERE region=:r AND updated_by=:u", {"r": area, "u": user['name']})
-                
-                # Master List Merge (to allow counting items they haven't received yet/counted before)
                 master = get_inventory("NTCC")[['name_en']].drop_duplicates()
-                
                 if not local.empty:
                     df = pd.merge(master, local, left_on='name_en', right_on='item_name', how='left')
                     df['qty'] = df['qty'].fillna(0).astype(int)
@@ -521,48 +412,36 @@ def supervisor_view():
                     df = master.copy()
                     df['qty'] = 0
                     df['item_name'] = df['name_en']
-                    
                 df = df[['item_name', 'qty']]
                 df['Actual'] = df['qty']
-                
-                edited = st.data_editor(
-                    df,
-                    key=f"sup_stk_{area}",
-                    column_config={
-                        "item_name": st.column_config.TextColumn(disabled=True),
-                        "qty": st.column_config.NumberColumn("System", disabled=True),
-                        "Actual": st.column_config.NumberColumn(min_value=0)
-                    },
-                    hide_index=True, width="stretch", height=500
-                )
-                
+                edited = st.data_editor(df, key=f"sup_stk_{area}", column_config={"item_name": st.column_config.TextColumn(disabled=True), "qty": st.column_config.NumberColumn("System", disabled=True), "Actual": st.column_config.NumberColumn(min_value=0)}, hide_index=True, width="stretch", height=500)
                 if st.button(f"Submit Count ({area})", key=f"btn_stk_{area}"):
                     batch_ops = []
                     for _, row in edited.iterrows():
                         sys = int(row['qty'])
                         act = int(row['Actual'])
-                        
                         if sys != act or sys == 0: 
                             chk = run_query("SELECT id FROM local_inventory WHERE region=:r AND item_name=:i AND updated_by=:u", {"r": area, "i": row['item_name'], "u": user['name']})
                             if chk.empty:
-                                if act > 0: # Only insert if count > 0 to save DB space
-                                    batch_ops.append({
-                                        "query": "INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
-                                        "params": {"r": area, "i": row['item_name'], "q": act, "u": user['name']}
-                                    })
+                                if act > 0:
+                                    batch_ops.append({"query": "INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)", "params": {"r": area, "i": row['item_name'], "q": act, "u": user['name']}})
                             else:
                                 if sys != act:
-                                    batch_ops.append({
-                                        "query": "UPDATE local_inventory SET qty=:q, last_updated=NOW() WHERE region=:r AND item_name=:i AND updated_by=:u",
-                                        "params": {"q": act, "u": user['name'], "r": area, "i": row['item_name']}
-                                    })
-                    
+                                    batch_ops.append({"query": "UPDATE local_inventory SET qty=:q, last_updated=NOW() WHERE region=:r AND item_name=:i AND updated_by=:u", "params": {"q": act, "u": user['name'], "r": area, "i": row['item_name']}})
                     if batch_ops:
                         if run_batch_actions(batch_ops): st.success(f"Stock updated for {area}"); time.sleep(1); st.rerun()
                     else: st.info("No changes")
 
-# --- 8. تشغيل التطبيق ---
-if st.session_state.logged_in:
-    show_main_app()
-else:
+# --- 8. UI Wrappers (Defined Globally) ---
+def show_login_ui():
     show_login()
+
+def show_app_ui():
+    show_main_app()
+
+# --- Main Execution ---
+if __name__ == "__main__":
+    if st.session_state.logged_in:
+        show_app_ui()
+    else:
+        show_login_ui()
