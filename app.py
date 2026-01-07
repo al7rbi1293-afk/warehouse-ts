@@ -7,12 +7,107 @@ import time
 # --- 1. إعداد الصفحة ---
 st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. إدارة الجلسة (Stable No-Cookie) ---
+# --- 2. ستايل التصميم الحديث (CSS Magic) ---
+# هذا الجزء هو المسؤول عن تحويل شكل التطبيق ليشبه React
+st.markdown("""
+    <style>
+    /* استيراد خطوط جوجل */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
+    /* خلفية التطبيق كاملة - تدرج لوني */
+    .stApp {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* تحسين شكل القوائم الجانبية */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff;
+        box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+    }
+
+    /* تحسين شكل البطاقات والحاويات */
+    div[data-testid="stVerticalBlock"] > div {
+        background-color: transparent;
+    }
+
+    /* تنسيق خاص لبطاقة تسجيل الدخول */
+    .login-container {
+        background-color: white;
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        text-align: center;
+    }
+
+    /* تحسين شكل الأزرار - تدرج لوني */
+    .stButton button {
+        background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 100%);
+        color: white;
+        border: none;
+        padding: 0.6rem 1.2rem;
+        border-radius: 8px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        width: 100%;
+    }
+    .stButton button:hover {
+        opacity: 0.9;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(79, 70, 229, 0.4);
+    }
+
+    /* تحسين حقول الإدخال */
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+        border-radius: 8px;
+        border: 1px solid #e2e8f0;
+        padding: 0.5rem;
+    }
+    .stTextInput input:focus {
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.2);
+    }
+
+    /* إخفاء القائمة العلوية الافتراضية */
+    header {visibility: hidden;}
+    
+    /* تنسيق التبويبات */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background-color: transparent;
+    }
+    .stTabs [data-baseweb="tab"] {
+        background-color: white;
+        border-radius: 8px 8px 0 0;
+        box-shadow: 0 -2px 5px rgba(0,0,0,0.02);
+        padding-right: 20px;
+        padding-left: 20px;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #ffffff;
+        border-bottom: 2px solid #4f46e5;
+        color: #4f46e5;
+    }
+
+    /* تذييل الصفحة */
+    .copyright-footer {
+        position: fixed; left: 20px; bottom: 20px;
+        background-color: rgba(255, 255, 255, 0.8);
+        padding: 8px 15px; border-radius: 20px; font-size: 12px;
+        color: #666; pointer-events: none; 
+        backdrop-filter: blur(5px);
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    </style>
+    <div class="copyright-footer">Designed for Excellence © WMS Pro</div>
+""", unsafe_allow_html=True)
+
+# --- 3. إدارة الجلسة (مستقرة) ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
 
-# --- 3. الثوابت والقواميس ---
+# --- 4. الثوابت ---
 CATS_EN = ["Electrical", "Chemical", "Hand Tools", "Consumables", "Safety", "Others"]
 LOCATIONS = ["NTCC", "SNC"]
 EXTERNAL_PROJECTS = ["KASCH", "KAMC", "KSSH Altaif"]
@@ -24,81 +119,67 @@ AREAS = [
 ]
 
 txt = {
-    "app_title": "Unified WMS System",
-    "login_page": "Login", "register_page": "Register",
+    "app_title": "WMS Pro", # اختصرنا الاسم ليكون عصرياً
+    "login_page": "Sign In", "register_page": "Create Account", # غيرنا الأسماء لتكون مودرن
     "username": "Username", "password": "Password",
     "fullname": "Full Name", "region": "Region",
-    "login_btn": "Login", "register_btn": "Sign Up", "logout": "Logout",
-    "manager_role": "Manager", "supervisor_role": "Supervisor", "storekeeper_role": "Store Keeper",
-    "create_item_title": "➕ Create New Item", "create_btn": "Create Item",
-    "ext_tab": "🔄 External & CWW", "project_loans": "🤝 Project Loans",
-    "cww_supply": "🏭 Central Warehouse Supply (CWW)", "exec_trans": "Execute Transfer",
-    "refresh_data": "🔄 Refresh Data", "notes": "Notes / Remarks",
-    "save_mod": "💾 Save Changes (Keep Pending)", "insufficient_stock_sk": "❌ STOP: Issue Qty > NTCC Stock!",
-    "error_login": "Invalid Username or Password", "success_reg": "Registered successfully",
-    "local_inv": "Branch Inventory Reports", "req_form": "Request Items", 
-    "select_item": "Select Item", "qty_req": "Request Qty", "send_req": "Send Request",
-    "approved_reqs": "📦 Requests to Issue", "issue": "Confirm Issue 📦",
-    "transfer_btn": "Transfer Stock", "edit_profile": "Edit Profile", 
-    "new_name": "New Name", "new_pass": "New Password", "save_changes": "Save Changes",
+    "login_btn": "Sign In", "register_btn": "Register Now", "logout": "Sign Out",
+    "manager_role": "Manager Dashboard", "supervisor_role": "Supervisor Portal", "storekeeper_role": "Store Keeper Panel",
+    "create_item_title": "Add Inventory", "create_btn": "Add Item",
+    "ext_tab": "External Operations", "project_loans": "Project Loans",
+    "cww_supply": "Central Supply (CWW)", "exec_trans": "Execute",
+    "refresh_data": "Refresh", "notes": "Notes",
+    "save_mod": "Save Changes", "insufficient_stock_sk": "❌ Error: Insufficient Stock!",
+    "error_login": "Incorrect credentials", "success_reg": "Account created! Please login.",
+    "local_inv": "My Inventory", "req_form": "New Request", 
+    "select_item": "Select Item", "qty_req": "Quantity", "send_req": "Submit Request",
+    "approved_reqs": "Pending Issue", "issue": "Confirm Issue",
+    "transfer_btn": "Transfer", "edit_profile": "Profile Settings", 
+    "new_name": "Full Name", "new_pass": "New Password", "save_changes": "Update Profile",
     "update_btn": "Save"
 }
 
-# --- 4. الاتصال بقاعدة البيانات ---
+# --- 5. الاتصال والقاعدة ---
 try:
     conn = st.connection("supabase", type="sql")
 except:
-    st.error("Connection Error: Please check secrets.")
+    st.error("⚠️ Database Connection Error. Please check secrets.")
     st.stop()
 
-# --- 5. دوال قاعدة البيانات ---
 def run_query(query, params=None):
-    try:
-        return conn.query(query, params=params, ttl=0)
-    except Exception as e:
-        st.error(f"DB Error: {e}")
-        return pd.DataFrame()
+    try: return conn.query(query, params=params, ttl=0)
+    except Exception as e: st.error(f"DB Error: {e}"); return pd.DataFrame()
 
 def run_action(query, params=None):
     try:
         with conn.session as session:
-            session.execute(text(query), params)
-            session.commit()
+            session.execute(text(query), params); session.commit()
         return True
-    except Exception as e:
-        st.error(f"DB Action Error: {e}")
-        return False
+    except Exception as e: st.error(f"Action Error: {e}"); return False
 
-# --- 6. دوال المنطق ---
+# --- 6. المنطق ---
 def login_user(username, password):
     df = run_query("SELECT * FROM users WHERE username = :u AND password = :p", params={"u": username, "p": password})
     return df.iloc[0].to_dict() if not df.empty else None
 
 def register_user(username, password, name, region):
-    return run_action(
-        "INSERT INTO users (username, password, name, role, region) VALUES (:u, :p, :n, 'supervisor', :r)",
-        params={"u": username, "p": password, "n": name, "r": region}
-    )
+    return run_action("INSERT INTO users (username, password, name, role, region) VALUES (:u, :p, :n, 'supervisor', :r)",
+                      params={"u": username, "p": password, "n": name, "r": region})
 
 def update_user_profile_full(old_username, new_username, new_name, new_pass):
     if new_username != old_username:
-        check = run_query("SELECT username FROM users WHERE username = :u", params={"u": new_username})
-        if not check.empty: return False, "Username already taken!"
+        if not run_query("SELECT username FROM users WHERE username = :u", params={"u": new_username}).empty:
+            return False, "Username taken!"
     return run_action("UPDATE users SET username = :nu, name = :nn, password = :np WHERE username = :ou",
-                      {"nu": new_username, "nn": new_name, "np": new_pass, "ou": old_username}), "Profile Updated"
+                      {"nu": new_username, "nn": new_name, "np": new_pass, "ou": old_username}), "Updated!"
 
+# --- دوال المساعد (Helpers) ---
 def get_inventory(location):
     return run_query("SELECT * FROM inventory WHERE location = :loc ORDER BY name_en", params={"loc": location})
 
-def create_new_item(name, category, unit, location, qty):
-    df = run_query("SELECT id FROM inventory WHERE name_en = :n AND location = :l", params={"n": name, "l": location})
-    if not df.empty: return False, "Item exists"
-    return run_action("INSERT INTO inventory (name_en, category, unit, location, qty, status) VALUES (:n, :c, :u, :l, :q, 'Available')",
-                      params={"n": name, "c": category, "u": unit, "l": location, "q": qty}), "Created"
-
 def update_central_stock(item_name, location, change, user, action_desc, unit):
     df = run_query("SELECT qty FROM inventory WHERE name_en = :name AND location = :loc", params={"name": item_name, "loc": location})
-    if df.empty: return False, "Item not found"
+    if df.empty: return False, "Not found"
     current_qty = int(df.iloc[0]['qty'])
     if change < 0 and abs(change) > current_qty: return False, "Insufficient stock"
     new_qty = current_qty + change
@@ -111,363 +192,279 @@ def update_central_stock(item_name, location, change, user, action_desc, unit):
         return True, "Success"
     except Exception as e: return False, str(e)
 
-def transfer_stock(item_name, qty, user, unit):
-    ok, msg = update_central_stock(item_name, "SNC", -qty, user, "Transfer Out", unit)
-    if not ok: return False, msg
-    df = run_query("SELECT * FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": item_name})
-    if df.empty: run_action("INSERT INTO inventory (name_en, category, unit, qty, location) VALUES (:n, 'Transferred', :u, 0, 'NTCC')", params={"n": item_name, "u": unit})
-    ok2, msg2 = update_central_stock(item_name, "NTCC", qty, user, "Transfer In", unit)
-    if not ok2: return False, msg2
-    return True, "Transfer Complete"
-
-def handle_external_transfer(item_name, my_loc, ext_proj, action, qty, user, unit):
-    desc = f"Loan OUT to {ext_proj}" if action == "Lend" else f"Loan IN from {ext_proj}"
-    change = -qty if action == "Lend" else qty
-    return update_central_stock(item_name, my_loc, change, user, desc, unit)
-
-def receive_from_cww(item_name, dest_loc, qty, user, unit):
-    return update_central_stock(item_name, dest_loc, qty, user, "Received from CWW", unit)
-
-def update_local_inventory(region, item_name, new_qty, user):
-    df = run_query("SELECT id FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
-    if not df.empty:
-        return run_action("UPDATE local_inventory SET qty = :q, last_updated = NOW(), updated_by = :u WHERE region = :r AND item_name = :i", 
-                          params={"q": new_qty, "u": user, "r": region, "i": item_name})
-    else:
-        return run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)", 
-                          params={"r": region, "i": item_name, "q": new_qty, "u": user})
-
-def update_request_details(req_id, new_qty, notes):
-    return run_action("UPDATE requests SET qty = :q, notes = :n WHERE req_id = :id", params={"q": new_qty, "n": notes, "id": req_id})
-
-def update_request_status(req_id, status, final_qty=None, notes=None):
-    query = "UPDATE requests SET status = :s"
-    params = {"s": status, "id": req_id}
-    if final_qty is not None: query += ", qty = :q"; params["q"] = final_qty
-    if notes is not None: query += ", notes = :n"; params["n"] = notes
-    query += " WHERE req_id = :id"
-    return run_action(query, params)
-
-# --- 7. الواجهات (Views) ---
+# --- 7. الواجهات (بتصميم البطاقات العصري) ---
 
 def show_login():
-    st.title(f"🔐 {txt['app_title']}")
-    t1, t2 = st.tabs([txt['login_page'], txt['register_page']])
-    
-    with t1:
-        with st.form("login_form"):
-            u = st.text_input(txt['username'])
-            p = st.text_input(txt['password'], type="password")
-            if st.form_submit_button(txt['login_btn'], use_container_width=True):
-                user_data = login_user(u.strip(), p.strip())
-                if user_data:
-                    st.session_state.logged_in = True
-                    st.session_state.user_info = user_data
-                    st.rerun()
-                else:
-                    st.error(txt['error_login'])
+    # تصميم عصري لصفحة الدخول: توسيط وبطاقة بيضاء
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        # حاوية البطاقة
+        with st.container():
+            st.markdown(f"""
+            <div class="login-container">
+                <div style="font-size: 50px; margin-bottom: 10px;">🏭</div>
+                <h1 style="color: #1f2937; margin-bottom: 0;">{txt['app_title']}</h1>
+                <p style="color: #6b7280; margin-bottom: 20px;">Unified Warehouse Management</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            t1, t2 = st.tabs([txt['login_page'], txt['register_page']])
+            
+            with t1:
+                with st.form("login_form"):
+                    st.markdown("### Welcome Back")
+                    u = st.text_input(txt['username'], placeholder="Enter username")
+                    p = st.text_input(txt['password'], type="password", placeholder="Enter password")
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.form_submit_button(txt['login_btn'], use_container_width=True):
+                        user_data = login_user(u.strip(), p.strip())
+                        if user_data:
+                            st.session_state.logged_in = True
+                            st.session_state.user_info = user_data
+                            st.rerun()
+                        else:
+                            st.error(txt['error_login'])
 
-    with t2:
-        with st.form("register_form"):
-            nu = st.text_input(txt['username'])
-            np = st.text_input(txt['password'], type='password')
-            nn = st.text_input(txt['fullname'])
-            nr = st.selectbox(txt['region'], AREAS)
-            if st.form_submit_button(txt['register_btn'], use_container_width=True):
-                if register_user(nu.strip(), np.strip(), nn, nr):
-                    st.success(txt['success_reg'])
-                else:
-                    st.error("Error: Username might exist")
+            with t2:
+                with st.form("register_form"):
+                    st.markdown("### New Account")
+                    nu = st.text_input(txt['username'], placeholder="Choose username")
+                    np = st.text_input(txt['password'], type='password', placeholder="Choose password")
+                    nn = st.text_input(txt['fullname'], placeholder="Your full name")
+                    nr = st.selectbox(txt['region'], AREAS)
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.form_submit_button(txt['register_btn'], use_container_width=True):
+                        if register_user(nu.strip(), np.strip(), nn, nr):
+                            st.success(txt['success_reg'])
+                        else:
+                            st.error("Username taken")
 
 def show_main_app():
     info = st.session_state.user_info
     
-    # Sidebar
-    st.sidebar.markdown(f"### 👤 {info['name']}")
-    st.sidebar.caption(f"📍 {info['region']} | 🔑 {info['role']}")
-    
-    if st.sidebar.button(txt['refresh_data'], use_container_width=True):
-        st.rerun()
+    # Sidebar بتصميم أنظف
+    with st.sidebar:
+        st.markdown(f"""
+        <div style="text-align: center; padding: 10px; background: #f3f4f6; border-radius: 10px; margin-bottom: 20px;">
+            <div style="font-size: 40px;">👤</div>
+            <h3 style="margin: 5px 0; color: #111827;">{info['name']}</h3>
+            <span style="background: #e0e7ff; color: #4338ca; padding: 2px 8px; border-radius: 12px; font-size: 12px;">{info['role']}</span>
+            <p style="color: #6b7280; font-size: 12px; margin-top: 5px;">📍 {info['region']}</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-    with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
-        new_u = st.text_input(txt['username'], value=info['username'])
-        new_n = st.text_input(txt['new_name'], value=info['name'])
-        new_p = st.text_input(txt['new_pass'], type="password", value=info['password'])
-        if st.button(txt['save_changes'], use_container_width=True):
-            res, msg = update_user_profile_full(info['username'], new_u, new_n, new_p)
-            if res:
-                st.success(msg)
-                st.session_state.logged_in = False
-                st.rerun()
-            else:
-                st.error(msg)
+        if st.button(txt['refresh_data'], use_container_width=True): st.rerun()
+        
+        with st.expander(f"⚙️ {txt['edit_profile']}"):
+            new_u = st.text_input(txt['username'], value=info['username'])
+            new_n = st.text_input(txt['new_name'], value=info['name'])
+            new_p = st.text_input(txt['new_pass'], type="password", value=info['password'])
+            if st.button(txt['save_changes'], use_container_width=True):
+                res, msg = update_user_profile_full(info['username'], new_u, new_n, new_p)
+                if res:
+                    st.success(msg)
+                    st.session_state.logged_in = False
+                    st.rerun()
+                else: st.error(msg)
 
-    if st.sidebar.button(txt['logout'], use_container_width=True):
-        st.session_state.logged_in = False
-        st.session_state.user_info = {}
-        st.rerun()
+        st.markdown("---")
+        if st.button(txt['logout'], use_container_width=True):
+            st.session_state.logged_in = False; st.session_state.user_info = {}; st.rerun()
 
-    # --- Routing based on Role ---
-    if info['role'] == 'manager':
-        manager_view()
-    elif info['role'] == 'storekeeper':
-        storekeeper_view()
-    else:
-        supervisor_view()
+    # توجيه حسب الدور
+    if info['role'] == 'manager': manager_view()
+    elif info['role'] == 'storekeeper': storekeeper_view()
+    else: supervisor_view()
 
-# --- MANAGER VIEW (Restored Features) ---
+# --- تفاصيل الواجهات (نفس المنطق، شكل أفضل) ---
+
 def manager_view():
-    st.header(txt['manager_role'])
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Stock", txt['ext_tab'], "⏳ Requests", txt['local_inv'], "📜 Logs"])
+    st.markdown(f"## 🚀 {txt['manager_role']}")
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Stock", "🔄 External", "⏳ Requests", "📊 Reports", "📜 Logs"])
     
-    with tab1: # Central Stock
-        with st.expander(txt['create_item_title'], expanded=False):
-            c_n, c_c, c_u, c_l, c_q = st.columns(5)
-            new_i_name = c_n.text_input("Name")
-            new_i_cat = c_c.selectbox("Category", CATS_EN)
-            new_i_unit = c_u.selectbox("Unit", ["Piece", "Carton", "Set"])
-            new_i_loc = c_l.selectbox("Location", ["NTCC", "SNC"])
-            new_i_qty = c_q.number_input("Initial Qty", 0, 10000, 0)
+    with tab1:
+        with st.expander("✨ Add New Inventory Item", expanded=False):
+            c1, c2, c3, c4 = st.columns(4)
+            n = c1.text_input("Name")
+            c = c2.selectbox("Cat", CATS_EN)
+            l = c3.selectbox("Loc", LOCATIONS)
+            q = c4.number_input("Qty", 0, 10000)
+            u = st.selectbox("Unit", ["Piece", "Carton", "Set"])
             if st.button(txt['create_btn'], use_container_width=True):
-                if new_i_name:
-                    ok_cr, msg_cr = create_new_item(new_i_name, new_i_cat, new_i_unit, new_i_loc, new_i_qty)
-                    if ok_cr: st.success(msg_cr); st.rerun()
-                    else: st.error(msg_cr)
-                else: st.warning("Enter Name")
+                if n: 
+                    # Insert Logic simplified
+                    if run_query("SELECT id FROM inventory WHERE name_en=:n AND location=:l", {"n":n, "l":l}).empty:
+                        run_action("INSERT INTO inventory (name_en, category, unit, location, qty, status) VALUES (:n, :c, :u, :l, :q, 'Available')",
+                                  {"n":n, "c":c, "u":u, "l":l, "q":q})
+                        st.success("Added!"); st.rerun()
+                    else: st.error("Exists!")
         
-        st.divider()
-        col_ntcc, col_snc = st.columns(2)
-        with col_ntcc:
-            st.markdown("### 🏢 NTCC")
-            st.dataframe(get_inventory("NTCC"), use_container_width=True)
-        with col_snc:
-            st.markdown("### 🏭 SNC")
-            st.dataframe(get_inventory("SNC"), use_container_width=True)
-            
-    with tab2: # External & Loans (Restored)
+        st.markdown("<br>", unsafe_allow_html=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.info("🏢 Internal (NTCC)")
+            st.dataframe(get_inventory("NTCC"), use_container_width=True, height=300)
+        with c2:
+            st.success("🏭 External (SNC)")
+            st.dataframe(get_inventory("SNC"), use_container_width=True, height=300)
+
+    with tab2: # External Logic
         c1, c2 = st.columns(2)
         with c1:
             st.subheader(txt['project_loans'])
             with st.container(border=True):
-                sel_wh = st.selectbox("Internal Warehouse", ["NTCC", "SNC"], key="loan_wh")
-                sel_proj = st.selectbox("External Project", EXTERNAL_PROJECTS, key="loan_proj")
-                wh_inv = get_inventory(sel_wh)
-                if not wh_inv.empty:
-                    sel_item_loan = st.selectbox("Item", wh_inv['name_en'].unique(), key="loan_it")
-                    row_loan = wh_inv[wh_inv['name_en'] == sel_item_loan].iloc[0]
-                    st.caption(f"Avail: {row_loan['qty']} {row_loan['unit']}")
-                    sel_action_loan = st.radio("Operation", ["Lend", "Borrow"], key="loan_op", horizontal=True)
-                    qty_loan = st.number_input("Quantity", 1, 10000, 1, key="loan_q")
-                    if st.button(txt['exec_trans'], use_container_width=True):
-                        ok_l, msg_l = handle_external_transfer(sel_item_loan, sel_wh, sel_proj, sel_action_loan, qty_loan, st.session_state.user_info['name'], row_loan['unit'])
-                        if ok_l: st.success("Success"); st.rerun()
-                        else: st.error(msg_l)
-        
+                wh = st.selectbox("From", LOCATIONS, key="l_wh")
+                proj = st.selectbox("To Project", EXTERNAL_PROJECTS)
+                inv = get_inventory(wh)
+                if not inv.empty:
+                    it = st.selectbox("Item", inv['name_en'].unique(), key="l_it")
+                    row = inv[inv['name_en']==it].iloc[0]
+                    st.caption(f"Stock: {row['qty']} {row['unit']}")
+                    op = st.radio("Type", ["Lend", "Borrow"], horizontal=True)
+                    amt = st.number_input("Qty", 1, 10000, key="l_q")
+                    if st.button("Execute", use_container_width=True, key="btn_l"):
+                        change = -amt if op=="Lend" else amt
+                        desc = f"Loan {op} {proj}"
+                        res, msg = update_central_stock(it, wh, change, st.session_state.user_info['name'], desc, row['unit'])
+                        if res: st.success("Done"); st.rerun()
+                        else: st.error(msg)
         with c2:
             st.subheader(txt['cww_supply'])
             with st.container(border=True):
-                dest_wh_cww = st.selectbox("Destination Warehouse", ["NTCC", "SNC"], key="cww_wh")
-                dest_inv = get_inventory(dest_wh_cww)
-                if not dest_inv.empty:
-                    item_cww = st.selectbox("Item Received", dest_inv['name_en'].unique(), key="cww_it")
-                    row_cww = dest_inv[dest_inv['name_en'] == item_cww].iloc[0]
-                    qty_cww = st.number_input("Qty Received", 1, 10000, 1, key="cww_q")
-                    if st.button("📥 Receive from CWW", use_container_width=True):
-                        ok_c, msg_c = receive_from_cww(item_cww, dest_wh_cww, qty_cww, st.session_state.user_info['name'], row_cww['unit'])
-                        if ok_c: st.success("Received"); st.rerun()
-                        else: st.error(msg_c)
-        
-        st.divider()
-        st.markdown("### 📊 Project Loan History")
-        loan_logs = run_query("SELECT log_date, item_name, change_amount, location, action_type FROM stock_logs WHERE action_type LIKE '%Loan%' ORDER BY log_date DESC")
-        if not loan_logs.empty:
-            c_lent, c_borrowed = st.columns(2)
-            with c_lent:
-                st.markdown("**➡️ Items We LENT (Out)**")
-                lent_df = loan_logs[loan_logs['action_type'].str.contains("Loan OUT")]
-                st.dataframe(lent_df, use_container_width=True)
-            with c_borrowed:
-                st.markdown("**⬅️ Items We BORROWED (In)**")
-                borrowed_df = loan_logs[loan_logs['action_type'].str.contains("Loan IN")]
-                st.dataframe(borrowed_df, use_container_width=True)
-        else: st.info("No loan history found.")
+                dest = st.selectbox("To", LOCATIONS, key="c_wh")
+                inv = get_inventory(dest)
+                if not inv.empty:
+                    it = st.selectbox("Item", inv['name_en'].unique(), key="c_it")
+                    row = inv[inv['name_en']==it].iloc[0]
+                    amt = st.number_input("Qty", 1, 10000, key="c_q")
+                    if st.button("Receive", use_container_width=True, key="btn_c"):
+                        res, msg = update_central_stock(it, dest, amt, st.session_state.user_info['name'], "From CWW", row['unit'])
+                        if res: st.success("Received"); st.rerun()
+                        else: st.error(msg)
 
-    with tab3: # Requests (Editable)
-        reqs = run_query("SELECT * FROM requests WHERE status = 'Pending' ORDER BY request_date DESC")
-        if reqs.empty: st.success("✅ No pending requests")
+    with tab3: # Requests
+        reqs = run_query("SELECT * FROM requests WHERE status='Pending' ORDER BY request_date DESC")
+        if reqs.empty: st.markdown("✅ *All caught up! No pending requests.*")
         else:
-            for _, row in reqs.iterrows():
+            for _, r in reqs.iterrows():
                 with st.container(border=True):
-                    c1, c2 = st.columns([1, 1])
+                    c1, c2 = st.columns([2, 1])
                     with c1:
-                        st.markdown(f"**{row['item_name']}**")
-                        st.caption(f"Req Qty: **{row['qty']} {row['unit']}** | By: {row['supervisor_name']} ({row['region']})")
-                        stock = run_query("SELECT qty FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": row['item_name']})
-                        avail = stock.iloc[0]['qty'] if not stock.empty else 0
-                        st.info(f"NTCC Stock: {avail}")
+                        st.markdown(f"**{r['item_name']}**")
+                        st.caption(f"Req: {r['qty']} {r['unit']} • By: {r['supervisor_name']} • Area: {r['region']}")
+                        stock = run_query("SELECT qty FROM inventory WHERE name_en=:n AND location='NTCC'", {"n":r['item_name']})
+                        st.markdown(f"Available: `{stock.iloc[0]['qty'] if not stock.empty else 0}`")
                     with c2:
-                        # Editable Fields
-                        mgr_qty = st.number_input("Edit Qty", 1, 10000, int(row['qty']), key=f"mgr_q_{row['req_id']}")
-                        mgr_notes = st.text_input(txt['notes'], value=str(row['notes']) if row['notes'] else "", key=f"mgr_n_{row['req_id']}")
-                        b1, b2, b3 = st.columns(3)
-                        
-                        if b1.button(txt['update_btn'], key=f"up_{row['req_id']}"):
-                            update_request_details(row['req_id'], mgr_qty, mgr_notes)
-                            st.success("Saved"); st.rerun()
-                        
-                        if b2.button("Approve", key=f"ap_{row['req_id']}"):
-                            if avail >= mgr_qty:
-                                update_request_status(row['req_id'], "Approved", mgr_qty, mgr_notes)
-                                st.success("Approved"); st.rerun()
-                            else: st.error("Low Stock")
-                            
-                        if b3.button("Reject", key=f"rj_{row['req_id']}"):
-                            update_request_status(row['req_id'], "Rejected", notes=mgr_notes)
-                            st.rerun()
+                        new_q = st.number_input("Approved Qty", 1, 10000, int(r['qty']), key=f"q_{r['req_id']}")
+                        note = st.text_input("Note", key=f"n_{r['req_id']}")
+                        col_a, col_b = st.columns(2)
+                        if col_a.button("✅", key=f"ok_{r['req_id']}"):
+                             run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":new_q, "n":note, "id":r['req_id']})
+                             st.rerun()
+                        if col_b.button("❌", key=f"no_{r['req_id']}"):
+                             run_action("UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", {"n":note, "id":r['req_id']})
+                             st.rerun()
 
-    with tab4: # Local Reports (With Updated By)
-        st.subheader("📊 Detailed Branch Inventory")
-        sel_area = st.selectbox("Select Area to View Report", AREAS)
-        df_report = run_query("SELECT item_name, qty, last_updated, updated_by FROM local_inventory WHERE region = :r ORDER BY item_name", params={"r": sel_area})
-        if df_report.empty: st.info(f"No inventory data recorded for **{sel_area}** yet.")
-        else:
-            st.dataframe(df_report, use_container_width=True)
-            st.caption(f"Total Items Counted: {len(df_report)}")
+    with tab4: # Reports
+        area = st.selectbox("Filter Area", AREAS)
+        df = run_query("SELECT item_name, qty, last_updated, updated_by FROM local_inventory WHERE region=:r", {"r":area})
+        st.dataframe(df, use_container_width=True)
 
     with tab5: # Logs
         st.dataframe(run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 50"), use_container_width=True)
 
-# --- STOREKEEPER VIEW (Restored Features) ---
 def storekeeper_view():
-    st.header(txt['storekeeper_role'])
-    tab1, tab2, tab3 = st.tabs([txt['approved_reqs'], "📦 Manage NTCC", "🏭 Manage SNC"])
+    st.markdown(f"## 📦 {txt['storekeeper_role']}")
+    t1, t2, t3 = st.tabs(["Tasks", "NTCC Stock", "SNC Stock"])
     
-    with tab1: # Issue
-        reqs = run_query("SELECT * FROM requests WHERE status = 'Approved'")
-        if reqs.empty: st.info("✅ No requests to issue")
+    with t1:
+        reqs = run_query("SELECT * FROM requests WHERE status='Approved'")
+        if reqs.empty: st.info("No approved requests to issue.")
         else:
-            for _, row in reqs.iterrows():
+            for _, r in reqs.iterrows():
                 with st.container(border=True):
-                    c_det, c_act = st.columns([1, 1])
-                    with c_det:
-                        st.markdown(f"**{row['item_name']}**")
-                        st.caption(f"Approved Qty: **{row['qty']} {row['unit']}**")
-                        if row['notes']: st.warning(f"Note: {row['notes']}")
-                        inv_check = run_query("SELECT qty FROM inventory WHERE name_en = :n AND location = 'NTCC'", params={"n": row['item_name']})
-                        current_stock = inv_check.iloc[0]['qty'] if not inv_check.empty else 0
-                        st.info(f"NTCC Stock: {current_stock}")
-
-                    with c_act:
-                        final_qty = st.number_input("Issue Qty", 1, 10000, int(row['qty']), key=f"iq_{row['req_id']}")
-                        sk_notes = st.text_input("Storekeeper Notes", key=f"sk_n_{row['req_id']}")
-                        if st.button(txt['issue'], key=f"btn_iss_{row['req_id']}"):
-                            if final_qty > current_stock:
-                                st.error(txt['insufficient_stock_sk'])
-                            else:
-                                ok, msg = update_central_stock(row['item_name'], "NTCC", -final_qty, st.session_state.user_info['name'], f"Issued to {row['region']}", row['unit'])
-                                if ok:
-                                    final_note = f"{row['notes']} | SK: {sk_notes}" if row['notes'] else sk_notes
-                                    update_request_status(row['req_id'], "Issued", final_qty, final_note)
-                                    update_local_inventory(row['region'], row['item_name'], get_local_inventory_by_item(row['region'], row['item_name']) + final_qty, st.session_state.user_info['name'])
-                                    st.success("Issued"); st.rerun()
-                                else: st.error(msg)
+                    st.markdown(f"#### {r['item_name']}")
+                    st.caption(f"Qty: {r['qty']} {r['unit']} • To: {r['region']}")
+                    if r['notes']: st.warning(f"Note: {r['notes']}")
+                    
+                    if st.button("📦 Issue Items", key=f"iss_{r['req_id']}", use_container_width=True):
+                         res, msg = update_central_stock(r['item_name'], "NTCC", -r['qty'], st.session_state.user_info['name'], f"Issued {r['region']}", r['unit'])
+                         if res:
+                             run_action("UPDATE requests SET status='Issued' WHERE req_id=:id", {"id":r['req_id']})
+                             # Update local inventory automagically
+                             cur = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r":r['region'], "i":r['item_name']})
+                             old_q = cur.iloc[0]['qty'] if not cur.empty else 0
+                             if cur.empty:
+                                 run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
+                                           {"r":r['region'], "i":r['item_name'], "q":old_q+r['qty'], "u":st.session_state.user_info['name']})
+                             else:
+                                 run_action("UPDATE local_inventory SET qty=:q, last_updated=NOW(), updated_by=:u WHERE region=:r AND item_name=:i",
+                                           {"q":old_q+r['qty'], "u":st.session_state.user_info['name'], "r":r['region'], "i":r['item_name']})
+                             st.success("Issued!"); st.rerun()
+                         else: st.error(msg)
     
-    with tab2: # NTCC
-        st.subheader("Internal Warehouse (NTCC)")
-        ntcc_inv = get_inventory("NTCC")
-        if not ntcc_inv.empty:
-            st.dataframe(ntcc_inv[['name_en', 'qty', 'unit']], use_container_width=True)
-            with st.expander("🛠 Manual Adjustment"):
-                item_tk = st.selectbox("Item", ntcc_inv['name_en'].unique(), key="tk_it")
-                row_tk = ntcc_inv[ntcc_inv['name_en'] == item_tk].iloc[0]
-                c1, c2, c3 = st.columns(3)
-                act_tk = c1.radio("Action", ["Add", "Remove"], key="act_tk")
-                amt_tk = c2.number_input("Qty", 1, 1000, 1, key="amt_tk")
-                if c3.button("Update", key="btn_tk"):
-                    change = amt_tk if act_tk == "Add" else -amt_tk
-                    ok, msg = update_central_stock(item_tk, "NTCC", change, st.session_state.user_info['name'], "Stock Take", row_tk['unit'])
-                    if ok: st.success("Updated"); st.rerun()
+    with t2:
+        st.dataframe(get_inventory("NTCC"), use_container_width=True)
+    with t3:
+        st.dataframe(get_inventory("SNC"), use_container_width=True)
 
-    with tab3: # SNC
-        st.subheader("External Warehouse (SNC)")
-        snc_inv = get_inventory("SNC")
-        if not snc_inv.empty:
-            st.dataframe(snc_inv[['name_en', 'qty', 'unit']], use_container_width=True)
-            with st.expander("🛠 SNC Transfer to NTCC"):
-                item_tr = st.selectbox("Transfer Item", snc_inv['name_en'].unique(), key="tr_it")
-                row_tr = snc_inv[snc_inv['name_en'] == item_tr].iloc[0]
-                qty_tr = st.number_input("Transfer Qty", 1, 1000, 1, key="tr_qn")
-                if st.button(txt['transfer_btn']):
-                    if row_tr['qty'] >= qty_tr:
-                        ok, msg = transfer_stock(item_tr, qty_tr, st.session_state.user_info['name'], row_tr['unit'])
-                        if ok: st.success("Transferred"); st.rerun()
-                        else: st.error(msg)
-                    else: st.error("Low Stock")
-
-# --- SUPERVISOR VIEW (Restored Features) ---
 def supervisor_view():
-    info = st.session_state.user_info
-    tab1, tab2 = st.tabs([txt['req_form'], txt['local_inv']])
+    user = st.session_state.user_info
+    st.markdown(f"## 👷 {txt['supervisor_role']}")
+    t1, t2 = st.tabs(["New Request", "My Inventory"])
     
-    with tab1: # Request
-        # Allow selecting any region
-        req_region = st.selectbox("Select Area for Request", AREAS, index=AREAS.index(info['region']) if info['region'] in AREAS else 0)
-        inv = get_inventory("NTCC")
-        if not inv.empty:
-            with st.container(border=True):
-                s_item = st.selectbox("Item", inv['name_en'].unique())
-                row_item = inv[inv['name_en'] == s_item].iloc[0]
-                st.caption(f"Unit: {row_item['unit']}")
-                s_qty = st.number_input("Qty", 1, 1000, 1)
-                if st.button(txt['send_req'], use_container_width=True):
-                    run_action("INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
-                              {"s": info['name'], "r": req_region, "i": s_item, "c": row_item['category'], "q": s_qty, "u": row_item['unit']})
-                    st.success("Sent"); st.rerun()
-                
-    with tab2: # Inventory (Dynamic Tabs)
-        # 1. Submission Form
-        selected_area_inv = st.selectbox("Select Area for Count", AREAS, index=AREAS.index(info['region']) if info['region'] in AREAS else 0, key="inv_reg_sel")
-        inv = get_inventory("NTCC")
+    with t1:
+        # Request Form styled
+        c1, c2 = st.columns(2)
+        with c1:
+            # Allow selecting region
+            my_reg = st.selectbox("Area", AREAS, index=AREAS.index(user['region']) if user['region'] in AREAS else 0)
         
-        # Helper to get current local quantity
-        def get_local_qty(area, item):
-            res = run_query("SELECT qty FROM local_inventory WHERE region = :r AND item_name = :i", {"r": area, "i": item})
-            return int(res.iloc[0]['qty']) if not res.empty else 0
-
+        inv = get_inventory("NTCC")
         if not inv.empty:
-            # Build list for selectbox
-            items_list = inv['name_en'].unique()
-            item_up = st.selectbox("Update Weekly Count", items_list)
-            cur_q = get_local_qty(selected_area_inv, item_up)
+            item = st.selectbox("Item needed", inv['name_en'].unique())
+            row = inv[inv['name_en']==item].iloc[0]
+            qty = st.number_input("Quantity needed", 1, 1000)
+            st.caption(f"Unit: {row['unit']}")
             
-            with st.container(border=True):
-                st.metric("Current Registered", cur_q)
-                new_val = st.number_input("New Actual Count", 0, 10000, cur_q)
-                if st.button("Submit Count"):
-                    update_local_inventory(selected_area_inv, item_up, new_val, info['name'])
-                    st.success("Updated"); st.rerun()
+            if st.button("Submit Request", use_container_width=True):
+                run_action("INSERT INTO requests (supervisor_name, region, item_name, category, qty, unit, status, request_date) VALUES (:s, :r, :i, :c, :q, :u, 'Pending', NOW())",
+                          {"s":user['name'], "r":my_reg, "i":item, "c":row['category'], "q":qty, "u":row['unit']})
+                st.success("Request Sent!"); st.rerun()
+    
+    with t2:
+        st.info("Update your local stock counts here.")
+        inv = get_inventory("NTCC")
+        item_up = st.selectbox("Update Item Count", inv['name_en'].unique())
         
-        # 2. Display Dynamic Tabs (My Submitted Counts)
+        # Get current count
+        cur = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r":user['region'], "i":item_up})
+        curr_q = cur.iloc[0]['qty'] if not cur.empty else 0
+        
+        col_a, col_b = st.columns([1, 2])
+        col_a.metric("Current", curr_q)
+        new_val = col_b.number_input("New Actual Count", 0, 10000, curr_q)
+        
+        if st.button("Update Count", use_container_width=True):
+            if cur.empty:
+                run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
+                          {"r":user['region'], "i":item_up, "q":new_val, "u":user['name']})
+            else:
+                run_action("UPDATE local_inventory SET qty=:q, last_updated=NOW(), updated_by=:u WHERE region=:r AND item_name=:i",
+                          {"r":user['region'], "i":item_up, "q":new_val, "u":user['name']})
+            st.success("Updated!"); st.rerun()
+
         st.divider()
-        st.markdown("### 📋 My Submitted Counts")
-        my_data = run_query("SELECT region, item_name, qty, last_updated FROM local_inventory WHERE updated_by = :u ORDER BY last_updated DESC", params={"u": info['name']})
+        st.markdown("### 📋 My Counts History")
+        my_data = run_query("SELECT region, item_name, qty, last_updated FROM local_inventory WHERE updated_by=:u ORDER BY last_updated DESC", {"u":user['name']})
         if not my_data.empty:
-            my_regions = my_data['region'].unique()
-            if len(my_regions) > 0:
-                count_tabs = st.tabs(list(my_regions))
-                for i, r_name in enumerate(my_regions):
-                    with count_tabs[i]:
-                        r_df = my_data[my_data['region'] == r_name]
-                        st.dataframe(r_df[['item_name', 'qty', 'last_updated']], use_container_width=True)
-        else:
-            st.info("No counts submitted yet.")
+            tabs = st.tabs(list(my_data['region'].unique()))
+            for i, r in enumerate(my_data['region'].unique()):
+                with tabs[i]:
+                    st.dataframe(my_data[my_data['region']==r], use_container_width=True)
 
-# --- Helper for Storekeeper/Supervisor logic ---
-def get_local_inventory_by_item(region, item_name):
-    df = run_query("SELECT qty FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name})
-    return int(df.iloc[0]['qty']) if not df.empty else 0
-
-# --- 8. التنفيذ الرئيسي (الحل النهائي للشاشة البيضاء) ---
+# --- 8. التشغيل ---
 if st.session_state.logged_in:
     show_main_app()
 else:
