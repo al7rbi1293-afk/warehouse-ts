@@ -7,7 +7,7 @@ import time
 # --- 1. إعداد الصفحة ---
 st.set_page_config(page_title="WMS Pro", layout="wide", initial_sidebar_state="expanded")
 
-# --- 2. إدارة الجلسة (بدون كوكيز لضمان عدم ظهور الشاشة البيضاء) ---
+# --- 2. إدارة الجلسة ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
     st.session_state.user_info = {}
@@ -23,7 +23,6 @@ AREAS = [
     "Ward 30-31", "Ward 40-41", "Ward50-51"
 ]
 
-# قاموس النصوص
 txt = {
     "app_title": "Unified WMS System",
     "login_page": "Login", "register_page": "Register",
@@ -39,7 +38,7 @@ txt = {
     "error_login": "Invalid Username or Password", "success_reg": "Registered successfully",
     "local_inv": "Branch Inventory Reports", "req_form": "Request Items", 
     "select_item": "Select Item", "qty_req": "Request Qty", "send_req": "Send Request",
-    "approved_reqs": "📦 Requests to Issue", "issue": "Confirm Issue 📦",
+    "approved_reqs": "📦 Pending Issue (By Area)", "issue": "Confirm Issue 📦",
     "transfer_btn": "Transfer Stock", "edit_profile": "Edit Profile", 
     "new_name": "New Name", "new_pass": "New Password", "save_changes": "Save Changes",
     "update_btn": "Update", "cancel_req": "Cancel Request 🗑️"
@@ -215,12 +214,11 @@ def show_main_app():
 # ==========================================
 def manager_view():
     st.header(txt['manager_role'])
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Stock", txt['ext_tab'], "⏳ Requests (By Area)", txt['local_inv'], "📜 Logs"])
+    tab1, tab2, tab3, tab4, tab5 = st.tabs(["📦 Stock", txt['ext_tab'], "⏳ Requests", txt['local_inv'], "📜 Logs"])
     
-    # Tab 1: Central Stock & Add Item
-    with tab1:
+    with tab1: # Central Stock
         with st.expander(txt['create_item_title'], expanded=False):
-            c1, c2, c3, c4 = st.columns(4)
+            c_n, c_c, c_u, c_l, c_q = st.columns(5)
             n = c1.text_input("Name")
             c = c2.selectbox("Category", CATS_EN)
             l = c3.selectbox("Location", LOCATIONS)
@@ -241,8 +239,7 @@ def manager_view():
             st.markdown("### 🏭 SNC")
             st.dataframe(get_inventory("SNC"), use_container_width=True)
 
-    # Tab 2: External Loans & Supply (RESTORED)
-    with tab2:
+    with tab2: # External
         c1, c2 = st.columns(2)
         with c1:
             st.subheader(txt['project_loans'])
@@ -287,15 +284,12 @@ def manager_view():
                 st.markdown("**⬅️ Borrow (In)**")
                 st.dataframe(loan_logs[loan_logs['action_type'].str.contains("Borrow")], use_container_width=True)
 
-    # Tab 3: Requests (Categorized by Tabs + Edit Features RESTORED)
-    with tab3:
+    with tab3: # Requests
         reqs = run_query("SELECT * FROM requests WHERE status='Pending' ORDER BY request_date DESC")
         if reqs.empty: st.info("No pending requests")
         else:
-            # Group by Region (Tabs)
             regions = reqs['region'].unique()
             region_tabs = st.tabs(list(regions))
-            
             for i, region in enumerate(regions):
                 with region_tabs[i]:
                     region_reqs = reqs[reqs['region'] == region]
@@ -309,34 +303,30 @@ def manager_view():
                                 avail = stock.iloc[0]['qty'] if not stock.empty else 0
                                 st.info(f"NTCC Stock: {avail}")
                             with c2:
-                                # Manager Edit Fields
                                 new_q = st.number_input("Approve Qty", 1, 10000, int(r['qty']), key=f"q_{r['req_id']}")
-                                note = st.text_input("Manager Note", key=f"n_{r['req_id']}")
-                                
-                                # Buttons
+                                note = st.text_input("Manager Note (Reason if Short)", key=f"n_{r['req_id']}")
                                 c_a, c_b, c_c = st.columns(3)
                                 if c_a.button("✅ Approve", key=f"ap_{r['req_id']}"):
                                     if avail >= new_q:
-                                        run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":new_q, "n":note, "id":r['req_id']})
+                                        # Append Manager prefix to note if changed
+                                        final_note = f"Manager: {note}" if note else ""
+                                        run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":new_q, "n":final_note, "id":r['req_id']})
                                         st.rerun()
                                     else: st.error("Low Stock")
                                 if c_b.button("❌ Reject", key=f"rj_{r['req_id']}"):
                                     run_action("UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", {"n":note, "id":r['req_id']})
                                     st.rerun()
-                                if c_c.button("💾 Save Edit", key=f"sv_{r['req_id']}"):
+                                if c_c.button("💾 Save", key=f"sv_{r['req_id']}"):
                                     update_request_details(r['req_id'], new_q, note)
                                     st.success("Saved"); st.rerun()
 
-    # Tab 4: Local Reports
-    with tab4:
+    with tab4: # Reports
         st.subheader("📊 Detailed Branch Inventory")
         area = st.selectbox("Select Area", AREAS)
-        # Added 'updated_by' to show who counted it
         df = run_query("SELECT item_name, qty, last_updated, updated_by FROM local_inventory WHERE region=:r ORDER BY item_name", {"r":area})
         st.dataframe(df, use_container_width=True)
 
-    # Tab 5: Logs
-    with tab5:
+    with tab5: # Logs
         st.dataframe(run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 50"), use_container_width=True)
 
 # ==========================================
@@ -344,13 +334,12 @@ def manager_view():
 # ==========================================
 def storekeeper_view():
     st.header(txt['storekeeper_role'])
-    t1, t2, t3 = st.tabs([txt['approved_reqs'], "NTCC", "SNC"])
+    t1, t2, t3, t4 = st.tabs([txt['approved_reqs'], "📋 Issued Today", "NTCC", "SNC"])
     
     with t1:
         reqs = run_query("SELECT * FROM requests WHERE status='Approved'")
         if reqs.empty: st.info("No tasks")
         else:
-            # Group by Region for Storekeeper too
             regions = reqs['region'].unique()
             if len(regions) > 0:
                 rtabs = st.tabs(list(regions))
@@ -362,28 +351,42 @@ def storekeeper_view():
                                 c1, c2 = st.columns([1, 1])
                                 with c1:
                                     st.markdown(f"**{r['item_name']}**")
-                                    st.markdown(f"Qty: **{r['qty']} {r['unit']}**")
-                                    if r['notes']: st.warning(f"Note: {r['notes']}")
+                                    st.markdown(f"Approved Qty: **{r['qty']} {r['unit']}**")
+                                    if r['notes']: st.warning(f"📝 {r['notes']}")
                                 with c2:
+                                    # Storekeeper can edit qty before issue
+                                    final_issue_qty = st.number_input("Final Issue Qty", 1, 10000, int(r['qty']), key=f"sk_q_{r['req_id']}")
+                                    sk_note = st.text_input("Storekeeper Note", key=f"sk_n_{r['req_id']}")
+                                    
                                     if st.button("Confirm Issue 📦", key=f"iss_{r['req_id']}"):
-                                        res, msg = update_central_stock(r['item_name'], "NTCC", -r['qty'], st.session_state.user_info['name'], f"Issued {r['region']}", r['unit'])
+                                        # Combine notes
+                                        existing_note = r['notes'] if r['notes'] else ""
+                                        final_note = f"{existing_note} | Storekeeper: {sk_note}" if sk_note else existing_note
+                                        
+                                        res, msg = update_central_stock(r['item_name'], "NTCC", -final_issue_qty, st.session_state.user_info['name'], f"Issued {r['region']}", r['unit'])
                                         if res:
-                                            run_action("UPDATE requests SET status='Issued' WHERE req_id=:id", {"id":r['req_id']})
-                                            # Update local inventory logic
-                                            cur = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r":r['region'], "i":r['item_name']})
-                                            old_q = cur.iloc[0]['qty'] if not cur.empty else 0
-                                            if cur.empty:
-                                                run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
-                                                          {"r":r['region'], "i":r['item_name'], "q":old_q+r['qty'], "u":st.session_state.user_info['name']})
-                                            else:
-                                                run_action("UPDATE local_inventory SET qty=:q, last_updated=NOW(), updated_by=:u WHERE region=:r AND item_name=:i",
-                                                          {"q":old_q+r['qty'], "u":st.session_state.user_info['name'], "r":r['region'], "i":r['item_name']})
-                                            st.success("Issued"); st.rerun()
+                                            # Update status to 'Issued' (Ready for Pickup)
+                                            run_action("UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id", 
+                                                      {"q":final_issue_qty, "n":final_note, "id":r['req_id']})
+                                            st.success("Issued & Ready for Pickup"); st.rerun()
                                         else: st.error(msg)
 
-    with t2:
-        st.dataframe(get_inventory("NTCC"), use_container_width=True)
+    with t2: # Issued Today
+        st.subheader("📋 Items Issued Today")
+        # Assuming database has DATE capability, otherwise fetching all and filtering in pandas
+        today_log = run_query("""
+            SELECT item_name, qty, unit, region, supervisor_name, notes, request_date 
+            FROM requests 
+            WHERE status IN ('Issued', 'Received') 
+            AND request_date::date = CURRENT_DATE
+            ORDER BY request_date DESC
+        """)
+        if today_log.empty: st.info("Nothing issued today yet.")
+        else: st.dataframe(today_log, use_container_width=True)
+
     with t3:
+        st.dataframe(get_inventory("NTCC"), use_container_width=True)
+    with t4:
         st.dataframe(get_inventory("SNC"), use_container_width=True)
 
 # ==========================================
@@ -392,9 +395,8 @@ def storekeeper_view():
 def supervisor_view():
     user = st.session_state.user_info
     st.header(txt['supervisor_role'])
-    t1, t2, t3 = st.tabs([txt['req_form'], "⏳ My Pending Requests", txt['local_inv']])
+    t1, t2, t3, t4 = st.tabs([txt['req_form'], "🚚 Ready for Pickup", "⏳ My Pending", txt['local_inv']])
     
-    # Tab 1: New Request
     with t1:
         reg = st.selectbox("Region", AREAS, index=AREAS.index(user['region']) if user['region'] in AREAS else 0)
         inv = get_inventory("NTCC")
@@ -407,12 +409,36 @@ def supervisor_view():
                           {"s":user['name'], "r":reg, "i":it, "c":row['category'], "q":q, "u":row['unit']})
                 st.success("Sent"); st.rerun()
 
-    # Tab 2: Edit Pending Requests (RESTORED)
-    with t2:
-        # Filter: Supervisor Name AND Status Pending
+    with t2: # Ready for Pickup (Issued by Storekeeper)
+        ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued'", {"s": user['name']})
+        if ready.empty: st.info("No items ready for pickup.")
+        else:
+            for _, r in ready.iterrows():
+                with st.container(border=True):
+                    st.success(f"✅ **Ready:** {r['item_name']} ({r['qty']} {r['unit']})")
+                    if r['notes']: st.warning(f"📝 Notes: {r['notes']}")
+                    
+                    if st.button("Confirm Receipt & Add to Inventory 📥", key=f"rec_{r['req_id']}", use_container_width=True):
+                        # Update status to Received
+                        run_action("UPDATE requests SET status='Received' WHERE req_id=:id", {"id":r['req_id']})
+                        
+                        # Auto-add to local inventory
+                        cur = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r":r['region'], "i":r['item_name']})
+                        old_q = cur.iloc[0]['qty'] if not cur.empty else 0
+                        
+                        if cur.empty:
+                            run_action("INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) VALUES (:r, :i, :q, NOW(), :u)",
+                                      {"r":r['region'], "i":r['item_name'], "q":old_q+r['qty'], "u":user['name']})
+                        else:
+                            run_action("UPDATE local_inventory SET qty=:q, last_updated=NOW(), updated_by=:u WHERE region=:r AND item_name=:i",
+                                      {"q":old_q+r['qty'], "u":user['name'], "r":r['region'], "i":r['item_name']})
+                        
+                        st.balloons()
+                        st.success("Received and Inventory Updated!"); time.sleep(1); st.rerun()
+
+    with t3: # Edit Pending
         pending = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Pending' ORDER BY request_date DESC", {"s": user['name']})
-        if pending.empty:
-            st.info("No pending requests to edit.")
+        if pending.empty: st.info("No pending requests.")
         else:
             for _, r in pending.iterrows():
                 with st.container(border=True):
@@ -421,20 +447,18 @@ def supervisor_view():
                         st.markdown(f"**{r['item_name']}**")
                     with c2:
                         new_q_sup = st.number_input("Edit Qty", 1, 1000, int(r['qty']), key=f"sup_q_{r['req_id']}")
-                        col_up, col_del = st.columns(2)
-                        if col_up.button("Update", key=f"sup_up_{r['req_id']}"):
+                        c_up, c_del = st.columns(2)
+                        if c_up.button("Update", key=f"sup_up_{r['req_id']}"):
                             update_request(r['req_id'], new_q_sup)
                             st.success("Updated"); st.rerun()
-                        if col_del.button("Cancel 🗑️", key=f"sup_del_{r['req_id']}"):
+                        if c_del.button("Cancel 🗑️", key=f"sup_del_{r['req_id']}"):
                             delete_request(r['req_id'])
                             st.success("Deleted"); st.rerun()
 
-    # Tab 3: Local Inventory (Count & History) (RESTORED)
-    with t3:
+    with t4: # Local Inventory
         st.info("Update Local Inventory")
         inv = get_inventory("NTCC")
         it = st.selectbox("Item Update", inv['name_en'].unique(), key="up_it")
-        # Show current count
         cur = run_query("SELECT qty FROM local_inventory WHERE region=:r AND item_name=:i", {"r":user['region'], "i":it})
         curr_q = cur.iloc[0]['qty'] if not cur.empty else 0
         
@@ -453,17 +477,14 @@ def supervisor_view():
             
         st.divider()
         st.markdown("### 📋 My Count History")
-        # List of items counted by this supervisor
         my_counts = run_query("SELECT region, item_name, qty, last_updated FROM local_inventory WHERE updated_by=:u ORDER BY last_updated DESC", {"u":user['name']})
         if not my_counts.empty:
-            # Dynamic Tabs for regions counted by supervisor
             regions_counted = my_counts['region'].unique()
             ctabs = st.tabs(list(regions_counted))
             for i, reg in enumerate(regions_counted):
                 with ctabs[i]:
                     st.dataframe(my_counts[my_counts['region'] == reg], use_container_width=True)
-        else:
-            st.info("No counts recorded yet.")
+        else: st.info("No counts recorded yet.")
 
 # --- 8. تشغيل التطبيق ---
 if st.session_state.logged_in:
