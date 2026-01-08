@@ -96,6 +96,7 @@ def init_db():
     try:
         run_action("ALTER TABLE workers ADD COLUMN IF NOT EXISTS shift_id INTEGER;")
         run_action("ALTER TABLE users ADD COLUMN IF NOT EXISTS shift_id INTEGER;")
+        run_action("ALTER TABLE workers ADD COLUMN IF NOT EXISTS emp_id TEXT;") # Add EMP ID
     except: pass
 
     # Removed auto-insert of "B B1" per user request.
@@ -391,23 +392,28 @@ def manager_view_manpower():
         
         # Add Worker
         with st.expander("➕ Add New Worker"):
-            c1, c2, c3, c4 = st.columns(4)
+            c1, c2, c3, c4, c5 = st.columns(5)
+            # Layout: Name | Emp ID | Role | Region | Shift
             wn = c1.text_input("Worker Name")
-            wr = c2.text_input("Role/Position")
-            wreg = c3.selectbox("Region", AREAS)
+            we = c2.text_input("EMP ID (Numbers Only)")
+            wr = c3.text_input("Role/Position")
+            wreg = c4.selectbox("Region", AREAS)
             
             # Fetch Shifts
             shifts = run_query("SELECT id, name FROM shifts")
             shift_opts = {s['name']: s['id'] for i, s in shifts.iterrows()} if not shifts.empty else {}
-            wshift = c4.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
+            wshift = c5.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
             
             if st.button("Add Worker", use_container_width=True):
-                if wn:
-                    sid = shift_opts.get(wshift, None)
-                    run_action("INSERT INTO workers (name, role, region, shift_id) VALUES (:n, :r, :reg, :sid)", 
-                               {"n":wn, "r":wr, "reg":wreg, "sid":sid})
-                    st.success("Worker Added"); st.cache_data.clear(); st.rerun()
-                else: st.error("Name required")
+                if wn and we:
+                    if not we.isdigit():
+                        st.error("EMP ID must be numbers only")
+                    else:
+                        sid = shift_opts.get(wshift, None)
+                        run_action("INSERT INTO workers (name, emp_id, role, region, shift_id) VALUES (:n, :e, :r, :reg, :sid)", 
+                                   {"n":wn, "e":we, "r":wr, "reg":wreg, "sid":sid})
+                        st.success("Worker Added"); st.cache_data.clear(); st.rerun()
+                else: st.error("Name and EMP ID required")
         
         # Edit Workers
         if not workers.empty:
@@ -417,6 +423,8 @@ def manager_view_manpower():
                 column_config={
                     "id": st.column_config.NumberColumn(disabled=True),
                     "created_at": st.column_config.DatetimeColumn(disabled=True),
+                    "shift_id": st.column_config.NumberColumn(disabled=True), # Hide or disable complex edit
+                    "emp_id": st.column_config.TextColumn("EMP ID", required=True),
                     "status": st.column_config.SelectboxColumn(options=["Active", "Inactive"], required=True),
                     "region": st.column_config.SelectboxColumn(options=AREAS, required=True)
                 },
@@ -425,8 +433,13 @@ def manager_view_manpower():
             if st.button("💾 Save Worker Changes"):
                 changes = 0
                 for index, row in edited_w.iterrows():
-                    run_action("UPDATE workers SET name=:n, role=:r, region=:reg, status=:s WHERE id=:id",
-                               {"n":row['name'], "r":row['role'], "reg":row['region'], "s":row['status'], "id":row['id']})
+                    # Basic validation for update could be added here if needed
+                    eid = str(row['emp_id']) if row['emp_id'] else ""
+                    if eid and not eid.isdigit():
+                         st.error(f"Invalid EMP ID for {row['name']}: Numbers only."); continue
+
+                    run_action("UPDATE workers SET name=:n, emp_id=:e, role=:r, region=:reg, status=:s WHERE id=:id",
+                               {"n":row['name'], "e":eid, "r":row['role'], "reg":row['region'], "s":row['status'], "id":row['id']})
                     # Note: Editing Shift ID in data_editor is complex with FKs. 
                     # Ideally we add a "Move Shift" Action or handle it here if we load shift name.
                     changes += 1
