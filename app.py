@@ -404,7 +404,37 @@ def manager_view_manpower():
             st.data_editor(shifts, key="shift_editor", disabled=["id"], hide_index=True, width="stretch")
             
     with tab4: # Supervisors
-        st.info("Future: Assign multiple regions to supervisors here.")
+        st.subheader("📍 Supervisor Region Assignment")
+        # Fetch only supervisors
+        supervisors = run_query("SELECT username, name, region FROM users WHERE role = 'supervisor' ORDER BY name")
+        
+        if supervisors.empty:
+            st.info("No supervisors found.")
+        else:
+            # We cannot easily edit a multi-select in a data_editor yet for complex strings like "A,B".
+            # So we will use a loop with expanders or a selection to edit one by one.
+            
+            # Option 1: Select a supervisor to edit
+            sup_list = supervisors['username'].tolist()
+            selected_sup_u = st.selectbox("Select Supervisor to Edit", sup_list, format_func=lambda x: f"{x} - {supervisors[supervisors['username']==x].iloc[0]['name']}")
+            
+            if selected_sup_u:
+                current_row = supervisors[supervisors['username'] == selected_sup_u].iloc[0]
+                current_regions_str = current_row['region'] if current_row['region'] else ""
+                current_regions_list = current_regions_str.split(",") if current_regions_str else []
+                
+                # Filter valid areas just in case
+                valid_defaults = [r for r in current_regions_list if r in AREAS]
+                
+                new_regions = st.multiselect(f"Assign Regions for {current_row['name']}", AREAS, default=valid_defaults)
+                
+                if st.button("Update Supervisor Regions"):
+                    new_reg_str = ",".join(new_regions)
+                    run_action("UPDATE users SET region = :r WHERE username = :u", {"r": new_reg_str, "u": selected_sup_u})
+                    st.success(f"Updated regions for {current_row['name']}"); st.cache_data.clear(); time.sleep(1); st.rerun()
+            
+            st.divider()
+            st.dataframe(supervisors, width="stretch")
 
     with tab1: # Reports
         st.subheader("📊 Today's Attendance")
