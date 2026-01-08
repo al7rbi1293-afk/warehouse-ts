@@ -39,6 +39,7 @@ txt = {
     "save_mod": "💾 Save Changes", "insufficient_stock_sk": "❌ STOP: Issue Qty > NTCC Stock!",
     "error_login": "Invalid Username or Password", "success_reg": "Registered successfully",
     "local_inv": "Branch Inventory Reports", "req_form": "Bulk Order Form", 
+    "role_night_sup": "Night Shift Supervisor", # New role text
     "select_item": "Select Item", "qty_req": "Request Qty", "send_req": "🚀 Send Bulk Order",
     "approved_reqs": "📦 Pending Issue (Bulk)", "issue": "Confirm Issue 📦",
     "transfer_btn": "Transfer Stock", "edit_profile": "Edit Profile", 
@@ -89,6 +90,13 @@ def init_db():
             created_at TIMESTAMP DEFAULT NOW()
         );
     """)
+    
+    # 4.2 Migration (Safe Add Columns)
+    try:
+        run_action("ALTER TABLE workers ADD COLUMN IF NOT EXISTS shift_id INTEGER;")
+        run_action("ALTER TABLE users ADD COLUMN IF NOT EXISTS shift_id INTEGER;")
+        # Assuming users table exists from context.
+    except: pass
 
 # --- 5. دوال قاعدة البيانات ---
 def run_query(query, params=None, ttl=None):
@@ -290,11 +298,14 @@ def show_main_app():
     
     
     # Module Switcher
-    st.sidebar.divider()
-    st.sidebar.markdown("### 🔀 Module Selection")
-    mod = st.sidebar.radio("Go to:", ["Warehouse", "Manpower"], index=0 if st.session_state.get('active_module', 'Warehouse') == 'Warehouse' else 1, key="mod_switcher")
-    st.session_state.active_module = mod
-    st.sidebar.divider()
+    if info['role'] != 'night_supervisor': # Hide switcher for night supervisor
+        st.sidebar.divider()
+        st.sidebar.markdown("### 🔀 Module Selection")
+        mod = st.sidebar.radio("Go to:", ["Warehouse", "Manpower"], index=0 if st.session_state.get('active_module', 'Warehouse') == 'Warehouse' else 1, key="mod_switcher")
+        st.session_state.active_module = mod
+        st.sidebar.divider()
+    else:
+        st.sidebar.info("🌙 Night Shift Mode")
 
     if st.sidebar.button(txt['refresh_data'], use_container_width=True):
         st.cache_data.clear()
@@ -319,12 +330,25 @@ def show_main_app():
         st.rerun()
 
     # Routing based on Module and Role
+    
+    # Night Supervisor Logic: FORCE Manpower, HIDE Warehouse
+    if info['role'] == 'night_supervisor':
+        st.session_state.active_module = "Manpower"
+        # Hide Switcher if possible or just ignore it. 
+        # Since Switcher is in sidebar, we can conditionally render it, but `show_main_app` renders it before this check.
+        # To strictly enforce, we just override logic here.
+    
     if st.session_state.active_module == "Warehouse":
-        if info['role'] == 'manager': manager_view_warehouse()
+        if info['role'] == 'night_supervisor': 
+            st.warning("⛔ Access Restricted: Night Shift Supervisors can only access Manpower module.")
+            # Fallback
+            supervisor_view_manpower()
+        elif info['role'] == 'manager': manager_view_warehouse()
         elif info['role'] == 'storekeeper': storekeeper_view()
         else: supervisor_view_warehouse()
     else:
         if info['role'] == 'manager': manager_view_manpower()
+        elif info['role'] == 'night_supervisor': supervisor_view_manpower()
         else: supervisor_view_manpower()
     
     # Copyright Footer (In App)
@@ -353,13 +377,21 @@ def manager_view_manpower():
         
         # Add Worker
         with st.expander("➕ Add New Worker"):
-            c1, c2, c3 = st.columns(3)
+            c1, c2, c3, c4 = st.columns(4)
             wn = c1.text_input("Worker Name")
             wr = c2.text_input("Role/Position")
             wreg = c3.selectbox("Region", AREAS)
+            
+            # Fetch Shifts
+            shifts = run_query("SELECT id, name FROM shifts")
+            shift_opts = {s['name']: s['id'] for i, s in shifts.iterrows()} if not shifts.empty else {}
+            wshift = c4.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
+            
             if st.button("Add Worker", use_container_width=True):
                 if wn:
-                    run_action("INSERT INTO workers (name, role, region) VALUES (:n, :r, :reg)", {"n":wn, "r":wr, "reg":wreg})
+                    sid = shift_opts.get(wshift, None)
+                    run_action("INSERT INTO workers (name, role, region, shift_id) VALUES (:n, :r, :reg, :sid)", 
+                               {"n":wn, "r":wr, "reg":wreg, "sid":sid})
                     st.success("Worker Added"); st.cache_data.clear(); st.rerun()
                 else: st.error("Name required")
         
@@ -381,6 +413,8 @@ def manager_view_manpower():
                 for index, row in edited_w.iterrows():
                     run_action("UPDATE workers SET name=:n, role=:r, region=:reg, status=:s WHERE id=:id",
                                {"n":row['name'], "r":row['role'], "reg":row['region'], "s":row['status'], "id":row['id']})
+                    # Note: Editing Shift ID in data_editor is complex with FKs. 
+                    # Ideally we add a "Move Shift" Action or handle it here if we load shift name.
                     changes += 1
                 if changes > 0: st.success("Updated"); st.cache_data.clear(); time.sleep(1); st.rerun()
 
@@ -420,18 +454,38 @@ def manager_view_manpower():
             
             if selected_sup_u:
                 current_row = supervisors[supervisors['username'] == selected_sup_u].iloc[0]
+                
+                # Region Editing
                 current_regions_str = current_row['region'] if current_row['region'] else ""
                 current_regions_list = current_regions_str.split(",") if current_regions_str else []
-                
-                # Filter valid areas just in case
                 valid_defaults = [r for r in current_regions_list if r in AREAS]
-                
                 new_regions = st.multiselect(f"Assign Regions for {current_row['name']}", AREAS, default=valid_defaults)
                 
-                if st.button("Update Supervisor Regions"):
+                # Shift Editing (New)
+                shifts = run_query("SELECT id, name FROM shifts")
+                # We need to fetch current shift for user. Query above didn't get it.
+                # Let's re-fetch full user row.
+                u_full = run_query("SELECT shift_id, role FROM users WHERE username = :u", {"u":selected_sup_u}).iloc[0]
+                
+                s_opts = {s['name']: s['id'] for i, s in shifts.iterrows()}
+                cur_s_id = u_full['shift_id']
+                # Create reverse lookup or find name
+                cur_s_name = next((k for k, v in s_opts.items() if v == cur_s_id), None)
+                idx = list(s_opts.keys()).index(cur_s_name) if cur_s_name in s_opts else 0
+                
+                new_shift_name = st.selectbox("Assign Shift", list(s_opts.keys()), index=idx if s_opts else 0)
+                
+                # Role Editing (To allow changing to Night Supervisor)
+                roles = ["supervisor", "storekeeper", "night_supervisor"]
+                cur_role = u_full['role']
+                new_role = st.selectbox("Assign Role", roles, index=roles.index(cur_role) if cur_role in roles else 0)
+
+                if st.button("Update Supervisor Profile"):
                     new_reg_str = ",".join(new_regions)
-                    run_action("UPDATE users SET region = :r WHERE username = :u", {"r": new_reg_str, "u": selected_sup_u})
-                    st.success(f"Updated regions for {current_row['name']}"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                    new_sid = s_opts.get(new_shift_name)
+                    run_action("UPDATE users SET region=:r, shift_id=:sid, role=:role WHERE username=:u", 
+                               {"r": new_reg_str, "sid":new_sid, "role":new_role, "u": selected_sup_u})
+                    st.success(f"Updated {current_row['name']}"); st.cache_data.clear(); time.sleep(1); st.rerun()
             
             st.divider()
             st.dataframe(supervisors, width="stretch")
