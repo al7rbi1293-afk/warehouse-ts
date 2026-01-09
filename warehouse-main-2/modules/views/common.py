@@ -32,7 +32,7 @@ def render_bulk_stock_take(location, user_name, key_prefix):
             height=500
         )
 
-        if st.form_submit_button(f"💾 Update {location} Stock", use_container_width=True):
+        if st.form_submit_button(f"💾 Update {location} Stock", width="stretch"):
             changes_count = 0
             for index, row in edited_df.iterrows():
                 sys_q = int(row['System Qty'])

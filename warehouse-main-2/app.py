@@ -30,7 +30,7 @@ def show_login():
         with st.form("login_form"):
             u = st.text_input(txt['username'])
             p = st.text_input(txt['password'], type="password")
-            if st.form_submit_button(txt['login_btn'], use_container_width=True):
+            if st.form_submit_button(txt['login_btn'], width="stretch"):
                 user_data = login_user(u.strip(), p.strip())
                 if user_data:
                     st.session_state.logged_in = True
@@ -44,7 +44,7 @@ def show_login():
             nn = st.text_input(txt['fullname'])
             # Multi-select regions for registration
             nr = st.multiselect(txt['region'], AREAS)
-            if st.form_submit_button(txt['register_btn'], use_container_width=True):
+            if st.form_submit_button(txt['register_btn'], width="stretch"):
                 # Join regions with comma
                 region_str = ",".join(nr)
                 if register_user(nu.strip(), np.strip(), nn, region_str): 
@@ -76,7 +76,7 @@ def show_main_app():
     else:
         st.sidebar.info(f"🌙 Night Shift Mode ({info.get('shift_name', 'B')})")
 
-    if st.sidebar.button(txt['refresh_data'], use_container_width=True):
+    if st.sidebar.button(txt['refresh_data'], width="stretch"):
         st.cache_data.clear()
         st.rerun()
     
@@ -86,7 +86,7 @@ def show_main_app():
         # Password field empty by default for security focus in updates
         new_p = st.text_input(txt['new_pass'], type="password", help="Leave empty to keep current password")
         
-        if st.button(txt['save_changes'], use_container_width=True):
+        if st.button(txt['save_changes'], width="stretch"):
             # If new_p is empty, use old password from session state (which is hashed or plain? wait)
             # update_user_profile_full expects a new password to hash.
             # If the user leaves it empty, we should probably handle that.
@@ -103,7 +103,7 @@ def show_main_app():
                 st.rerun()
             else: st.error(msg)
 
-    if st.sidebar.button(txt['logout'], use_container_width=True):
+    if st.sidebar.button(txt['logout'], width="stretch"):
         st.session_state.logged_in = False
         st.session_state.user_info = {}
         st.rerun()

@@ -5,8 +5,16 @@ from io import BytesIO
 
 def convert_df_to_excel(df, sheet_name="Sheet1"):
     output = BytesIO()
+    # Create a copy to avoid modifying the original dataframe
+    df_export = df.copy()
+    
+    # Remove timezones from datetime columns
+    for col in df_export.select_dtypes(include=['datetime64[ns, UTC]', 'datetime64[ns]']).columns:
+        if df_export[col].dt.tz is not None:
+             df_export[col] = df_export[col].dt.tz_localize(None)
+
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name=sheet_name)
+        df_export.to_excel(writer, index=False, sheet_name=sheet_name)
     return output.getvalue()
 
 def setup_styles():

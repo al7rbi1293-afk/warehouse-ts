@@ -38,7 +38,7 @@ def manager_view_manpower():
                 shift_opts = {s['name']: s['id'] for i, s in shifts.iterrows()} if not shifts.empty else {}
                 wshift = c5.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
                 
-                submitted = st.form_submit_button("Add Worker", use_container_width=True)
+                submitted = st.form_submit_button("Add Worker", width="stretch")
                 if submitted:
                     if wn and we:
                         if not we.isdigit():
