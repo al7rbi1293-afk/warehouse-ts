@@ -18,7 +18,7 @@ def run_query(query, params=None, ttl=None):
         # Caching strategy: if ttl is NOT provided, it might default to strict cache.
         # Ensure query is wrapped in text() if not already, though st.connection.query often handles strings.
         # But for safety and consistency with run_action:
-        return conn.query(text(query) if isinstance(query, str) else query, params=params, ttl=ttl)
+        return conn.query(query, params=params, ttl=ttl)
     except Exception as e: 
         st.error(f"DB Error: {e}")
         return pd.DataFrame()
