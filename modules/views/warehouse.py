@@ -3,6 +3,7 @@ import streamlit as st
 import time
 from modules.database import run_query, run_action, run_batch_action
 from modules.config import TEXT as txt, CATS_EN, LOCATIONS, EXTERNAL_PROJECTS, AREAS
+from modules.utils import convert_df_to_excel
 from modules.inventory_logic import (
     get_inventory, update_central_stock, get_local_inventory_by_item, 
     update_local_inventory, update_request_details, delete_request
@@ -52,15 +53,20 @@ def manager_view_warehouse():
                         op = st.radio("Action Type", ["Lend (Stock Decrease)", "Borrow (Stock Increase)"], horizontal=True)
                         amt = st.number_input("Quantity", 1, 10000, key="l_q")
                         
-                        if st.form_submit_button(txt['exec_trans'], use_container_width=True):
-                            row = inv[inv['name_en']==it].iloc[0]
-                            change = -int(amt) if "Lend" in op else int(amt)
-                            desc = f"Lend to {proj}" if "Lend" in op else f"Borrow from {proj}"
-                            res, msg = update_central_stock(it, wh, change, st.session_state.user_info['name'], desc, row['unit'])
-                            if res: 
-                                st.toast("Transaction Successful!", icon="🎉")
-                                st.cache_data.clear(); st.rerun()
-                            else: st.error(msg)
+                        submitted = st.form_submit_button(txt['exec_trans'], use_container_width=True)
+                        if submitted:
+                            # Verify item still exists in filter
+                            item_rows = inv[inv['name_en']==it]
+                            if not item_rows.empty:
+                                row = item_rows.iloc[0]
+                                change = -int(amt) if "Lend" in op else int(amt)
+                                desc = f"Lend to {proj}" if "Lend" in op else f"Borrow from {proj}"
+                                res, msg = update_central_stock(it, wh, change, st.session_state.user_info['name'], desc, row['unit'])
+                                if res: 
+                                    st.toast("Transaction Successful!", icon="🎉")
+                                    st.cache_data.clear(); st.rerun()
+                                else: st.error(msg)
+                            else: st.error("Item selection invalid. Please refresh.")
                     else:
                         st.info("No stock available.")
                         st.form_submit_button("Submit", disabled=True)
@@ -76,16 +82,21 @@ def manager_view_warehouse():
                         it = st.selectbox("Item Received", inv['name_en'].unique(), key="c_it")
                         amt = st.number_input("Quantity", 1, 10000, key="c_q")
                         if st.form_submit_button("Receive from CWW", use_container_width=True):
-                            row = inv[inv['name_en']==it].iloc[0]
-                            res, msg = update_central_stock(it, dest, amt, st.session_state.user_info['name'], "From CWW", row['unit'])
-                            if res: st.success("Done"); st.cache_data.clear(); st.rerun()
-                            else: st.error(msg)
+                            item_rows = inv[inv['name_en']==it]
+                            if not item_rows.empty:
+                                row = item_rows.iloc[0]
+                                res, msg = update_central_stock(it, dest, amt, st.session_state.user_info['name'], "From CWW", row['unit'])
+                                if res: st.success("Done"); st.cache_data.clear(); st.rerun()
+                                else: st.error(msg)
+                            else: st.error("Item selection invalid.")
                     else:
                         st.info("No items found.")
                         st.form_submit_button("Submit", disabled=True)
         st.divider()
         loan_logs = run_query("SELECT log_date, item_name, change_amount, location, action_type FROM stock_logs WHERE action_type LIKE '%Lend%' OR action_type LIKE '%Borrow%' ORDER BY log_date DESC")
-        if not loan_logs.empty: st.dataframe(loan_logs, width="stretch")
+        if not loan_logs.empty: 
+            st.dataframe(loan_logs, width="stretch")
+            st.download_button("📥 Export Loan Logs", convert_df_to_excel(loan_logs, "Loans"), "loan_logs.xlsx")
 
     with tab3: # Requests
         reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
@@ -150,9 +161,13 @@ def manager_view_warehouse():
                     st.info(f"No inventory record for {area}")
                 else:
                     st.dataframe(df, width="stretch")
+                    st.download_button(f"📥 Export {area} Inv", convert_df_to_excel(df, area), f"{area}_inv.xlsx", key=f"dl_loc_{area}")
 
     with tab5: # Logs
-        st.dataframe(run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 50"), width="stretch")
+        logs = run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 500")
+        st.dataframe(logs, width="stretch")
+        if not logs.empty:
+            st.download_button("📥 Export Stock Logs", convert_df_to_excel(logs, "StockLogs"), "stock_logs.xlsx")
 
 # ==========================================
 # ============ STOREKEEPER VIEW ============

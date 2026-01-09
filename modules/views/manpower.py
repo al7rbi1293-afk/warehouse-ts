@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from modules.database import run_query, run_action, run_batch_action
 from modules.config import AREAS, ATTENDANCE_STATUSES
+from modules.utils import convert_df_to_excel
 
 # ==========================================
 # ============ MANAGER VIEW (MANPOWER) =====
@@ -18,6 +19,10 @@ def manager_view_manpower():
         # Optimization: Cache worker list for 10 seconds to avoid reload flicker but keep fresh enough
         workers = run_query("SELECT * FROM workers ORDER BY id DESC", ttl=10)
         
+        if not workers.empty:
+            excel_data = convert_df_to_excel(workers, "Workers")
+            st.download_button("📥 Export Worker List", excel_data, "workers_list.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        
         # Add Worker
         with st.expander("➕ Add New Worker", expanded=True):
             with st.form("add_worker_form", clear_on_submit=True):
@@ -28,8 +33,8 @@ def manager_view_manpower():
                 wr = c3.text_input("Role/Position")
                 wreg = c4.selectbox("Region", AREAS)
                 
-                # Fetch Shifts (Cached: 1 hour)
-                shifts = run_query("SELECT id, name FROM shifts", ttl=3600)
+                # Fetch Shifts (Cached: 10s to reflect updates)
+                shifts = run_query("SELECT id, name FROM shifts", ttl=10)
                 shift_opts = {s['name']: s['id'] for i, s in shifts.iterrows()} if not shifts.empty else {}
                 wshift = c5.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
                 
@@ -232,8 +237,13 @@ def manager_view_manpower():
                         st.caption(f"Attendance for {region}")
                         reg_df = df[df['region'] == region]
                         st.dataframe(reg_df, width="stretch", hide_index=True)
+                        
+                        xl = convert_df_to_excel(reg_df, "Attendance")
+                        st.download_button(f"📥 Export {region} Report", xl, f"attendance_{region}_{report_date}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key=f"dl_{region}")
             else:
                  st.dataframe(df, width="stretch")
+                 xl = convert_df_to_excel(df, "Attendance")
+                 st.download_button("📥 Export Report", xl, f"attendance_{report_date}.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ==========================================
 # ============ SUPERVISOR VIEW (MANPOWER) ==
