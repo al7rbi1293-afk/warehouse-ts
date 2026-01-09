@@ -99,4 +99,25 @@ def init_db():
         # Support for Batch Upsert in Warehouse
         run_action("CREATE TABLE IF NOT EXISTS local_inventory (region TEXT, item_name TEXT, qty INTEGER, last_updated TIMESTAMP, updated_by TEXT);")
         run_action("CREATE UNIQUE INDEX IF NOT EXISTS idx_local_inv_uniq ON local_inventory (region, item_name);")
+        
+        # Stock Logs Table (Fix for UndefinedColumn)
+        run_action("""
+            CREATE TABLE IF NOT EXISTS stock_logs (
+                id SERIAL PRIMARY KEY,
+                log_date TIMESTAMP DEFAULT NOW(),
+                item_name TEXT,
+                change_amount INTEGER,
+                location TEXT,
+                action_by TEXT,
+                action_type TEXT,
+                unit TEXT,
+                new_qty INTEGER,
+                user_name TEXT -- Legacy support
+            );
+        """)
+        # Safe migrations for stock_logs
+        run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS action_by TEXT;")
+        run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS unit TEXT;")
+        run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS new_qty INTEGER;")
+        run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS user_name TEXT;")
     except: pass

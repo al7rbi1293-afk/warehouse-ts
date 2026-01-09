@@ -17,8 +17,8 @@ def update_central_stock(item_name, location, change, user, action_desc, unit):
     try:
         with conn.session as s:
             s.execute(text("UPDATE inventory SET qty = :nq WHERE name_en = :name AND location = :loc"), {"nq": new_qty, "name": item_name, "loc": location})
-            s.execute(text("INSERT INTO stock_logs (log_date, user_name, action_type, item_name, location, change_amount, new_qty) VALUES (NOW(), :u, :act, :item, :loc, :chg, :nq)"),
-                      {"u": user, "act": f"{action_desc} ({unit})", "item": item_name, "loc": location, "chg": change, "nq": new_qty})
+            s.execute(text("INSERT INTO stock_logs (log_date, action_by, action_type, item_name, location, change_amount, new_qty, unit) VALUES (NOW(), :u, :act, :item, :loc, :chg, :nq, :unit)"),
+                      {"u": user, "act": action_desc, "item": item_name, "loc": location, "chg": change, "nq": new_qty, "unit": unit})
             s.commit()
         return True, "Success"
     except Exception as e: return False, str(e)
