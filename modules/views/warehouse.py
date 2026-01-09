@@ -203,7 +203,6 @@ def storekeeper_view():
     t1, t2, t3, t4 = st.tabs([txt['approved_reqs'], "📋 Issued Today", "NTCC Stock Take", "SNC Stock Take"])
     
     with t1: # Bulk Issue
-
         reqs = run_query("SELECT * FROM requests WHERE status='Approved'", ttl=10)
         if reqs.empty: st.info("No tasks")
         else:
