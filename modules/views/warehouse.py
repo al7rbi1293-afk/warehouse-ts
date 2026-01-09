@@ -99,7 +99,8 @@ def manager_view_warehouse():
             st.download_button("📥 Export Loan Logs", convert_df_to_excel(loan_logs, "Loans"), "loan_logs.xlsx")
 
     with tab3: # Requests
-        reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
+        # Cache this query for 10s to avoid instant flicker but reduce load
+        reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC", ttl=10)
         if reqs.empty: st.info("No pending requests")
         else:
             regions = reqs['region'].unique()
@@ -132,24 +133,49 @@ def manager_view_warehouse():
                     )
                     
                     if st.button(f"Process Updates for {region}", key=f"btn_{region}"):
+                        batch_cmds = []
                         count_changes = 0
+                        
+                        # Pre-fetch inventory to avoid queries in loop
+                        # Get all inventory items involved in this batch
+                        inv_items = edited_df['item_name'].unique().tolist()
+                        if inv_items:
+                            # Build a safe query with IN clause or fetch all
+                            # Fetching all NTCC inventory is safer/easier if list is small, or use parameterized IN
+                            stock_data = run_query("SELECT name_en, qty FROM inventory WHERE location='NTCC'", ttl=0)
+                            stock_map = {row['name_en']: row['qty'] for _, row in stock_data.iterrows()}
+                        else:
+                            stock_map = {}
+
                         for index, row in edited_df.iterrows():
                             rid = row['req_id']
                             action = row['Action']
                             new_q = int(row['Mgr Qty'])
                             new_n = row['Mgr Note']
+                            
                             if action == "Approve":
-                                stock = run_query("SELECT qty FROM inventory WHERE name_en=:n AND location='NTCC'", {"n":row['item_name']}, ttl=0)
-                                avail = stock.iloc[0]['qty'] if not stock.empty else 0
+                                avail = stock_map.get(row['item_name'], 0)
                                 if avail >= new_q:
                                     final_note = f"Manager: {new_n}" if new_n else ""
-                                    run_action("UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id", {"q":new_q, "n":final_note, "id":rid})
+                                    batch_cmds.append((
+                                        "UPDATE requests SET status='Approved', qty=:q, notes=:n WHERE req_id=:id",
+                                        {"q":new_q, "n":final_note, "id":rid}
+                                    ))
                                     count_changes += 1
-                                else: st.toast(f"❌ Low Stock for {row['item_name']}. Skipped.", icon="⚠️")
+                                else: 
+                                    st.toast(f"❌ Low Stock for {row['item_name']}. Skipped.", icon="⚠️")
                             elif action == "Reject":
-                                run_action("UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id", {"n":new_n, "id":rid})
+                                batch_cmds.append((
+                                    "UPDATE requests SET status='Rejected', notes=:n WHERE req_id=:id",
+                                    {"n":new_n, "id":rid}
+                                ))
                                 count_changes += 1
-                        if count_changes > 0: st.success(f"Processed {count_changes} requests!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                        
+                        if batch_cmds:
+                            if run_batch_action(batch_cmds):
+                                st.success(f"Processed {count_changes} requests!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                            else:
+                                st.error("Failed to process changes. Please try again.")
 
     with tab4: # Local Inventory
         st.subheader("📊 Branch Inventory (By Area)")
@@ -177,7 +203,8 @@ def storekeeper_view():
     t1, t2, t3, t4 = st.tabs([txt['approved_reqs'], "📋 Issued Today", "NTCC Stock Take", "SNC Stock Take"])
     
     with t1: # Bulk Issue
-        reqs = run_query("SELECT * FROM requests WHERE status='Approved'")
+    with t1: # Bulk Issue
+        reqs = run_query("SELECT * FROM requests WHERE status='Approved'", ttl=10)
         if reqs.empty: st.info("No tasks")
         else:
             regions = reqs['region'].unique()
@@ -207,7 +234,13 @@ def storekeeper_view():
                             hide_index=True, width="stretch"
                         )
                         if st.button(f"Confirm Bulk Issue for {region}", key=f"sk_btn_{region}"):
+                            batch_cmds = []
                             issued_count = 0
+                            
+                            # Prepare logic:
+                            # 1. We need to decrease stock from NTCC (using update_central_stock logic but manual SQL to batch it)
+                            # 2. Update request status
+                            
                             for index, row in edited_sk.iterrows():
                                 if row['Ready to Issue']:
                                     rid = row['req_id']
@@ -215,12 +248,33 @@ def storekeeper_view():
                                     sn = row['SK Note']
                                     existing_note = row['notes'] if row['notes'] else ""
                                     final_note = f"{existing_note} | SK: {sn}" if sn else existing_note
-                                    res, msg = update_central_stock(row['item_name'], "NTCC", -iq, st.session_state.user_info['name'], f"Issued {region}", row['unit'])
-                                    if res:
-                                        run_action("UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id", {"q":iq, "n":final_note, "id":rid})
-                                        issued_count += 1
-                                    else: st.toast(f"Error {row['item_name']}: {msg}", icon="❌")
-                            if issued_count > 0: st.success(f"Issued {issued_count} items!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                                    item = row['item_name']
+                                    unit = row['unit']
+                                    
+                                    # Add Stock Decrease to batch (Manual SQL construction here for performance)
+                                    # Logic from update_central_stock(item, "NTCC", -iq, user, desc, unit)
+                                    # We do simple UPDATE and INSERT LOG
+                                    batch_cmds.append((
+                                        "UPDATE inventory SET qty = qty - :q, last_updated=NOW() WHERE name_en=:n AND location='NTCC'",
+                                        {"q": iq, "n": item}
+                                    ))
+                                    batch_cmds.append((
+                                        "INSERT INTO stock_logs (item_name, change_amount, location, action_by, action_type, unit) VALUES (:n, :c, 'NTCC', :u, :t, :un)",
+                                        {"n": item, "c": -iq, "u": st.session_state.user_info['name'], "t": f"Issued {region}", "un": unit}
+                                    ))
+                                    
+                                    # Add Request Update to batch
+                                    batch_cmds.append((
+                                        "UPDATE requests SET status='Issued', qty=:q, notes=:n WHERE req_id=:id",
+                                        {"q":iq, "n":final_note, "id":rid}
+                                    ))
+                                    issued_count += 1
+                                    
+                            if issued_count > 0:
+                                if run_batch_action(batch_cmds):
+                                    st.success(f"Issued {issued_count} items!"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                                else:
+                                    st.error("Transaction failed.")
 
     with t2: # Issued Today
         st.subheader("📋 Items Issued Today")
@@ -300,15 +354,50 @@ def supervisor_view_warehouse():
             )
             
             if st.button(f"Confirm Receipt for {selected_region_wh}", key=f"btn_rec_{selected_region_wh}"):
+                batch_cmds = []
                 rec_count = 0
+                
+                # Fetch current local inventory for this region to construct updates
+                # OR use UPSERT (Insert on conflict update) if supported by DB (Postgres supports it)
+                # For simplicity/safety, we'll assume item exists or we insert it. 
+                # Faster: Just run UPSERTs in batch.
+                
                 for index, row in edited_ready.iterrows():
                     if row['Confirm']:
-                        run_action("UPDATE requests SET status='Received' WHERE req_id=:id", {"id":row['req_id']})
-                        current_local_qty = get_local_inventory_by_item(selected_region_wh, row['item_name'])
-                        new_total_qty = current_local_qty + int(row['qty'])
-                        update_local_inventory(selected_region_wh, row['item_name'], new_total_qty, user['name'])
+                        rid = row['req_id']
+                        item = row['item_name']
+                        qty = int(row['qty'])
+                        
+                        # 1. Update Request
+                        batch_cmds.append(("UPDATE requests SET status='Received' WHERE req_id=:id", {"id":rid}))
+                        
+                        # 2. Upsert Local Inventory
+                        # Postgres Upsert syntax: INSERT ... ON CONFLICT (name_en, region) DO UPDATE SET ...
+                        # Assuming table has unique constraint on (region, item_name)
+                        # If not, we might fail or duplicate. Let's start with standard UPDATE/INSERT logic inside batch? 
+                        # SQLAlchmey text() allows complex scripts but standard SQL is better.
+                        # Let's rely on `local_inventory` having a constraint or index.
+                        # If no constraint, we might need PL/SQL or multiple queries.
+                        # SAFE WAY: "INSERT INTO ... ON CONFLICT (item_name, region) DO UPDATE SET qty = local_inventory.qty + :q, last_updated=NOW(), updated_by=:u"
+                        # We need to make sure `local_inventory` has that constraint. 
+                        # If we are unsure, we can try to update, if rowcount=0, insert. 
+                        # But session.execute returns resultProxy.
+                        
+                        # Let's use the explicit UPSERT which is standard in Postgres 9.5+
+                        upsert_sql = """
+                        INSERT INTO local_inventory (region, item_name, qty, last_updated, updated_by) 
+                        VALUES (:r, :i, :q, NOW(), :u)
+                        ON CONFLICT (region, item_name) 
+                        DO UPDATE SET qty = local_inventory.qty + :q, last_updated=NOW(), updated_by=:u;
+                        """
+                        batch_cmds.append((upsert_sql, {"r":selected_region_wh, "i":item, "q":qty, "u":user['name']}))
+                        
                         rec_count += 1
-                if rec_count > 0: st.balloons(); st.success(f"Received {rec_count} items."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                        
+                if rec_count > 0:
+                     if run_batch_action(batch_cmds):
+                        st.balloons(); st.success(f"Received {rec_count} items."); st.cache_data.clear(); time.sleep(1); st.rerun()
+                     else: st.error("Failed to process receipt.")
 
     with t3: # Edit Pending
         pending = run_query("SELECT req_id, item_name, qty, unit, request_date FROM requests WHERE supervisor_name=:s AND status='Pending' AND region=:r ORDER BY request_date DESC", 
