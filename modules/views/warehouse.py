@@ -101,20 +101,12 @@ def manager_view_warehouse():
     elif view_option == "⏳ Bulk Review": # Requests
         # Cache this query for 10s to avoid instant flicker but reduce load
         reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC", ttl=0)
-        if reqs.empty: st.info("No pending requests")
-        else:
-                            
-                            if batch_cmds:
-                                if run_batch_action(batch_cmds):
-                                    st.success(f"Processed {count_changes} requests!"); time.sleep(1); st.rerun()
-                                else:
-                                    st.error("Failed to process changes. Please try again.")
 
-    @st.fragment
-    def render_manager_bulk_review(requests_df):
-         regions = requests_df['region'].unique()
-         region_tabs = st.tabs(list(regions))
-         for i, region in enumerate(regions):
+        @st.fragment
+        def render_manager_bulk_review(requests_df):
+            regions = requests_df['region'].unique()
+            region_tabs = st.tabs(list(regions))
+            for i, region in enumerate(regions):
                 with region_tabs[i]:
                     st.markdown("##### ⚡ Global Actions")
                     bulk_action = st.radio(f"Apply to {region}:", ["Maintain Status", "Approve All", "Reject All"], key=f"bulk_{region}", horizontal=True)
@@ -184,8 +176,8 @@ def manager_view_warehouse():
                                 else:
                                     st.error("Failed to process changes. Please try again.")
     
-    if reqs.empty: st.info("No pending requests")
-    else: render_manager_bulk_review(reqs)
+        if reqs.empty: st.info("No pending requests")
+        else: render_manager_bulk_review(reqs)
 
     elif view_option == txt['local_inv']: # Local Inventory
         st.subheader("📊 Branch Inventory (By Area)")
