@@ -1,4 +1,4 @@
 streamlit
 pandas
 sqlalchemy
-psycopg2-binarylotly
+psycopg2-binarplotly
