@@ -16,8 +16,9 @@ conn = get_connection()
 def run_query(query, params=None, ttl=None):
     try: 
         # Caching strategy: if ttl is NOT provided, it might default to strict cache.
-        # We explicitly map None -> default streamlist cache behavior for static data
-        return conn.query(query, params=params, ttl=ttl)
+        # Ensure query is wrapped in text() if not already, though st.connection.query often handles strings.
+        # But for safety and consistency with run_action:
+        return conn.query(text(query) if isinstance(query, str) else query, params=params, ttl=ttl)
     except Exception as e: 
         st.error(f"DB Error: {e}")
         return pd.DataFrame()
@@ -25,7 +26,7 @@ def run_query(query, params=None, ttl=None):
 def run_action(query, params=None):
     try:
         with conn.session as session:
-            session.execute(text(query), params)
+            session.execute(text(query) if isinstance(query, str) else query, params)
             session.commit()
         return True
     except Exception as e: 

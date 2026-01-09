@@ -1,5 +1,5 @@
-
 import streamlit as st
+import time
 from modules.database import init_db
 from modules.auth import login_user, register_user, update_user_profile_full
 from modules.utils import setup_styles, show_footer
@@ -87,18 +87,14 @@ def show_main_app():
         new_p = st.text_input(txt['new_pass'], type="password", help="Leave empty to keep current password")
         
         if st.button(txt['save_changes'], use_container_width=True):
-            # If new_p is empty, use old password from session state (which is hashed or plain? wait)
-            # update_user_profile_full expects a new password to hash.
-            # If the user leaves it empty, we should probably handle that.
-            # However, the original code pre-filled it. 
-            # In the new secure world, we might not want to pre-fill the hashed password.
-            # Use current password if input is empty
             p_to_save = new_p if new_p else info['password']
             
-            res, msg = update_user_profile_full(info['username'], new_u, new_n, p_to_save)
+            res, msg = update_user_profile_full(info['username'], new_u, new_n, p_to_save, info['password'])
             if res:
                 st.success(msg)
+                time.sleep(1)
                 st.session_state.logged_in = False
+                st.session_state.user_info = {}
                 st.cache_data.clear()
                 st.rerun()
             else: st.error(msg)

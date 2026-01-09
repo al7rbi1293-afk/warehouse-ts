@@ -55,14 +55,19 @@ def register_user(username, password, name, region):
         return run_action("INSERT INTO users (username, password, name, role, region) VALUES (:u, :p, :n, 'supervisor', :r)",
                           params={"u": username, "p": hashed_pw, "n": name, "r": region})
 
-def update_user_profile_full(old_username, new_username, new_name, new_pass):
+def update_user_profile_full(old_username, new_username, new_name, new_pass, current_hashed_pass):
     # Check if username changes and if it's taken
     if new_username != old_username:
         if not run_query("SELECT username FROM users WHERE username = :u", params={"u": new_username}, ttl=0).empty:
             return False, "Username taken!"
             
-    # Hash the new password
-    hashed_pw = hash_password(new_pass)
+    # Hash the new password if it's different from the current one (which is should be if it's new plain text)
+    # However, the UI passes the old hash if empty. We only hash if it's NOT the old hash.
+    if new_pass != current_hashed_pass:
+        final_pass = hash_password(new_pass)
+    else:
+        final_pass = current_hashed_pass
     
-    return run_action("UPDATE users SET username = :nu, name = :nn, password = :np WHERE username = :ou",
-                      {"nu": new_username, "nn": new_name, "np": hashed_pw, "ou": old_username}), "Updated"
+    success = run_action("UPDATE users SET username = :nu, name = :nn, password = :np WHERE username = :ou",
+                       {"nu": new_username, "nn": new_name, "np": final_pass, "ou": old_username})
+    return success, "Updated" if success else "Update failed"

@@ -171,58 +171,51 @@ def manager_view_manpower():
             st.data_editor(shifts, key="shift_editor", disabled=["id"], hide_index=True, width="stretch")
             
     with tab4: # Supervisors
-        st.subheader("📍 Supervisor Region Assignment")
-        # Fetch only supervisors
-        supervisors = run_query("SELECT username, name, region FROM users WHERE role = 'supervisor' ORDER BY name")
+        st.subheader("📍 Supervisor Management")
+        # Fetch all users who are not managers
+        supervisors = run_query("SELECT username, name, region, role, shift_id FROM users WHERE role != 'manager' ORDER BY name")
         
         if supervisors.empty:
-            st.info("No supervisors found.")
+            st.info("No supervisors/staff found.")
         else:
-            # We cannot easily edit a multi-select in a data_editor yet for complex strings like "A,B".
-            # So we will use a loop with expanders or a selection to edit one by one.
-            
-            # Option 1: Select a supervisor to edit
-            sup_list = supervisors['username'].tolist()
-            selected_sup_u = st.selectbox("Select Supervisor to Edit", sup_list, format_func=lambda x: f"{x} - {supervisors[supervisors['username']==x].iloc[0]['name']}")
+            selected_sup_u = st.selectbox("Select Staff to Edit", supervisors['username'].tolist(), 
+                                         format_func=lambda x: f"{x} - {supervisors[supervisors['username']==x].iloc[0]['name']} ({supervisors[supervisors['username']==x].iloc[0]['role']})")
             
             if selected_sup_u:
                 current_row = supervisors[supervisors['username'] == selected_sup_u].iloc[0]
                 
                 with st.form("update_sup_form"):
+                    col1, col2 = st.columns(2)
+                    
                     # Region Editing
                     current_regions_str = current_row['region'] if current_row['region'] else ""
                     current_regions_list = current_regions_str.split(",") if current_regions_str else []
                     valid_defaults = [r for r in current_regions_list if r in AREAS]
-                    new_regions = st.multiselect(f"Assign Regions for {current_row['name']}", AREAS, default=valid_defaults)
+                    new_regions = col1.multiselect(f"Assign Regions", AREAS, default=valid_defaults)
                     
-                    # Shift Editing (New)
-                    shifts = run_query("SELECT id, name FROM shifts")
-                    # We need to fetch current shift for user. Query above didn't get it.
-                    # Let's re-fetch full user row.
-                    u_full = run_query("SELECT shift_id, role FROM users WHERE username = :u", {"u":selected_sup_u}).iloc[0]
-                    
-                    s_opts = {s['name']: s['id'] for i, s in shifts.iterrows()}
-                    cur_s_id = u_full['shift_id']
-                    # Create reverse lookup or find name
-                    cur_s_name = next((k for k, v in s_opts.items() if v == cur_s_id), None)
-                    idx = list(s_opts.keys()).index(cur_s_name) if cur_s_name in s_opts else 0
-                    
-                    new_shift_name = st.selectbox("Assign Shift", list(s_opts.keys()), index=idx if s_opts else 0)
-                    
-                    # Role Editing (To allow changing to Night Supervisor)
+                    # Role Editing
                     roles = ["supervisor", "storekeeper", "night_supervisor"]
-                    cur_role = u_full['role']
-                    new_role = st.selectbox("Assign Role", roles, index=roles.index(cur_role) if cur_role in roles else 0)
+                    cur_role = current_row['role']
+                    new_role = col2.selectbox("Assign Role", roles, index=roles.index(cur_role) if cur_role in roles else 0)
 
-                    if st.form_submit_button("Update Supervisor Profile"):
+                    # Shift Editing
+                    shifts_ref = run_query("SELECT id, name FROM shifts")
+                    s_opts = {s['name']: s['id'] for i, s in shifts_ref.iterrows()}
+                    cur_s_id = current_row['shift_id']
+                    cur_s_name = next((k for k, v in s_opts.items() if v == cur_s_id), None)
+                    s_names = list(s_opts.keys())
+                    idx = s_names.index(cur_s_name) if cur_s_name in s_names else 0
+                    new_shift_name = st.selectbox("Assign Shift", s_names, index=idx if s_names else 0)
+
+                    if st.form_submit_button("Update Profile", use_container_width=True):
                         new_reg_str = ",".join(new_regions)
                         new_sid = s_opts.get(new_shift_name)
-                        run_action("UPDATE users SET region=:r, shift_id=:sid, role=:role WHERE username=:u", 
-                                {"r": new_reg_str, "sid":new_sid, "role":new_role, "u": selected_sup_u})
-                        st.success(f"Updated {current_row['name']}"); st.cache_data.clear(); time.sleep(1); st.rerun()
+                        if run_action("UPDATE users SET region=:r, shift_id=:sid, role=:role WHERE username=:u", 
+                                  {"r": new_reg_str, "sid":new_sid, "role":new_role, "u": selected_sup_u}):
+                            st.success(f"Updated {current_row['name']}"); st.cache_data.clear(); time.sleep(1); st.rerun()
             
             st.divider()
-            st.dataframe(supervisors, width="stretch")
+            st.dataframe(supervisors[['username', 'name', 'role', 'region']], width="stretch", hide_index=True)
 
     with tab1: # Reports
         st.subheader("📊 Daily Attendance Report")
