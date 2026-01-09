@@ -87,6 +87,7 @@ def init_db():
         run_action("ALTER TABLE workers ADD COLUMN IF NOT EXISTS shift_id INTEGER;")
         run_action("ALTER TABLE users ADD COLUMN IF NOT EXISTS shift_id INTEGER;")
         run_action("ALTER TABLE workers ADD COLUMN IF NOT EXISTS emp_id TEXT;") # Add EMP ID
+        run_action("ALTER TABLE inventory ADD COLUMN IF NOT EXISTS last_updated TIMESTAMP DEFAULT NOW();") # Fix for UndefinedColumn error
         
         # Performance Indexes
         run_action("CREATE INDEX IF NOT EXISTS idx_inv_loc ON inventory(location);")
