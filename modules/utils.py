@@ -10,7 +10,23 @@ def convert_df_to_excel(df, sheet_name="Sheet1"):
     
     # Remove timezone information from datetime columns to prevent Excel errors
     for col in df_export.columns:
-        if pd.api.types.is_datetime64_any_dtype(df_export[col]):
+        # robustly convert datetime properties
+        is_datetime = pd.api.types.is_datetime64_any_dtype(df_export[col])
+        is_object = df_export[col].dtype == 'object'
+        
+        if is_object:
+            try:
+                # Attempt to convert object cols that might be datetimes
+                # We check the first non-null value
+                first_valid = df_export[col].dropna().iloc[0] if not df_export[col].dropna().empty else None
+                from datetime import datetime
+                if isinstance(first_valid, datetime):
+                     df_export[col] = pd.to_datetime(df_export[col])
+                     is_datetime = True
+            except:
+                pass
+
+        if is_datetime:
             try:
                 if df_export[col].dt.tz is not None:
                     df_export[col] = df_export[col].dt.tz_localize(None)
