@@ -27,7 +27,7 @@ def manager_view_warehouse():
                 q = c4.number_input("Qty", 0, 10000)
                 u = st.selectbox("Unit", ["Piece", "Carton", "Set"])
                 if st.form_submit_button(txt['create_btn'], use_container_width=True):
-                    if n and run_query("SELECT id FROM inventory WHERE name_en=:n AND location=:l", {"n":n, "l":l}, ttl=0).empty:
+                    if n and run_query("SELECT id FROM inventory WHERE name_en=:n AND location=:l", {"n":n, "l":l}).empty:
                         run_action("INSERT INTO inventory (name_en, category, unit, location, qty, status) VALUES (:n, :c, :u, :l, :q, 'Available')",
                                   {"n":n, "c":c, "u":u, "l":l, "q":int(q)})
                         st.toast("Item Added Successfully!", icon="📦")
@@ -101,7 +101,7 @@ def manager_view_warehouse():
 
     elif view_option == "⏳ Bulk Review": # Requests
         # Cache this query for 10s to avoid instant flicker but reduce load
-        reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC", ttl=0)
+        reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
 
         @st.fragment
         def render_manager_bulk_review(requests_df):
@@ -142,7 +142,7 @@ def manager_view_warehouse():
                             # Pre-fetch inventory to avoid queries in loop
                             inv_items = edited_df['item_name'].unique().tolist()
                             if inv_items:
-                                stock_data = run_query("SELECT name_en, qty FROM inventory WHERE location='NTCC'", ttl=0)
+                                stock_data = run_query("SELECT name_en, qty FROM inventory WHERE location='NTCC'")
                                 stock_map = {row['name_en']: row['qty'] for _, row in stock_data.iterrows()}
                             else:
                                 stock_map = {}
@@ -183,7 +183,7 @@ def manager_view_warehouse():
     elif view_option == txt['local_inv']: # Local Inventory
         st.subheader("📊 Branch Inventory (By Area)")
         # Optimization: Fetch ALL local inventory in one query
-        all_local = run_query("SELECT region, item_name, qty, last_updated, updated_by FROM local_inventory ORDER BY region, item_name", ttl=0)
+        all_local = run_query("SELECT region, item_name, qty, last_updated, updated_by FROM local_inventory ORDER BY region, item_name")
         
         m_tabs = st.tabs(AREAS)
         for i, area in enumerate(AREAS):
@@ -196,7 +196,7 @@ def manager_view_warehouse():
                     st.download_button(f"📥 Export {area} Inv", convert_df_to_excel(df, area), f"{area}_inv.xlsx", key=f"dl_loc_{area}")
 
     elif view_option == "📜 Logs": # Logs
-        logs = run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 500", ttl=0)
+        logs = run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 500")
         st.dataframe(logs, width="stretch")
         if not logs.empty:
             st.download_button("📥 Export Stock Logs", convert_df_to_excel(logs, "StockLogs"), "stock_logs.xlsx")
@@ -211,7 +211,7 @@ def storekeeper_view():
     
     if view_option == txt['approved_reqs']: # Bulk Issue
         # Optimized Query: Select only needed columns
-        reqs = run_query("SELECT req_id, region, item_name, qty, unit, notes, status FROM requests WHERE status='Approved'", ttl=0)
+        reqs = run_query("SELECT req_id, region, item_name, qty, unit, notes, status FROM requests WHERE status='Approved'")
         
         @st.fragment
         def render_storekeeper_bulk_issue(reqs_df):
@@ -282,7 +282,7 @@ def storekeeper_view():
 
     elif view_option == "📋 Issued Today": # Issued Today
         st.subheader("📋 Items Issued Today")
-        today_log = run_query("""SELECT item_name, qty, unit, region, supervisor_name, notes, request_date FROM requests WHERE status IN ('Issued', 'Received') AND request_date::date = CURRENT_DATE ORDER BY request_date DESC""", ttl=0)
+        today_log = run_query("""SELECT item_name, qty, unit, region, supervisor_name, notes, request_date FROM requests WHERE status IN ('Issued', 'Received') AND request_date::date = CURRENT_DATE ORDER BY request_date DESC""")
         if today_log.empty: st.info("Nothing issued today yet.")
         else: st.dataframe(today_log, width="stretch")
 
@@ -345,7 +345,7 @@ def supervisor_view_warehouse():
 
     elif view_option == "🚚 Ready for Pickup": # Ready for Pickup
         # Filter by region as well
-        ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued' AND region=:r", {"s": user['name'], "r": selected_region_wh}, ttl=0)
+        ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued' AND region=:r", {"s": user['name'], "r": selected_region_wh})
         if ready.empty: st.info(f"No items ready for pickup in {selected_region_wh}.")
         else:
              # Just show the list for this region
@@ -398,7 +398,7 @@ def supervisor_view_warehouse():
 
     elif view_option == "⏳ My Pending": # Edit Pending
         pending = run_query("SELECT req_id, item_name, qty, unit, request_date FROM requests WHERE supervisor_name=:s AND status='Pending' AND region=:r ORDER BY request_date DESC", 
-                            {"s": user['name'], "r": selected_region_wh}, ttl=0)
+                            {"s": user['name'], "r": selected_region_wh})
         if pending.empty: st.info(f"No pending requests for {selected_region_wh}.")
         else:
             # Same logic but filtered
@@ -436,7 +436,7 @@ def supervisor_view_warehouse():
 
     elif view_option == txt['local_inv']: # Local Inventory
         st.info(f"Update Local Inventory for {selected_region_wh}")
-        local_inv = run_query("SELECT item_name, qty FROM local_inventory WHERE region=:r AND updated_by=:u", {"r":selected_region_wh, "u":user['name']}, ttl=0)
+        local_inv = run_query("SELECT item_name, qty FROM local_inventory WHERE region=:r AND updated_by=:u", {"r":selected_region_wh, "u":user['name']})
         
         if local_inv.empty:
             st.warning(f"No inventory record found for {selected_region_wh}.")

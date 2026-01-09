@@ -13,11 +13,10 @@ def get_connection():
 
 conn = get_connection()
 
-def run_query(query, params=None, ttl=None):
+def run_query(query, params=None, ttl=600):
     try: 
-        # Caching strategy: if ttl is NOT provided, it might default to strict cache.
-        # Ensure query is wrapped in text() if not already, though st.connection.query often handles strings.
-        # But for safety and consistency with run_action:
+        # Caching strategy: Default strict cache (10 mins) for extreme speed.
+        # Writes will auto-invalidate via st.cache_data.clear()
         return conn.query(query, params=params, ttl=ttl)
     except Exception as e: 
         st.error(f"DB Error: {e}")
@@ -28,6 +27,7 @@ def run_action(query, params=None):
         with conn.session as session:
             session.execute(text(query) if isinstance(query, str) else query, params)
             session.commit()
+            st.cache_data.clear() # Auto-invalidate cache on write
         return True
     except Exception as e: 
         st.error(f"DB Action Error: {e}")
@@ -44,6 +44,7 @@ def run_batch_action(actions):
                 for q, p in actions:
                     session.execute(text(q), p)
                 session.commit()
+                st.cache_data.clear() # Auto-invalidate cache on batch write
             return True
     except Exception as e: st.error(f"Batch DB Error: {e}"); return False
 

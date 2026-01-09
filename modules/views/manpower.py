@@ -23,7 +23,7 @@ def manager_view_manpower():
             FROM workers w 
             LEFT JOIN shifts s ON w.shift_id = s.id 
             ORDER BY w.id DESC
-        """, ttl=10)
+        """)
         
         if not workers.empty:
             excel_data = convert_df_to_excel(workers, "Workers")
@@ -42,7 +42,7 @@ def manager_view_manpower():
                     wreg = c4.selectbox("Region", AREAS)
                     
                     # Fetch Shifts (Cached: 10s to reflect updates)
-                    shifts_ref = run_query("SELECT id, name FROM shifts", ttl=10)
+                    shifts_ref = run_query("SELECT id, name FROM shifts")
                     shift_opts = {s['name']: s['id'] for i, s in shifts_ref.iterrows()} if not shifts_ref.empty else {}
                     wshift = c5.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
                     
@@ -68,7 +68,7 @@ def manager_view_manpower():
             
             # Prepare empty template
             # Re-use shifts_ref from above or fetch again
-            shifts_ref = run_query("SELECT id, name FROM shifts", ttl=10)
+            shifts_ref = run_query("SELECT id, name FROM shifts")
             shift_opts = {s['name']: s['id'] for i, s in shifts_ref.iterrows()} if not shifts_ref.empty else {}
             shift_names = list(shift_opts.keys())
             
@@ -152,7 +152,7 @@ def manager_view_manpower():
 
     with tab3: # Shifts
         st.subheader("⏰ Shift Management (Duty Roster)")
-        shifts = run_query("SELECT * FROM shifts ORDER BY id", ttl=0) # Real-time here as we might benefit from instant updates during editing
+        shifts = run_query("SELECT * FROM shifts ORDER BY id") # Real-time here as we might benefit from instant updates during editing
         
         with st.expander("➕ Add New Shift"):
             with st.form("add_shift_form", clear_on_submit=True):
@@ -314,7 +314,7 @@ def supervisor_view_manpower():
         
         # 1. Get Workers in Region AND Target Shift
         workers = run_query("SELECT id, name, role, status FROM workers WHERE region = :r AND shift_id = :sid AND status = 'Active' ORDER BY name", 
-                            params={"r": selected_region_mp, "sid": target_shift_id}, ttl=60)
+                            params={"r": selected_region_mp, "sid": target_shift_id})
         
         if workers.empty:
             st.info(f"No active workers found in {selected_region_mp} for {target_shift_name} Shift.")
