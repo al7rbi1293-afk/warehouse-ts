@@ -9,7 +9,7 @@ from modules.views.manpower import manager_view_manpower, supervisor_view_manpow
 from modules.views.dashboard import manager_dashboard
 
 # --- 1. Page Setup & Styling ---
-st.set_page_config(page_title="NSTC Management", layout="wide", initial_sidebar_state="expanded", page_icon="🏗️")
+st.set_page_config(page_title="NSTC Management", layout="wide", initial_sidebar_state="expanded", page_icon="�")
 setup_styles()
 
 # --- 2. Session Management ---
