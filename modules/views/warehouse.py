@@ -34,7 +34,7 @@ def manager_view_warehouse():
                         st.toast("Item Added Successfully!", icon="📦")
                         st.rerun()
                     else: st.error("Exists")
-                    else: st.error("Exists")
+
         
         with st.expander("🔄 Internal Stock Transfer (SNC ➡️ NSTC)", expanded=False):
             st.caption("Pull stock from SNC warehouse to NSTC warehouse.")
