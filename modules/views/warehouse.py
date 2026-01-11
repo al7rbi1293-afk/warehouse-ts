@@ -40,7 +40,6 @@ def manager_view_warehouse():
             st.caption("Pull stock from SNC warehouse to NSTC warehouse.")
             snc_inv = get_inventory("SNC")
             if not snc_inv.empty:
-            if not snc_inv.empty:
                  # Prepare for bulk editor
                 transfer_df = snc_inv[['name_en', 'category', 'qty', 'unit']].copy()
                 transfer_df.rename(columns={'name_en': 'Item Name', 'qty': 'Available Qty'}, inplace=True)
