@@ -40,26 +40,57 @@ def manager_view_warehouse():
             st.caption("Pull stock from SNC warehouse to NSTC warehouse.")
             snc_inv = get_inventory("SNC")
             if not snc_inv.empty:
+            if not snc_inv.empty:
+                 # Prepare for bulk editor
+                transfer_df = snc_inv[['name_en', 'category', 'qty', 'unit']].copy()
+                transfer_df.rename(columns={'name_en': 'Item Name', 'qty': 'Available Qty'}, inplace=True)
+                transfer_df['Transfer Qty'] = 0
+
                 with st.form("internal_transfer_form"):
-                    c1, c2 = st.columns([3, 1])
-                    t_item = c1.selectbox("Select Item from SNC", snc_inv['name_en'].unique())
-                    t_qty = c2.number_input("Transfer Qty", 1, 10000)
+                    edited_transfer = st.data_editor(
+                        transfer_df,
+                        key="transfer_editor_snc_nstc",
+                        column_config={
+                            "Item Name": st.column_config.TextColumn(disabled=True),
+                            "category": st.column_config.TextColumn(disabled=True),
+                            "unit": st.column_config.TextColumn(disabled=True),
+                            "Available Qty": st.column_config.NumberColumn(disabled=True),
+                            "Transfer Qty": st.column_config.NumberColumn(min_value=0, max_value=10000, required=True)
+                        },
+                        hide_index=True, width="stretch", height=400
+                    )
                     
-                    if st.form_submit_button("Execute Transfer", use_container_width=True):
-                         # Get item unit
-                        row = snc_inv[snc_inv['name_en'] == t_item].iloc[0]
-                        current_snc_qty = row['qty']
+                    if st.form_submit_button("Execute Bulk Transfer", use_container_width=True):
+                        # Process items with Transfer Qty > 0
+                        items_to_transfer = edited_transfer[edited_transfer['Transfer Qty'] > 0]
                         
-                        if t_qty <= current_snc_qty:
-                            res, msg = transfer_stock(t_item, t_qty, st.session_state.user_info['name'], row['unit'])
-                            if res: 
+                        if items_to_transfer.empty:
+                            st.warning("Please enter quantity for at least one item.")
+                        else:
+                            success_count = 0
+                            fail_count = 0
+                            
+                            for index, row in items_to_transfer.iterrows():
+                                t_item = row['Item Name']
+                                t_qty = int(row['Transfer Qty'])
+                                avail_qty = int(row['Available Qty'])
+                                unit = row['unit']
+                                
+                                if t_qty <= avail_qty:
+                                    res, msg = transfer_stock(t_item, t_qty, st.session_state.user_info['name'], unit)
+                                    if res: success_count += 1
+                                    else: fail_count += 1
+                                else:
+                                    st.error(f"❌ '{t_item}': Request {t_qty} > Available {avail_qty}")
+                                    fail_count += 1
+                            
+                            if success_count > 0:
                                 st.balloons()
-                                st.success(f"Transferred {t_qty} of {t_item} from SNC to NSTC")
+                                st.success(f"Successfully transferred {success_count} items!")
                                 time.sleep(1)
                                 st.rerun()
-                            else: st.error(msg)
-                        else:
-                            st.error(f"Insufficient stock in SNC. Available: {current_snc_qty}")
+                            if fail_count > 0:
+                                st.warning(f"Failed to transfer {fail_count} items. Check errors above.")
             else:
                 st.info("SNC Inventory is empty.")
 
