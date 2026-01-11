@@ -346,7 +346,7 @@ def supervisor_view_warehouse():
 
     elif view_option == "🚚 Ready for Pickup": # Ready for Pickup
         # Filter by region as well
-        ready = run_query("SELECT * FROM requests WHERE supervisor_name=:s AND status='Issued' AND region=:r", {"s": user['name'], "r": selected_region_wh})
+        ready = run_query("SELECT req_id, item_name, qty, unit, notes FROM requests WHERE supervisor_name=:s AND status='Issued' AND region=:r", {"s": user['name'], "r": selected_region_wh})
         if ready.empty: st.info(f"No items ready for pickup in {selected_region_wh}.")
         else:
              # Just show the list for this region

@@ -6,10 +6,11 @@ from modules.database import run_query, run_action, conn
 
 def get_inventory(location):
     # Optimization: Cache inventory for short duration (10s) to balance freshness and speed
-    return run_query("SELECT * FROM inventory WHERE location = :loc ORDER BY name_en", params={"loc": location}, ttl=0)
+    return run_query("SELECT name_en, category, unit, qty, location, status FROM inventory WHERE location = :loc ORDER BY name_en", params={"loc": location}, ttl=600)
 
 def update_central_stock(item_name, location, change, user, action_desc, unit):
     change = int(change)
+    # Use 0 TTL for writes/checks to ensure consistency
     df = run_query("SELECT qty FROM inventory WHERE name_en = :name AND location = :loc", params={"name": item_name, "loc": location}, ttl=0)
     if df.empty: return False, "Item not found"
     current_qty = int(df.iloc[0]['qty'])
@@ -82,5 +83,6 @@ def delete_request(req_id):
     return run_action("DELETE FROM requests WHERE req_id = :id", params={"id": req_id})
 
 def get_local_inventory_by_item(region, item_name):
-    df = run_query("SELECT qty FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name}, ttl=0)
+    # Optimizing read-heavy view
+    df = run_query("SELECT qty FROM local_inventory WHERE region = :r AND item_name = :i", params={"r": region, "i": item_name}, ttl=600)
     return int(df.iloc[0]['qty']) if not df.empty else 0
