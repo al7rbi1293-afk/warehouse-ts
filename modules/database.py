@@ -49,6 +49,50 @@ def run_batch_action(actions):
     except Exception as e: st.error(f"Batch DB Error: {e}"); return False
 
 def init_db():
+    # Users Table
+    run_action("""
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL,
+            name TEXT,
+            role TEXT,
+            region TEXT,
+            shift_id INTEGER,
+            created_at TIMESTAMP DEFAULT NOW()
+        );
+    """)
+
+    # Inventory Table
+    run_action("""
+        CREATE TABLE IF NOT EXISTS inventory (
+            id SERIAL PRIMARY KEY,
+            name_en TEXT NOT NULL,
+            category TEXT,
+            unit TEXT,
+            qty INTEGER DEFAULT 0,
+            location TEXT NOT NULL,
+            status TEXT,
+            last_updated TIMESTAMP DEFAULT NOW(),
+            UNIQUE(name_en, location)
+        );
+    """)
+
+    # Requests Table
+    run_action("""
+        CREATE TABLE IF NOT EXISTS requests (
+            req_id SERIAL PRIMARY KEY,
+            supervisor_name TEXT,
+            region TEXT,
+            item_name TEXT,
+            category TEXT,
+            qty INTEGER,
+            unit TEXT,
+            status TEXT,
+            request_date TIMESTAMP DEFAULT NOW(),
+            notes TEXT
+        );
+    """)
+
     # Workers Table
     run_action("""
         CREATE TABLE IF NOT EXISTS workers (
