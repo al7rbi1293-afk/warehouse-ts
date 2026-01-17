@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
-from modules.database import run_query, run_action, conn
+from modules.database import run_query, run_action, get_connection
 
 def get_inventory(location):
     # Optimization: Cache inventory for short duration (10s) to balance freshness and speed
@@ -15,6 +15,10 @@ def update_central_stock(item_name, location, change, user, action_desc, unit):
     if df.empty: return False, "Item not found"
     current_qty = int(df.iloc[0]['qty'])
     new_qty = current_qty + change
+    
+    conn = get_connection()
+    if not conn: return False, "Database connection failed"
+    
     try:
         with conn.session as s:
             s.execute(text("UPDATE inventory SET qty = :nq WHERE name_en = :name AND location = :loc"), {"nq": new_qty, "name": item_name, "loc": location})
