@@ -128,6 +128,7 @@ def show_main_app():
         elif is_night_shift: supervisor_view_manpower()
         else: supervisor_view_manpower()
     
+    st.sidebar.caption("v1.2 - Schema Fix Applied (Check DB)")
     show_footer()
 
 if __name__ == "__main__":
