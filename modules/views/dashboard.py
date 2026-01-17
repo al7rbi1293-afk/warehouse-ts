@@ -5,6 +5,7 @@ import plotly.express as px
 from modules.database import run_query
 from modules.config import AREAS
 
+@st.fragment
 def manager_dashboard():
     st.header("📊 Executive Dashboard")
     

@@ -21,6 +21,7 @@ if 'active_module' not in st.session_state:
 
 # --- 3. Main Application Views ---
 
+@st.fragment
 def show_login():
     st.title(f"🔐 {txt['app_title']}")
     show_footer()
@@ -81,23 +82,26 @@ def show_main_app():
         st.rerun()
     
     with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
-        new_u = st.text_input(txt['username'], value=info['username'])
-        new_n = st.text_input(txt['new_name'], value=info['name'])
-        # Password field empty by default for security focus in updates
-        new_p = st.text_input(txt['new_pass'], type="password", help="Leave empty to keep current password")
-        
-        if st.button(txt['save_changes'], use_container_width=True):
-            p_to_save = new_p if new_p else info['password']
+        @st.fragment
+        def render_profile_editor(current_info):
+            new_u = st.text_input(txt['username'], value=current_info['username'])
+            new_n = st.text_input(txt['new_name'], value=current_info['name'])
+            # Password field empty by default for security focus in updates
+            new_p = st.text_input(txt['new_pass'], type="password", help="Leave empty to keep current password")
             
-            res, msg = update_user_profile_full(info['username'], new_u, new_n, p_to_save, info['password'])
-            if res:
-                st.success(msg)
-                time.sleep(1)
-                st.session_state.logged_in = False
-                st.session_state.user_info = {}
-                st.cache_data.clear()
-                st.rerun()
-            else: st.error(msg)
+            if st.button(txt['save_changes'], use_container_width=True):
+                p_to_save = new_p if new_p else current_info['password']
+                
+                res, msg = update_user_profile_full(current_info['username'], new_u, new_n, p_to_save, current_info['password'])
+                if res:
+                    st.success(msg)
+                    time.sleep(1)
+                    st.session_state.logged_in = False
+                    st.session_state.user_info = {}
+                    st.cache_data.clear()
+                    st.rerun()
+                else: st.error(msg)
+        render_profile_editor(info)
 
     if st.sidebar.button(txt['logout'], use_container_width=True):
         st.session_state.logged_in = False

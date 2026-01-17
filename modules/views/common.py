@@ -3,6 +3,7 @@ import streamlit as st
 import time
 from modules.inventory_logic import get_inventory, update_central_stock
 
+@st.fragment
 def render_bulk_stock_take(location, user_name, key_prefix):
     inv = get_inventory(location)
     if inv.empty:
