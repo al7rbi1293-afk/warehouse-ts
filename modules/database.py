@@ -42,6 +42,16 @@ def run_action(query, params=None):
         st.error(f"DB Action Error: {e}")
         return False
 
+def log_audit(user_name: str, action: str, details: str = None, module: str = None):
+    """Log user action to audit_logs table for tracking."""
+    try:
+        run_action(
+            "INSERT INTO audit_logs (user_name, action, details, module) VALUES (:u, :a, :d, :m)",
+            {"u": user_name, "a": action, "d": details, "m": module}
+        )
+    except Exception:
+        pass  # Silent fail - audit logging should not break main functionality
+
 def run_batch_action(actions):
     """
     Executes a list of (query, params) tuples in a single transaction.
@@ -177,6 +187,20 @@ def init_db():
         run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS unit TEXT;")
         run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS new_qty INTEGER;")
         run_action("ALTER TABLE stock_logs ADD COLUMN IF NOT EXISTS user_name TEXT;")
+        
+        # Audit Logs Table - Track all user actions
+        run_action("""
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id SERIAL PRIMARY KEY,
+                timestamp TIMESTAMP DEFAULT NOW(),
+                user_name TEXT NOT NULL,
+                action TEXT NOT NULL,
+                details TEXT,
+                module TEXT
+            );
+        """)
+        run_action("CREATE INDEX IF NOT EXISTS idx_audit_time ON audit_logs(timestamp DESC);")
+        
     except Exception as e:
         # Log migration errors but don't crash - these are often just "column already exists"
         print(f"[DB Migration] Non-critical warning: {e}")

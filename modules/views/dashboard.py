@@ -5,9 +5,10 @@ import plotly.express as px
 from modules.database import run_query
 from modules.config import AREAS
 
-@st.fragment
+@st.fragment(run_every=30)  # Auto-refresh every 30 seconds
 def manager_dashboard():
     st.header("📊 Executive Dashboard")
+    st.caption("🔄 يتحدث تلقائياً كل 30 ثانية")
     
     # --- Top Metrics Row ---
     col1, col2, col3, col4 = st.columns(4)
@@ -33,10 +34,14 @@ def manager_dashboard():
     col3.metric("📝 Pending Requests", r_count)
     
     # 4. Low Stock Alerts
-    # Assume low stock is < 10 for simplicity (or category based)
-    low_stock = run_query("SELECT count(*) as count FROM inventory WHERE qty < 10")
-    ls_count = low_stock.iloc[0]['count'] if not low_stock.empty else 0
+    low_stock = run_query("SELECT name_en, qty, location FROM inventory WHERE qty < 10 ORDER BY qty ASC")
+    ls_count = len(low_stock) if not low_stock.empty else 0
     col4.metric("⚠️ Low Stock Items", ls_count)
+    
+    # Show low stock details if any
+    if ls_count > 0:
+        with st.expander(f"🚨 تفاصيل المخزون المنخفض ({ls_count} عنصر)", expanded=True):
+            st.dataframe(low_stock, use_container_width=True, hide_index=True)
     
     st.divider()
     
@@ -48,12 +53,11 @@ def manager_dashboard():
         w_reg = run_query("SELECT region, count(*) as count FROM workers WHERE status='Active' GROUP BY region")
         if not w_reg.empty:
             fig = px.pie(w_reg, values='count', names='region', hole=0.4)
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig, use_container_width=True)
         else: st.info("No worker data")
         
     with c2:
         st.subheader("📦 Top 10 Stock Items (NSTC)")
-        # Show top 10 items by quantity
         stock = run_query("SELECT name_en as item, qty FROM inventory WHERE location='NSTC' ORDER BY qty DESC LIMIT 10")
         if not stock.empty:
             fig = px.bar(stock, x='item', y='qty', color='qty', color_continuous_scale='Blues')
@@ -72,5 +76,6 @@ def manager_dashboard():
     """)
     if not trend.empty:
         fig_line = px.line(trend, x='date', y='present_count', markers=True)
-        st.plotly_chart(fig_line, width="stretch")
+        st.plotly_chart(fig_line, use_container_width=True)
     else: st.info("No attendance history")
+

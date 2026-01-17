@@ -17,6 +17,10 @@ def manager_view_manpower():
 
     with tab2: # Worker Database
         st.subheader("Manage Workers")
+        
+        # Search box for workers
+        worker_search = st.text_input("🔍 بحث في العمال", placeholder="ابحث بالاسم أو رقم الموظف...")
+        
         # Optimization: Cache worker list for 10 seconds to avoid reload flicker but keep fresh enough
         # Join with shifts to get simple name
         workers = run_query("""
@@ -25,6 +29,13 @@ def manager_view_manpower():
             LEFT JOIN shifts s ON w.shift_id = s.id 
             ORDER BY w.id DESC
         """)
+        
+        # Filter by search term
+        if worker_search and not workers.empty:
+            workers = workers[
+                workers['name'].str.contains(worker_search, case=False, na=False) | 
+                workers['emp_id'].astype(str).str.contains(worker_search, case=False, na=False)
+            ]
         
         if not workers.empty:
             excel_data = convert_df_to_excel(workers, "Workers")
