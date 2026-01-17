@@ -162,7 +162,8 @@ def manager_view_warehouse():
         # Cache this query for 10s to avoid instant flicker but reduce load
         reqs = run_query("SELECT req_id, request_date, region, supervisor_name, item_name, qty, unit, notes FROM requests WHERE status='Pending' ORDER BY region, request_date DESC")
 
-        # Nested fragment is redundant if parent is fragment, but permissible. Logic for reuse kept.
+        # Nested fragment to isolate rerun scope
+        @st.fragment
         def render_manager_bulk_review(requests_df):
             regions = requests_df['region'].unique()
             region_tabs = st.tabs(list(regions))
@@ -273,6 +274,7 @@ def storekeeper_view():
         # Optimized Query: Select only needed columns
         reqs = run_query("SELECT req_id, region, item_name, qty, unit, notes, status FROM requests WHERE status='Approved'")
         
+        @st.fragment
         def render_storekeeper_bulk_issue(reqs_df):
             regions = reqs_df['region'].unique()
             if len(regions) > 0:

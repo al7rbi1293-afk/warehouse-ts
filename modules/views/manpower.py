@@ -32,6 +32,7 @@ def manager_view_manpower():
         
         # Add Worker
         with st.expander("➕ Add New Worker", expanded=True):
+            @st.fragment
             def render_add_worker_form():
                 with st.form("add_worker_form", clear_on_submit=True):
                     c1, c2, c3, c4, c5 = st.columns(5)
@@ -74,6 +75,7 @@ def manager_view_manpower():
             
             template_data = pd.DataFrame(columns=["Name", "EMP ID", "Role", "Region", "Shift"])
             
+            @st.fragment
             def render_bulk_worker_add(init_df, shift_options):
                 edited_bulk = st.data_editor(
                     init_df,

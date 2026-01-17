@@ -52,6 +52,7 @@ def show_login():
                     st.success(txt['success_reg']); st.cache_data.clear()
                 else: st.error("Error: Username might exist")
 
+@st.fragment
 def show_main_app():
     info = st.session_state.user_info
     
@@ -77,9 +78,14 @@ def show_main_app():
     else:
         st.sidebar.info(f"🌙 Night Shift Mode ({info.get('shift_name', 'B')})")
 
-    if st.sidebar.button(txt['refresh_data'], use_container_width=True):
-        st.cache_data.clear()
-        st.rerun()
+    @st.fragment
+    def refresh_button():
+        if st.button(txt['refresh_data'], use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+    
+    with st.sidebar:
+        refresh_button()
     
     with st.sidebar.expander(f"🛠 {txt['edit_profile']}"):
         @st.fragment
