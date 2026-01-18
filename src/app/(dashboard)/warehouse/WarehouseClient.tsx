@@ -13,7 +13,7 @@ interface InventoryItem {
     qty: number;
     location: string;
     status: string | null;
-    lastUpdated: Date;
+    lastUpdated: Date | null;
 }
 
 interface Request {
