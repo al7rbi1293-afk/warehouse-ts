@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AREAS, ATTENDANCE_STATUSES } from "@/lib/constants";
-import { createWorker, createShift, submitBulkAttendance } from "@/app/actions/manpower";
+import { createWorker, createShift, submitBulkAttendance, updateSupervisorProfile } from "@/app/actions/manpower";
 import { toast } from "sonner";
 
 interface Worker {
@@ -385,29 +385,7 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
 
             {/* Manager: Supervisors */}
             {userRole === "manager" && activeTab === "supervisors" && (
-                <div className="card">
-                    <h3 className="font-bold text-lg mb-4">📍 Supervisor Management</h3>
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Username</th>
-                                <th>Name</th>
-                                <th>Role</th>
-                                <th>Region</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.supervisors.map((s) => (
-                                <tr key={s.username}>
-                                    <td>{s.username}</td>
-                                    <td>{s.name || "-"}</td>
-                                    <td>{s.role || "-"}</td>
-                                    <td>{s.region || "-"}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <SupervisorsTable supervisors={data.supervisors} shifts={data.shifts} />
             )}
 
             {/* Supervisor: Attendance */}
@@ -529,6 +507,191 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
                     </table>
                 </div>
             )}
+        </div>
+    );
+}
+
+// ==================== SUPERVISORS TABLE COMPONENT ====================
+
+interface SupervisorEdit {
+    username: string;
+    region: string;
+    role: string;
+    shiftId: number | null;
+}
+
+function SupervisorsTable({ supervisors, shifts }: { supervisors: Supervisor[]; shifts: Shift[] }) {
+    const [editingUser, setEditingUser] = useState<string | null>(null);
+    const [editData, setEditData] = useState<SupervisorEdit | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleEdit = (s: Supervisor) => {
+        setEditingUser(s.username);
+        setEditData({
+            username: s.username,
+            region: s.region || "",
+            role: s.role || "",
+            shiftId: s.shiftId,
+        });
+    };
+
+    const handleSave = async () => {
+        if (!editData) return;
+
+        setIsLoading(true);
+        const result = await updateSupervisorProfile(
+            editData.username,
+            editData.region,
+            editData.role,
+            editData.shiftId
+        );
+
+        if (result.success) {
+            toast.success(result.message);
+            setEditingUser(null);
+            setEditData(null);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    const handleCancel = () => {
+        setEditingUser(null);
+        setEditData(null);
+    };
+
+    const handleRegionToggle = (region: string) => {
+        if (!editData) return;
+
+        const currentRegions = editData.region.split(",").filter(r => r.trim());
+        const regionIndex = currentRegions.indexOf(region);
+
+        if (regionIndex >= 0) {
+            currentRegions.splice(regionIndex, 1);
+        } else {
+            currentRegions.push(region);
+        }
+
+        setEditData({ ...editData, region: currentRegions.join(",") });
+    };
+
+    const getShiftName = (shiftId: number | null) => {
+        if (!shiftId) return "-";
+        const shift = shifts.find(s => s.id === shiftId);
+        return shift?.name || "-";
+    };
+
+    return (
+        <div className="card">
+            <h3 className="font-bold text-lg mb-4">📍 Supervisor Management</h3>
+            <p className="text-sm text-gray-600 mb-4">
+                اضغط على ✏️ لتعديل المناطق والشفت للمشرف
+            </p>
+            <div className="overflow-x-auto">
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Shift</th>
+                            <th>Regions</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {supervisors.map((s) => (
+                            <tr key={s.username}>
+                                <td className="font-medium">{s.username}</td>
+                                <td>{s.name || "-"}</td>
+
+                                {editingUser === s.username && editData ? (
+                                    <>
+                                        <td>
+                                            <input
+                                                type="text"
+                                                className="form-input text-sm"
+                                                value={editData.role}
+                                                onChange={(e) => setEditData({ ...editData, role: e.target.value })}
+                                                placeholder="supervisor"
+                                            />
+                                        </td>
+                                        <td>
+                                            <select
+                                                className="form-input text-sm"
+                                                value={editData.shiftId || ""}
+                                                onChange={(e) => setEditData({ ...editData, shiftId: e.target.value ? parseInt(e.target.value) : null })}
+                                            >
+                                                <option value="">No Shift</option>
+                                                {shifts.map((shift) => (
+                                                    <option key={shift.id} value={shift.id}>{shift.name}</option>
+                                                ))}
+                                            </select>
+                                        </td>
+                                        <td>
+                                            <div className="max-h-40 overflow-y-auto border rounded p-2 bg-white">
+                                                {AREAS.map((area) => (
+                                                    <label key={area} className="flex items-center gap-2 text-sm py-1 cursor-pointer hover:bg-gray-100">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={editData.region.split(",").includes(area)}
+                                                            onChange={() => handleRegionToggle(area)}
+                                                            className="form-checkbox"
+                                                        />
+                                                        {area}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </td>
+                                        <td className="space-x-1">
+                                            <button
+                                                className="btn btn-success text-xs px-2 py-1"
+                                                onClick={handleSave}
+                                                disabled={isLoading}
+                                            >
+                                                ✓ Save
+                                            </button>
+                                            <button
+                                                className="btn btn-secondary text-xs px-2 py-1"
+                                                onClick={handleCancel}
+                                                disabled={isLoading}
+                                            >
+                                                ✗ Cancel
+                                            </button>
+                                        </td>
+                                    </>
+                                ) : (
+                                    <>
+                                        <td>{s.role || "-"}</td>
+                                        <td>
+                                            <span className="badge badge-info">{getShiftName(s.shiftId)}</span>
+                                        </td>
+                                        <td className="max-w-xs">
+                                            <div className="text-sm">
+                                                {s.region ? (
+                                                    s.region.split(",").map((r, i) => (
+                                                        <span key={i} className="badge badge-secondary mr-1 mb-1">{r.trim()}</span>
+                                                    ))
+                                                ) : "-"}
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <button
+                                                className="btn btn-secondary text-xs px-2 py-1"
+                                                onClick={() => handleEdit(s)}
+                                                title="تعديل"
+                                            >
+                                                ✏️ Edit
+                                            </button>
+                                        </td>
+                                    </>
+                                )}
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }
