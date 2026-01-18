@@ -80,14 +80,14 @@ model Attendance {
 // INVENTORY
 // =====================
 model Inventory {
-  id          Int      @id @default(autoincrement())
-  nameEn      String   @map("name_en")
+  id          Int       @id @default(autoincrement())
+  nameEn      String    @map("name_en")
   category    String?
   unit        String?
-  qty         Int      @default(0)
+  qty         Int       @default(0)
   location    String
   status      String?
-  lastUpdated DateTime @default(now()) @map("last_updated")
+  lastUpdated DateTime? @map("last_updated")
 
   @@unique([nameEn, location])
   @@map("inventory")
