@@ -35,7 +35,7 @@ def render_bulk_stock_take(location, user_name, key_prefix):
             height=500
         )
 
-        submitted = st.form_submit_button(f"💾 Update {location} Stock", use_container_width=True)
+        submitted = st.form_submit_button(f"💾 Update {location} Stock", width="stretch")
     
     if submitted:
         # Collect all changes for batch processing (performance optimization)

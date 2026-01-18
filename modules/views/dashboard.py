@@ -41,7 +41,7 @@ def manager_dashboard():
     # Show low stock details if any
     if ls_count > 0:
         with st.expander(f"🚨 Low Stock Details ({ls_count} items)", expanded=True):
-            st.dataframe(low_stock, use_container_width=True, hide_index=True)
+            st.dataframe(low_stock, width="stretch", hide_index=True)
     
     st.divider()
     
@@ -53,7 +53,7 @@ def manager_dashboard():
         w_reg = run_query("SELECT region, count(*) as count FROM workers WHERE status='Active' GROUP BY region")
         if not w_reg.empty:
             fig = px.pie(w_reg, values='count', names='region', hole=0.4)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else: st.info("No worker data")
         
     with c2:
@@ -62,7 +62,7 @@ def manager_dashboard():
         if not stock.empty:
             fig = px.bar(stock, x='item', y='qty', color='qty', color_continuous_scale='Blues')
             fig.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else: st.info("No stock data")
 
     # --- Charts Row 2 ---
@@ -76,6 +76,6 @@ def manager_dashboard():
     """)
     if not trend.empty:
         fig_line = px.line(trend, x='date', y='present_count', markers=True)
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_line, width="stretch")
     else: st.info("No attendance history")
 

@@ -58,7 +58,7 @@ def manager_view_manpower():
                     shift_opts = {s['name']: s['id'] for i, s in shifts_ref.iterrows()} if not shifts_ref.empty else {}
                     wshift = c5.selectbox("Shift", list(shift_opts.keys()) if shift_opts else ["Default"])
                     
-                    submitted = st.form_submit_button("Add Worker", use_container_width=True)
+                    submitted = st.form_submit_button("Add Worker", width="stretch")
                     if submitted:
                         if wn and we:
                             if not we.isdigit():
@@ -102,7 +102,7 @@ def manager_view_manpower():
                     hide_index=True, width="stretch"
                 )
                 
-                if st.button("💾 Save All Workers", use_container_width=True):
+                if st.button("💾 Save All Workers", width="stretch"):
                     if edited_bulk.empty:
                         st.warning("No data to save.")
                     else:
@@ -146,7 +146,7 @@ def manager_view_manpower():
                         },
                         hide_index=True, width="stretch"
                     )
-                    submitted = st.form_submit_button("💾 Save Worker Changes", use_container_width=True)
+                    submitted = st.form_submit_button("💾 Save Worker Changes", width="stretch")
                 
                 if submitted:
                     changes = 0
@@ -222,7 +222,7 @@ def manager_view_manpower():
                     idx = s_names.index(cur_s_name) if cur_s_name in s_names else 0
                     new_shift_name = st.selectbox("Assign Shift", s_names, index=idx if s_names else 0)
 
-                    if st.form_submit_button("Update Profile", use_container_width=True):
+                    if st.form_submit_button("Update Profile", width="stretch"):
                         new_reg_str = ",".join(new_regions)
                         new_sid = s_opts.get(new_shift_name)
                         if run_action("UPDATE users SET region=:r, shift_id=:sid, role=:role WHERE username=:u", 

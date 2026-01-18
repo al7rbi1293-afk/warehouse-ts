@@ -31,7 +31,7 @@ def manager_view_warehouse():
                 l = c3.selectbox("Location", LOCATIONS)
                 q = c4.number_input("Qty", 0, 10000)
                 u = st.selectbox("Unit", ["Piece", "Carton", "Set"])
-                if st.form_submit_button(txt['create_btn'], use_container_width=True):
+                if st.form_submit_button(txt['create_btn'], width="stretch"):
                     if n and run_query("SELECT id FROM inventory WHERE name_en=:n AND location=:l", {"n":n, "l":l}).empty:
                         run_action("INSERT INTO inventory (name_en, category, unit, location, qty, status) VALUES (:n, :c, :u, :l, :q, 'Available')",
                                   {"n":n, "c":c, "u":u, "l":l, "q":int(q)})
@@ -62,7 +62,7 @@ def manager_view_warehouse():
                         hide_index=True, width="stretch", height=400
                     )
                     
-                    if st.form_submit_button("Execute Bulk Transfer", use_container_width=True):
+                    if st.form_submit_button("Execute Bulk Transfer", width="stretch"):
                         # Process items with Transfer Qty > 0
                         items_to_transfer = edited_transfer[edited_transfer['Transfer Qty'] > 0]
                         
@@ -116,7 +116,7 @@ def manager_view_warehouse():
                         op = st.radio("Action Type", ["Lend (Stock Decrease)", "Borrow (Stock Increase)"], horizontal=True)
                         amt = st.number_input("Quantity", 1, 10000, key="l_q")
                         
-                        submitted = st.form_submit_button(txt['exec_trans'], use_container_width=True)
+                        submitted = st.form_submit_button(txt['exec_trans'], width="stretch")
                         if submitted:
                             # Verify item still exists in filter
                             item_rows = inv[inv['name_en']==it]
@@ -144,7 +144,7 @@ def manager_view_warehouse():
                     if not inv.empty:
                         it = st.selectbox("Item Received", inv['name_en'].unique(), key="c_it")
                         amt = st.number_input("Quantity", 1, 10000, key="c_q")
-                        if st.form_submit_button("Receive from CWW", use_container_width=True):
+                        if st.form_submit_button("Receive from CWW", width="stretch"):
                             item_rows = inv[inv['name_en']==it]
                             if not item_rows.empty:
                                 row = item_rows.iloc[0]
@@ -260,7 +260,7 @@ def manager_view_warehouse():
 
     elif view_option == "📜 Logs": # Logs
         logs = run_query("SELECT * FROM stock_logs ORDER BY log_date DESC LIMIT 500")
-        st.dataframe(logs, use_container_width=True)
+        st.dataframe(logs, width="stretch")
         if not logs.empty:
             st.download_button("📥 Export Stock Logs", convert_df_to_excel(logs, "StockLogs"), "stock_logs.xlsx")
 
@@ -270,7 +270,7 @@ def manager_view_warehouse():
         
         audit_logs = run_query("SELECT timestamp, user_name, action, details, module FROM audit_logs ORDER BY timestamp DESC LIMIT 200")
         if not audit_logs.empty:
-            st.dataframe(audit_logs, use_container_width=True, hide_index=True)
+            st.dataframe(audit_logs, width="stretch", hide_index=True)
             st.download_button("📥 Export Log", convert_df_to_excel(audit_logs, "AuditLog"), "audit_log.xlsx")
         else:
             st.info("No audit records yet")
