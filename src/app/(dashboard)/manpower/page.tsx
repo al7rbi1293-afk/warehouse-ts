@@ -4,37 +4,47 @@ import { prisma } from "@/lib/prisma";
 import { ManpowerClient } from "./ManpowerClient";
 
 async function getManpowerData(userRole: string, userName: string, userRegion: string, userShiftId: number | null) {
-    const [workers, shifts, supervisors, allAttendance] = await Promise.all([
-        prisma.worker.findMany({
-            include: { shift: true },
-            orderBy: { id: "desc" },
-        }),
-        prisma.shift.findMany({
-            orderBy: { id: "asc" },
-        }),
-        prisma.user.findMany({
-            where: { role: { not: "manager" } },
-            orderBy: { name: "asc" },
-        }),
-        prisma.attendance.findMany({
-            where: {
-                date: {
-                    gte: new Date(new Date().setHours(0, 0, 0, 0)),
+    try {
+        const [workers, shifts, supervisors, allAttendance] = await Promise.all([
+            prisma.worker.findMany({
+                include: { shift: true },
+                orderBy: { id: "desc" },
+            }),
+            prisma.shift.findMany({
+                orderBy: { id: "asc" },
+            }),
+            prisma.user.findMany({
+                where: { role: { not: "manager" } },
+                orderBy: { name: "asc" },
+            }),
+            prisma.attendance.findMany({
+                where: {
+                    date: {
+                        gte: new Date(new Date().setHours(0, 0, 0, 0)),
+                    },
                 },
-            },
-            include: { worker: true },
-        }),
-    ]);
+                include: { worker: true },
+            }),
+        ]);
 
-    return {
-        workers: workers.map((w) => ({
-            ...w,
-            shiftName: w.shift?.name || null,
-        })),
-        shifts,
-        supervisors,
-        allAttendance,
-    };
+        return {
+            workers: workers.map((w) => ({
+                ...w,
+                shiftName: w.shift?.name || null,
+            })),
+            shifts,
+            supervisors,
+            allAttendance,
+        };
+    } catch (error) {
+        console.error("Manpower data error:", error);
+        return {
+            workers: [],
+            shifts: [],
+            supervisors: [],
+            allAttendance: [],
+        };
+    }
 }
 
 export default async function ManpowerPage() {
