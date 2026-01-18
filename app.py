@@ -81,7 +81,8 @@ def show_main_app():
     def refresh_button():
         if st.button(txt['refresh_data'], use_container_width=True):
             st.cache_data.clear()
-            st.rerun()
+            st.toast("✅ Data refreshed!", icon="🔄")
+            st.rerun(scope="fragment")
     
     with st.sidebar:
         refresh_button()

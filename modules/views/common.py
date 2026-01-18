@@ -17,23 +17,27 @@ def render_bulk_stock_take(location, user_name, key_prefix):
     df_view['Physical Count'] = df_view['System Qty'] 
 
     st.markdown(f"### 📋 {location} Stock Take")
-    edited_df = st.data_editor(
-        df_view,
-        key=f"stock_editor_{key_prefix}_{location}",
-        column_config={
-            "Item Name": st.column_config.TextColumn(disabled=True),
-            "category": st.column_config.TextColumn(disabled=True),
-            "unit": st.column_config.TextColumn(disabled=True),
-            "System Qty": st.column_config.NumberColumn(disabled=True),
-            "Physical Count": st.column_config.NumberColumn(min_value=0, max_value=20000, required=True)
-        },
-        disabled=["Item Name", "category", "unit", "System Qty"],
-        hide_index=True,
-        width="stretch",
-        height=500
-    )
+    
+    with st.form(key=f"stock_form_{key_prefix}_{location}"):
+        edited_df = st.data_editor(
+            df_view,
+            key=f"stock_editor_{key_prefix}_{location}",
+            column_config={
+                "Item Name": st.column_config.TextColumn(disabled=True),
+                "category": st.column_config.TextColumn(disabled=True),
+                "unit": st.column_config.TextColumn(disabled=True),
+                "System Qty": st.column_config.NumberColumn(disabled=True),
+                "Physical Count": st.column_config.NumberColumn(min_value=0, max_value=20000, required=True)
+            },
+            disabled=["Item Name", "category", "unit", "System Qty"],
+            hide_index=True,
+            width="stretch",
+            height=500
+        )
 
-    if st.button(f"💾 Update {location} Stock", key=f"btn_update_{key_prefix}_{location}"):
+        submitted = st.form_submit_button(f"💾 Update {location} Stock", use_container_width=True)
+    
+    if submitted:
         # Collect all changes for batch processing (performance optimization)
         batch_cmds = []
         changes_count = 0

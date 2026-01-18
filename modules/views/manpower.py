@@ -129,22 +129,26 @@ def manager_view_manpower():
             shifts_lookup = shift_opts
             shift_names_list = list(shifts_lookup.keys())
 
+            @st.fragment
             def render_worker_edit(w_df, s_lookup, s_names_list):
-                edited_w = st.data_editor(
-                    w_df,
-                    key="worker_editor",
-                    column_config={
-                        "id": st.column_config.NumberColumn(disabled=True),
-                        "created_at": st.column_config.DatetimeColumn(disabled=True),
-                        "shift_id": None, # Hide ID
-                        "shift_name": st.column_config.SelectboxColumn("Shift", options=s_names_list, required=True),
-                        "emp_id": st.column_config.TextColumn("EMP ID", required=True),
-                        "status": st.column_config.SelectboxColumn(options=["Active", "Inactive"], required=True),
-                        "region": st.column_config.SelectboxColumn(options=AREAS, required=True)
-                    },
-                    hide_index=True, width="stretch"
-                )
-                if st.button("💾 Save Worker Changes"):
+                with st.form(key="worker_edit_form"):
+                    edited_w = st.data_editor(
+                        w_df,
+                        key="worker_editor",
+                        column_config={
+                            "id": st.column_config.NumberColumn(disabled=True),
+                            "created_at": st.column_config.DatetimeColumn(disabled=True),
+                            "shift_id": None, # Hide ID
+                            "shift_name": st.column_config.SelectboxColumn("Shift", options=s_names_list, required=True),
+                            "emp_id": st.column_config.TextColumn("EMP ID", required=True),
+                            "status": st.column_config.SelectboxColumn(options=["Active", "Inactive"], required=True),
+                            "region": st.column_config.SelectboxColumn(options=AREAS, required=True)
+                        },
+                        hide_index=True, width="stretch"
+                    )
+                    submitted = st.form_submit_button("💾 Save Worker Changes", use_container_width=True)
+                
+                if submitted:
                     changes = 0
                     for index, row in edited_w.iterrows():
                         # Basic validation
