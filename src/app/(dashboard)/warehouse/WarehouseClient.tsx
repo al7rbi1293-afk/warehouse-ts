@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CATEGORIES, UNITS, AREAS, ATTENDANCE_STATUSES, TEXT } from "@/lib/constants";
+import { TEXT } from "@/lib/constants";
 import { createRequest, updateRequestStatus, issueRequest, updateBulkStock } from "@/app/actions/inventory";
 import { toast } from "sonner";
 
@@ -69,7 +69,6 @@ interface Props {
 
 export function WarehouseClient({ data, userRole, userName, userRegion }: Props) {
     const [activeTab, setActiveTab] = useState(userRole === "storekeeper" ? "issue" : userRole === "supervisor" ? "order" : "stock");
-    const [isLoading, setIsLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
 
     const regions = userRegion.includes(",") ? userRegion.split(",") : [userRegion];
@@ -151,8 +150,6 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
                     sncInventory={filteredSnc}
                     searchTerm={searchTerm}
                     setSearchTerm={setSearchTerm}
-                    isLoading={isLoading}
-                    setIsLoading={setIsLoading}
                 />
             )}
 
@@ -161,7 +158,7 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
                 <div className="card">
                     <h3 className="font-bold text-lg mb-4">🔄 Internal Stock Transfer (SNC → NSTC)</h3>
                     {data.sncInventory.length > 0 ? (
-                        <StockTransferForm items={data.sncInventory} userName={userName} />
+                        <StockTransferForm items={data.sncInventory} />
                     ) : (
                         <p className="text-gray-500 text-center py-8">SNC المخزون فارغ</p>
                     )}
@@ -173,7 +170,6 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
                 <RequestReviewView
                     requests={data.pendingRequests}
                     inventory={data.nstcInventory}
-                    userName={userName}
                 />
             )}
 
@@ -249,13 +245,11 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
 
 // ==================== MANAGER COMPONENTS ====================
 
-function ManagerStockView({ nstcInventory, sncInventory, searchTerm, setSearchTerm, isLoading, setIsLoading }: {
+function ManagerStockView({ nstcInventory, sncInventory, searchTerm, setSearchTerm }: {
     nstcInventory: InventoryItem[];
     sncInventory: InventoryItem[];
     searchTerm: string;
     setSearchTerm: (s: string) => void;
-    isLoading: boolean;
-    setIsLoading: (b: boolean) => void;
 }) {
     return (
         <div>
@@ -315,7 +309,7 @@ function DataTable({ items }: { items: InventoryItem[] }) {
     );
 }
 
-function StockTransferForm({ items, userName }: { items: InventoryItem[]; userName: string }) {
+function StockTransferForm({ items }: { items: InventoryItem[] }) {
     const [transfers, setTransfers] = useState<Record<string, number>>({});
     const [isLoading, setIsLoading] = useState(false);
 
@@ -383,7 +377,7 @@ function StockTransferForm({ items, userName }: { items: InventoryItem[]; userNa
     );
 }
 
-function RequestReviewView({ requests, inventory, userName }: { requests: Request[]; inventory: InventoryItem[]; userName: string }) {
+function RequestReviewView({ requests, inventory }: { requests: Request[]; inventory: InventoryItem[] }) {
     const [isLoading, setIsLoading] = useState(false);
     const regions = [...new Set(requests.map((r) => r.region))];
     const [selectedRegion, setSelectedRegion] = useState(regions[0] || "");

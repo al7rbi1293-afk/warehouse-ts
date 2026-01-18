@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ManpowerClient } from "./ManpowerClient";
 
-async function getManpowerData(userRole: string, userName: string, userRegion: string, userShiftId: number | null) {
+async function getManpowerData() {
     try {
         const [workers, shifts, supervisors, allAttendance] = await Promise.all([
             prisma.worker.findMany({
@@ -55,7 +55,7 @@ export default async function ManpowerPage() {
     }
 
     const user = session.user;
-    const data = await getManpowerData(user.role, user.name, user.region, user.shiftId);
+    const data = await getManpowerData();
 
     return (
         <ManpowerClient

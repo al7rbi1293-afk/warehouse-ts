@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { WarehouseClient } from "./WarehouseClient";
 
-async function getWarehouseData(userRole: string, userName: string, userRegion: string) {
+async function getWarehouseData(userRole: string, userName: string) {
     try {
         const [nstcInventory, sncInventory, pendingRequests, approvedRequests, stockLogs, localInventory] = await Promise.all([
             prisma.inventory.findMany({
@@ -80,7 +80,7 @@ export default async function WarehousePage() {
     }
 
     const user = session.user;
-    const data = await getWarehouseData(user.role, user.name, user.region);
+    const data = await getWarehouseData(user.role, user.name);
 
     return (
         <WarehouseClient
