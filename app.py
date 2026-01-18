@@ -70,9 +70,15 @@ def show_main_app():
         options = ["Warehouse", "Manpower"]
         if info.get('role') == 'manager':
             options = ["Dashboard", "Warehouse", "Manpower"]
+        
+        # Get current index based on stored module
+        current_mod = st.session_state.get('active_module', options[0])
+        current_idx = options.index(current_mod) if current_mod in options else 0
+        
+        def on_module_change():
+            st.session_state.active_module = st.session_state.mod_switcher
             
-        mod = st.sidebar.radio("Go to:", options, index=0 if st.session_state.get('active_module') in options else 0, key="mod_switcher")
-        st.session_state.active_module = mod
+        st.sidebar.radio("Go to:", options, index=current_idx, key="mod_switcher", on_change=on_module_change)
         st.sidebar.divider()
     else:
         st.sidebar.info(f"🌙 Night Shift Mode ({info.get('shift_name', 'B')})")
