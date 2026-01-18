@@ -39,6 +39,109 @@ export async function createInventoryItem(formData: FormData) {
     }
 }
 
+// Add new inventory item (simpler function)
+export async function addInventoryItem(
+    nameEn: string,
+    category: string,
+    unit: string,
+    qty: number,
+    location: string
+) {
+    try {
+        // Check if item exists
+        const existing = await prisma.inventory.findFirst({
+            where: { nameEn, location },
+        });
+
+        if (existing) {
+            return { success: false, message: "هذا العنصر موجود بالفعل في هذا الموقع" };
+        }
+
+        await prisma.inventory.create({
+            data: {
+                nameEn,
+                category,
+                unit,
+                qty,
+                location,
+                status: "Available",
+            },
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "تم إضافة العنصر بنجاح" };
+    } catch (error) {
+        console.error("Add inventory error:", error);
+        return { success: false, message: "فشل في إضافة العنصر" };
+    }
+}
+
+// Update inventory item
+export async function updateInventoryItem(
+    id: number,
+    data: {
+        nameEn?: string;
+        category?: string;
+        unit?: string;
+        qty?: number;
+    },
+    userName: string
+) {
+    try {
+        const item = await prisma.inventory.findUnique({ where: { id } });
+        if (!item) {
+            return { success: false, message: "العنصر غير موجود" };
+        }
+
+        const updateData: Record<string, unknown> = { ...data, lastUpdated: new Date() };
+
+        // Log if quantity changed
+        if (data.qty !== undefined && data.qty !== item.qty) {
+            const diff = data.qty - item.qty;
+            await prisma.stockLog.create({
+                data: {
+                    itemName: item.nameEn,
+                    location: item.location,
+                    changeAmount: diff,
+                    newQty: data.qty,
+                    actionBy: userName,
+                    actionType: "Manual Edit",
+                    unit: data.unit || item.unit || "Piece",
+                },
+            });
+        }
+
+        await prisma.inventory.update({
+            where: { id },
+            data: updateData,
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "تم تحديث العنصر بنجاح" };
+    } catch (error) {
+        console.error("Update inventory error:", error);
+        return { success: false, message: "فشل في تحديث العنصر" };
+    }
+}
+
+// Delete inventory item
+export async function deleteInventoryItem(id: number) {
+    try {
+        const item = await prisma.inventory.findUnique({ where: { id } });
+        if (!item) {
+            return { success: false, message: "العنصر غير موجود" };
+        }
+
+        await prisma.inventory.delete({ where: { id } });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "تم حذف العنصر بنجاح" };
+    } catch (error) {
+        console.error("Delete inventory error:", error);
+        return { success: false, message: "فشل في حذف العنصر" };
+    }
+}
+
 export async function updateStock(
     itemName: string,
     location: string,

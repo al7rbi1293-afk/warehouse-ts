@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { TEXT } from "@/lib/constants";
-import { createRequest, updateRequestStatus, issueRequest, updateBulkStock } from "@/app/actions/inventory";
+import { TEXT, CATEGORIES, UNITS, LOCATIONS } from "@/lib/constants";
+import { createRequest, updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem } from "@/app/actions/inventory";
 import { toast } from "sonner";
 
 interface InventoryItem {
@@ -77,6 +77,7 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
     // Manager tabs
     const managerTabs = [
         { id: "stock", label: "📦 Stock Management" },
+        { id: "add", label: "➕ Add New Item" },
         { id: "transfer", label: "🔄 Internal Transfer" },
         { id: "review", label: `⏳ Pending (${data.pendingRequests.length})` },
         { id: "local", label: TEXT.local_inv },
@@ -150,7 +151,13 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
                     sncInventory={filteredSnc}
                     searchTerm={searchTerm}
                     setSearchTerm={setSearchTerm}
+                    userName={userName}
                 />
+            )}
+
+            {/* Manager: Add New Item */}
+            {userRole === "manager" && activeTab === "add" && (
+                <AddInventoryItemForm />
             )}
 
             {/* Manager: Transfer */}
@@ -245,11 +252,12 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
 
 // ==================== MANAGER COMPONENTS ====================
 
-function ManagerStockView({ nstcInventory, sncInventory, searchTerm, setSearchTerm }: {
+function ManagerStockView({ nstcInventory, sncInventory, searchTerm, setSearchTerm, userName }: {
     nstcInventory: InventoryItem[];
     sncInventory: InventoryItem[];
     searchTerm: string;
     setSearchTerm: (s: string) => void;
+    userName: string;
 }) {
     return (
         <div>
@@ -264,21 +272,67 @@ function ManagerStockView({ nstcInventory, sncInventory, searchTerm, setSearchTe
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="card">
                     <h3 className="font-bold text-lg mb-4">📦 NSTC ({nstcInventory.length} items)</h3>
-                    <DataTable items={nstcInventory} />
+                    <EditableDataTable items={nstcInventory} userName={userName} />
                 </div>
                 <div className="card">
                     <h3 className="font-bold text-lg mb-4">📦 SNC ({sncInventory.length} items)</h3>
-                    <DataTable items={sncInventory} />
+                    <EditableDataTable items={sncInventory} userName={userName} />
                 </div>
             </div>
         </div>
     );
 }
 
-function DataTable({ items }: { items: InventoryItem[] }) {
+function EditableDataTable({ items, userName }: { items: InventoryItem[]; userName: string }) {
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editData, setEditData] = useState<Partial<InventoryItem>>({});
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleEdit = (item: InventoryItem) => {
+        setEditingId(item.id);
+        setEditData({ nameEn: item.nameEn, category: item.category || "", unit: item.unit || "", qty: item.qty });
+    };
+
+    const handleSave = async (id: number) => {
+        setIsLoading(true);
+        const result = await updateInventoryItem(id, {
+            nameEn: editData.nameEn,
+            category: editData.category || undefined,
+            unit: editData.unit || undefined,
+            qty: editData.qty,
+        }, userName);
+
+        if (result.success) {
+            toast.success(result.message);
+            setEditingId(null);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    const handleDelete = async (id: number, name: string) => {
+        if (!confirm(`هل أنت متأكد من حذف "${name}"؟`)) return;
+
+        setIsLoading(true);
+        const result = await deleteInventoryItem(id);
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    const handleCancel = () => {
+        setEditingId(null);
+        setEditData({});
+    };
+
     if (items.length === 0) {
         return <p className="text-gray-500 text-center py-8">لا توجد عناصر</p>;
     }
+
     return (
         <div className="overflow-x-auto max-h-96">
             <table className="data-table">
@@ -288,23 +342,226 @@ function DataTable({ items }: { items: InventoryItem[] }) {
                         <th>Category</th>
                         <th>Qty</th>
                         <th>Unit</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {items.map((item) => (
                         <tr key={item.id}>
-                            <td className="font-medium">{item.nameEn}</td>
-                            <td>{item.category || "-"}</td>
-                            <td>
-                                <span className={`badge ${item.qty < 10 ? "badge-warning" : "badge-success"}`}>
-                                    {item.qty}
-                                </span>
-                            </td>
-                            <td>{item.unit || "-"}</td>
+                            {editingId === item.id ? (
+                                <>
+                                    <td>
+                                        <input
+                                            type="text"
+                                            className="form-input text-sm"
+                                            value={editData.nameEn || ""}
+                                            onChange={(e) => setEditData({ ...editData, nameEn: e.target.value })}
+                                        />
+                                    </td>
+                                    <td>
+                                        <select
+                                            className="form-input text-sm"
+                                            value={editData.category || ""}
+                                            onChange={(e) => setEditData({ ...editData, category: e.target.value })}
+                                        >
+                                            {CATEGORIES.map((cat) => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="number"
+                                            className="form-input text-sm w-20"
+                                            min="0"
+                                            value={editData.qty ?? 0}
+                                            onChange={(e) => setEditData({ ...editData, qty: parseInt(e.target.value) || 0 })}
+                                        />
+                                    </td>
+                                    <td>
+                                        <select
+                                            className="form-input text-sm"
+                                            value={editData.unit || ""}
+                                            onChange={(e) => setEditData({ ...editData, unit: e.target.value })}
+                                        >
+                                            {UNITS.map((u) => (
+                                                <option key={u} value={u}>{u}</option>
+                                            ))}
+                                        </select>
+                                    </td>
+                                    <td className="space-x-1">
+                                        <button
+                                            className="btn btn-success text-xs px-2 py-1"
+                                            onClick={() => handleSave(item.id)}
+                                            disabled={isLoading}
+                                        >
+                                            ✓
+                                        </button>
+                                        <button
+                                            className="btn btn-secondary text-xs px-2 py-1"
+                                            onClick={handleCancel}
+                                            disabled={isLoading}
+                                        >
+                                            ✗
+                                        </button>
+                                    </td>
+                                </>
+                            ) : (
+                                <>
+                                    <td className="font-medium">{item.nameEn}</td>
+                                    <td>{item.category || "-"}</td>
+                                    <td>
+                                        <span className={`badge ${item.qty < 10 ? "badge-warning" : "badge-success"}`}>
+                                            {item.qty}
+                                        </span>
+                                    </td>
+                                    <td>{item.unit || "-"}</td>
+                                    <td className="space-x-1">
+                                        <button
+                                            className="btn btn-secondary text-xs px-2 py-1"
+                                            onClick={() => handleEdit(item)}
+                                            title="تعديل"
+                                        >
+                                            ✏️
+                                        </button>
+                                        <button
+                                            className="btn btn-danger text-xs px-2 py-1"
+                                            onClick={() => handleDelete(item.id, item.nameEn)}
+                                            title="حذف"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </td>
+                                </>
+                            )}
                         </tr>
                     ))}
                 </tbody>
             </table>
+        </div>
+    );
+}
+
+function AddInventoryItemForm() {
+    const [formData, setFormData] = useState<{
+        nameEn: string;
+        category: string;
+        unit: string;
+        qty: number;
+        location: string;
+    }>({
+        nameEn: "",
+        category: CATEGORIES[0],
+        unit: UNITS[0],
+        qty: 0,
+        location: LOCATIONS[0],
+    });
+    const [isLoading, setIsLoading] = useState(false);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+
+        if (!formData.nameEn.trim()) {
+            toast.error("يرجى إدخال اسم العنصر");
+            return;
+        }
+
+        setIsLoading(true);
+        const result = await addInventoryItem(
+            formData.nameEn.trim(),
+            formData.category,
+            formData.unit,
+            formData.qty,
+            formData.location
+        );
+
+        if (result.success) {
+            toast.success(result.message);
+            setFormData({
+                nameEn: "",
+                category: CATEGORIES[0],
+                unit: UNITS[0],
+                qty: 0,
+                location: LOCATIONS[0],
+            });
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    return (
+        <div className="card max-w-lg">
+            <h3 className="font-bold text-lg mb-4">➕ إضافة عنصر جديد</h3>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="form-label">اسم العنصر (بالإنجليزية)</label>
+                    <input
+                        type="text"
+                        className="form-input"
+                        value={formData.nameEn}
+                        onChange={(e) => setFormData({ ...formData, nameEn: e.target.value })}
+                        placeholder="Item Name"
+                        required
+                    />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="form-label">التصنيف</label>
+                        <select
+                            className="form-input"
+                            value={formData.category}
+                            onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                        >
+                            {CATEGORIES.map((cat) => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="form-label">الوحدة</label>
+                        <select
+                            className="form-input"
+                            value={formData.unit}
+                            onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
+                        >
+                            {UNITS.map((u) => (
+                                <option key={u} value={u}>{u}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="form-label">الكمية</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            min="0"
+                            value={formData.qty}
+                            onChange={(e) => setFormData({ ...formData, qty: parseInt(e.target.value) || 0 })}
+                        />
+                    </div>
+                    <div>
+                        <label className="form-label">الموقع</label>
+                        <select
+                            className="form-input"
+                            value={formData.location}
+                            onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                        >
+                            {LOCATIONS.map((loc) => (
+                                <option key={loc} value={loc}>{loc}</option>
+                            ))}
+                        </select>
+                    </div>
+                </div>
+
+                <button type="submit" className="btn w-full" disabled={isLoading}>
+                    {isLoading ? "جاري الإضافة..." : "➕ إضافة العنصر"}
+                </button>
+            </form>
         </div>
     );
 }
