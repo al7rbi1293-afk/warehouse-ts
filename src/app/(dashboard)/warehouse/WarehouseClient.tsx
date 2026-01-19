@@ -819,51 +819,119 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
 }
 
 function LocalInventoryView({ localInventory }: { localInventory: LocalInventory[] }) {
-    const regions = [...new Set(localInventory.map((i) => i.region))];
-    const [selectedRegion, setSelectedRegion] = useState(regions[0] || "");
+    const regions = [...new Set(localInventory.map((i) => i.region))].sort();
+    const [selectedRegion, setSelectedRegion] = useState<string | null>(regions[0] || null);
+    const [searchTerm, setSearchTerm] = useState("");
 
-    const filtered = localInventory.filter((i) => !selectedRegion || i.region === selectedRegion);
+    const filtered = localInventory
+        .filter((i) => !selectedRegion || i.region === selectedRegion)
+        .filter((i) => !searchTerm || i.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
+
+    // Calculate totals per region
+    const regionTotals = regions.map((region) => {
+        const items = localInventory.filter((i) => i.region === region);
+        return {
+            region,
+            itemCount: items.length,
+            totalQty: items.reduce((sum, i) => sum + (i.qty || 0), 0),
+        };
+    });
+
+    const totalItems = localInventory.length;
+    const totalQty = localInventory.reduce((sum, i) => sum + (i.qty || 0), 0);
 
     return (
-        <div className="card">
-            <h3 className="font-bold text-lg mb-4">📊 Local Inventory</h3>
-            {regions.length > 1 && (
-                <div className="tabs mb-4">
-                    {regions.map((region) => (
-                        <button
-                            key={region}
-                            className={`tab ${selectedRegion === region ? "active" : ""}`}
-                            onClick={() => setSelectedRegion(region)}
-                        >
-                            {region}
-                        </button>
-                    ))}
+        <div className="space-y-4">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="card bg-blue-50 border-blue-200">
+                    <p className="text-sm text-blue-600">إجمالي المناطق</p>
+                    <p className="text-2xl font-bold text-blue-800">{regions.length}</p>
                 </div>
-            )}
-            {filtered.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">لا توجد بيانات</p>
-            ) : (
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Qty</th>
-                            <th>Last Updated</th>
-                            <th>Updated By</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filtered.map((item, idx) => (
-                            <tr key={idx}>
-                                <td>{item.itemName}</td>
-                                <td>{item.qty}</td>
-                                <td>{item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : "-"}</td>
-                                <td>{item.updatedBy || "-"}</td>
-                            </tr>
+                <div className="card bg-green-50 border-green-200">
+                    <p className="text-sm text-green-600">إجمالي العناصر</p>
+                    <p className="text-2xl font-bold text-green-800">{totalItems}</p>
+                </div>
+                <div className="card bg-purple-50 border-purple-200">
+                    <p className="text-sm text-purple-600">إجمالي الكمية</p>
+                    <p className="text-2xl font-bold text-purple-800">{totalQty}</p>
+                </div>
+                <div className="card bg-yellow-50 border-yellow-200">
+                    <p className="text-sm text-yellow-600">المنطقة المحددة</p>
+                    <p className="text-lg font-bold text-yellow-800">{selectedRegion || "الكل"}</p>
+                </div>
+            </div>
+
+            <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                    <h3 className="font-bold text-lg">📊 Branch Inventory by Region</h3>
+                    <input
+                        type="text"
+                        className="form-input w-64"
+                        placeholder="🔍 بحث عن عنصر..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+
+                {/* Region Tabs */}
+                {regions.length > 0 && (
+                    <div className="tabs mb-4 flex-wrap">
+                        <button
+                            className={`tab ${!selectedRegion ? "active" : ""}`}
+                            onClick={() => setSelectedRegion(null)}
+                        >
+                            All ({totalItems})
+                        </button>
+                        {regionTotals.map((rt) => (
+                            <button
+                                key={rt.region}
+                                className={`tab ${selectedRegion === rt.region ? "active" : ""}`}
+                                onClick={() => setSelectedRegion(rt.region)}
+                            >
+                                {rt.region} ({rt.itemCount})
+                            </button>
                         ))}
-                    </tbody>
-                </table>
-            )}
+                    </div>
+                )}
+
+                {filtered.length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">لا توجد بيانات</p>
+                ) : (
+                    <div className="overflow-x-auto max-h-96">
+                        <table className="data-table">
+                            <thead className="sticky top-0 bg-white">
+                                <tr>
+                                    <th>Region</th>
+                                    <th>Item</th>
+                                    <th>Qty</th>
+                                    <th>Last Updated</th>
+                                    <th>Updated By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map((item, idx) => (
+                                    <tr key={idx}>
+                                        <td>
+                                            <span className="badge badge-info">{item.region}</span>
+                                        </td>
+                                        <td className="font-medium">{item.itemName}</td>
+                                        <td>
+                                            <span className={`badge ${(item.qty || 0) < 5 ? "badge-warning" : "badge-success"}`}>
+                                                {item.qty || 0}
+                                            </span>
+                                        </td>
+                                        <td className="text-sm text-gray-600">
+                                            {item.lastUpdated ? new Date(item.lastUpdated).toLocaleString() : "-"}
+                                        </td>
+                                        <td className="text-sm">{item.updatedBy || "-"}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

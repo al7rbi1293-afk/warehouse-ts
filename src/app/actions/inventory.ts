@@ -359,18 +359,68 @@ export async function updateRequestStatus(
     }
 }
 
-// Confirm receipt by supervisor
+// Confirm receipt by supervisor - also updates local inventory
 export async function confirmReceipt(reqId: number) {
     try {
-        await prisma.request.update({
+        // Get request details first
+        const request = await prisma.request.findUnique({
             where: { reqId },
-            data: {
-                status: "Received",
-            },
+        });
+
+        if (!request) {
+            return { success: false, message: "الطلب غير موجود" };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // Update request status
+            await tx.request.update({
+                where: { reqId },
+                data: { status: "Received" },
+            });
+
+            // Add to local inventory
+            if (request.region && request.itemName && request.qty) {
+                const existingLocal = await tx.localInventory.findUnique({
+                    where: {
+                        region_itemName: {
+                            region: request.region,
+                            itemName: request.itemName,
+                        },
+                    },
+                });
+
+                if (existingLocal) {
+                    // Update existing
+                    await tx.localInventory.update({
+                        where: {
+                            region_itemName: {
+                                region: request.region,
+                                itemName: request.itemName,
+                            },
+                        },
+                        data: {
+                            qty: (existingLocal.qty || 0) + request.qty,
+                            lastUpdated: new Date(),
+                            updatedBy: request.supervisorName || "System",
+                        },
+                    });
+                } else {
+                    // Create new
+                    await tx.localInventory.create({
+                        data: {
+                            region: request.region,
+                            itemName: request.itemName,
+                            qty: request.qty,
+                            lastUpdated: new Date(),
+                            updatedBy: request.supervisorName || "System",
+                        },
+                    });
+                }
+            }
         });
 
         revalidatePath("/warehouse");
-        return { success: true, message: "تم تأكيد الاستلام بنجاح" };
+        return { success: true, message: "تم تأكيد الاستلام وتحديث المخزون المحلي" };
     } catch (error) {
         console.error("Confirm receipt error:", error);
         return { success: false, message: "فشل في تأكيد الاستلام" };
