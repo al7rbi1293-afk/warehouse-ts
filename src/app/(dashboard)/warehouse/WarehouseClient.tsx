@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { TEXT, CATEGORIES, UNITS, LOCATIONS } from "@/lib/constants";
-import { updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem, createBulkRequest } from "@/app/actions/inventory";
+import { updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem, createBulkRequest, confirmReceipt } from "@/app/actions/inventory";
 import { toast } from "sonner";
 
 interface InventoryItem {
@@ -1266,33 +1266,93 @@ function SupervisorRequestForm({ inventory, supervisorName, region }: { inventor
 }
 
 function SupervisorPickupView({ requests }: { requests: Request[] }) {
+    const [isLoading, setIsLoading] = useState(false);
+    const [confirmedIds, setConfirmedIds] = useState<number[]>([]);
+
+    const handleConfirmReceipt = async (reqId: number) => {
+        setIsLoading(true);
+        const result = await confirmReceipt(reqId);
+        if (result.success) {
+            toast.success(result.message);
+            setConfirmedIds([...confirmedIds, reqId]);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    const handleConfirmAll = async () => {
+        setIsLoading(true);
+        let successCount = 0;
+        for (const req of requests) {
+            const result = await confirmReceipt(req.reqId);
+            if (result.success) {
+                successCount++;
+            }
+        }
+        toast.success(`تم تأكيد استلام ${successCount} عناصر`);
+        setIsLoading(false);
+    };
+
     if (requests.length === 0) {
         return <div className="card text-center text-gray-500 py-8">📦 لا توجد عناصر جاهزة للاستلام</div>;
     }
 
     return (
         <div className="card">
-            <h3 className="font-bold text-lg mb-4">🚚 جاهز للاستلام ({requests.length})</h3>
-            <table className="data-table">
-                <thead>
-                    <tr>
-                        <th>Item</th>
-                        <th>Qty</th>
-                        <th>Date</th>
-                        <th>Notes</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {requests.map((req) => (
-                        <tr key={req.reqId}>
-                            <td className="font-medium">{req.itemName}</td>
-                            <td>{req.qty} {req.unit}</td>
-                            <td>{new Date(req.requestDate).toLocaleDateString()}</td>
-                            <td>{req.notes || "-"}</td>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg">🚚 جاهز للاستلام ({requests.length})</h3>
+                {requests.length > 1 && (
+                    <button
+                        className="btn btn-success text-sm"
+                        onClick={handleConfirmAll}
+                        disabled={isLoading}
+                    >
+                        ✓ تأكيد استلام الكل
+                    </button>
+                )}
+            </div>
+
+            <div className="mb-4 p-3 bg-green-50 rounded-lg text-sm">
+                <p>💡 اضغط على <strong>✓ تأكيد الاستلام</strong> بعد استلام كل عنصر</p>
+            </div>
+
+            <div className="overflow-x-auto">
+                <table className="data-table">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Qty</th>
+                            <th>Date</th>
+                            <th>Notes</th>
+                            <th>Action</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {requests.map((req) => (
+                            <tr key={req.reqId} className={confirmedIds.includes(req.reqId) ? "bg-green-50" : ""}>
+                                <td className="font-medium">{req.itemName}</td>
+                                <td>{req.qty} {req.unit}</td>
+                                <td>{new Date(req.requestDate).toLocaleDateString()}</td>
+                                <td>{req.notes || "-"}</td>
+                                <td>
+                                    {confirmedIds.includes(req.reqId) ? (
+                                        <span className="badge badge-success">✓ تم الاستلام</span>
+                                    ) : (
+                                        <button
+                                            className="btn btn-success text-xs"
+                                            onClick={() => handleConfirmReceipt(req.reqId)}
+                                            disabled={isLoading}
+                                        >
+                                            ✓ تأكيد الاستلام
+                                        </button>
+                                    )}
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

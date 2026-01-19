@@ -359,6 +359,24 @@ export async function updateRequestStatus(
     }
 }
 
+// Confirm receipt by supervisor
+export async function confirmReceipt(reqId: number) {
+    try {
+        await prisma.request.update({
+            where: { reqId },
+            data: {
+                status: "Received",
+            },
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "تم تأكيد الاستلام بنجاح" };
+    } catch (error) {
+        console.error("Confirm receipt error:", error);
+        return { success: false, message: "فشل في تأكيد الاستلام" };
+    }
+}
+
 export async function issueRequest(
     reqId: number,
     itemName: string,
