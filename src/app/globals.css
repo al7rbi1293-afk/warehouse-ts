@@ -301,17 +301,154 @@ body {
   border-bottom-color: var(--primary);
 }
 
+/* Badge secondary */
+.badge-secondary {
+  background: #e2e8f0;
+  color: #475569;
+}
+
 /* Responsive */
+@media (max-width: 1024px) {
+  .sidebar {
+    width: 240px;
+  }
+
+  .main-content {
+    margin-left: 240px;
+  }
+}
+
 @media (max-width: 768px) {
   .sidebar {
     width: 100%;
     position: relative;
     border-right: none;
     border-bottom: 1px solid var(--border);
+    padding: 1rem;
   }
-  
+
   .main-content {
     margin-left: 0;
     padding: 1rem;
+  }
+
+  /* Tabs responsive */
+  .tabs {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .tab {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* Card responsive */
+  .card {
+    padding: 1rem;
+  }
+
+  /* Table responsive */
+  .data-table {
+    font-size: 0.75rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.5rem 0.5rem;
+  }
+
+  /* Button responsive */
+  .btn {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* Form responsive */
+  .form-input {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+  }
+
+  /* Metric cards */
+  .metric-value {
+    font-size: 1.5rem;
+  }
+
+  .metric-label {
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar {
+    padding: 0.75rem;
+  }
+
+  .main-content {
+    padding: 0.75rem;
+  }
+
+  .card {
+    padding: 0.75rem;
+    border-radius: 8px;
+  }
+
+  .tab {
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.4rem 0.3rem;
+    font-size: 0.7rem;
+  }
+
+  .badge {
+    font-size: 0.65rem;
+    padding: 0.15rem 0.5rem;
+  }
+
+  h1 {
+    font-size: 1.25rem !important;
+  }
+
+  h3 {
+    font-size: 1rem !important;
+  }
+}
+
+/* RTL Support */
+[dir="rtl"] .sidebar {
+  left: auto;
+  right: 0;
+  border-left: 1px solid var(--border);
+  border-right: none;
+}
+
+[dir="rtl"] .main-content {
+  margin-left: 0;
+  margin-right: 280px;
+}
+
+@media (max-width: 768px) {
+  [dir="rtl"] .main-content {
+    margin-right: 0;
+  }
+}
+
+/* Print styles */
+@media print {
+
+  .sidebar,
+  .btn,
+  .tabs {
+    display: none;
+  }
+
+  .main-content {
+    margin: 0;
+    padding: 0;
   }
 }
