@@ -535,3 +535,80 @@ export async function updateBulkStock(
         return { success: false, message: "Failed to update stock" };
     }
 }
+
+// Update local inventory (manual stocktake for supervisors)
+export async function updateLocalInventory(
+    region: string,
+    itemName: string,
+    qty: number,
+    updatedBy: string
+) {
+    try {
+        await prisma.localInventory.upsert({
+            where: {
+                region_itemName: {
+                    region,
+                    itemName,
+                },
+            },
+            update: {
+                qty,
+                lastUpdated: new Date(),
+                updatedBy,
+            },
+            create: {
+                region,
+                itemName,
+                qty,
+                lastUpdated: new Date(),
+                updatedBy,
+            },
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "Inventory updated" };
+    } catch (error) {
+        console.error("Update local inventory error:", error);
+        return { success: false, message: "Failed to update inventory" };
+    }
+}
+
+// Bulk update local inventory (stocktake)
+export async function bulkUpdateLocalInventory(
+    region: string,
+    items: { itemName: string; qty: number }[],
+    updatedBy: string
+) {
+    try {
+        const operations = items.map((item) =>
+            prisma.localInventory.upsert({
+                where: {
+                    region_itemName: {
+                        region,
+                        itemName: item.itemName,
+                    },
+                },
+                update: {
+                    qty: item.qty,
+                    lastUpdated: new Date(),
+                    updatedBy,
+                },
+                create: {
+                    region,
+                    itemName: item.itemName,
+                    qty: item.qty,
+                    lastUpdated: new Date(),
+                    updatedBy,
+                },
+            })
+        );
+
+        await prisma.$transaction(operations);
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `Updated ${items.length} items` };
+    } catch (error) {
+        console.error("Bulk local inventory update error:", error);
+        return { success: false, message: "Failed to update inventory" };
+    }
+}

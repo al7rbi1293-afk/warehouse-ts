@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { TEXT, CATEGORIES, UNITS, LOCATIONS } from "@/lib/constants";
-import { updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem, createBulkRequest, confirmReceipt } from "@/app/actions/inventory";
+import { updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem, createBulkRequest, confirmReceipt, bulkUpdateLocalInventory } from "@/app/actions/inventory";
 import { toast } from "sonner";
 
 interface InventoryItem {
@@ -96,6 +96,7 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
         { id: "order", label: "📝 New Request" },
         { id: "pickup", label: `🚚 Pickup (${data.readyForPickup.length})` },
         { id: "pending", label: `⏳ Pending (${data.myPendingRequests.length})` },
+        { id: "stocktake", label: "📋 Stocktake" },
         { id: "local", label: TEXT.local_inv },
     ];
 
@@ -238,6 +239,15 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
             {/* Supervisor: My Pending */}
             {userRole === "supervisor" && activeTab === "pending" && (
                 <SupervisorPendingView requests={data.myPendingRequests} />
+            )}
+
+            {/* Supervisor: Stocktake */}
+            {userRole === "supervisor" && activeTab === "stocktake" && (
+                <SupervisorStocktakeView
+                    localInventory={data.localInventory.filter(i => i.region === selectedRegion)}
+                    region={selectedRegion}
+                    userName={userName}
+                />
             )}
 
             {/* Supervisor: Local Inventory */}
@@ -686,6 +696,30 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
         return <div className="card text-center text-gray-500 py-8">✅ No pending requests</div>;
     }
 
+    const handleApproveAll = async () => {
+        if (!confirm(`Approve all ${regionRequests.length} requests in ${selectedRegion}?`)) return;
+        setIsLoading(true);
+        let successCount = 0;
+        for (const req of regionRequests) {
+            const result = await updateRequestStatus(req.reqId, "Approved");
+            if (result.success) successCount++;
+        }
+        toast.success(`Approved ${successCount} requests`);
+        setIsLoading(false);
+    };
+
+    const handleRejectAll = async () => {
+        if (!confirm(`Reject all ${regionRequests.length} requests in ${selectedRegion}?`)) return;
+        setIsLoading(true);
+        let successCount = 0;
+        for (const req of regionRequests) {
+            const result = await updateRequestStatus(req.reqId, "Rejected");
+            if (result.success) successCount++;
+        }
+        toast.success(`Rejected ${successCount} requests`);
+        setIsLoading(false);
+    };
+
     return (
         <div>
             <div className="tabs mb-4">
@@ -701,8 +735,32 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
             </div>
 
             <div className="card">
+                {/* Bulk Actions Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <span className="font-medium">{selectedRegion}</span>
+                        <span className="badge badge-info ml-2">{regionRequests.length} requests</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <button
+                            className="btn btn-success text-sm"
+                            onClick={handleApproveAll}
+                            disabled={isLoading || regionRequests.length === 0}
+                        >
+                            ✓ Approve All ({regionRequests.length})
+                        </button>
+                        <button
+                            className="btn btn-danger text-sm"
+                            onClick={handleRejectAll}
+                            disabled={isLoading || regionRequests.length === 0}
+                        >
+                            ✗ Reject All ({regionRequests.length})
+                        </button>
+                    </div>
+                </div>
+
                 <div className="mb-4 p-3 bg-yellow-50 rounded-lg text-sm">
-                    <p>💡 <strong>Note:</strong> You can edit quantity before approval by clicking ✏️</p>
+                    <p>💡 <strong>Tip:</strong> Click ✏️ to edit quantity before approval, or use bulk actions above</p>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -1030,6 +1088,29 @@ function StorekeeperIssueView({ approvedRequests, inventory, userName }: { appro
         return <div className="card text-center text-gray-500 py-8">✅ No approved requests for issue</div>;
     }
 
+    const handleIssueAll = async () => {
+        if (!confirm(`Issue all ${regionRequests.length} items in ${selectedRegion}?`)) return;
+        setIsLoading(true);
+        let successCount = 0;
+        for (const req of regionRequests) {
+            const qty = issueQtys[req.reqId] || req.qty || 0;
+            const available = stockMap[req.itemName || ""] || 0;
+            if (qty > 0 && available >= qty) {
+                const result = await issueRequest(
+                    req.reqId,
+                    req.itemName || "",
+                    qty,
+                    userName,
+                    req.unit || "Piece",
+                    req.region || ""
+                );
+                if (result.success) successCount++;
+            }
+        }
+        toast.success(`Issued ${successCount} items`);
+        setIsLoading(false);
+    };
+
     return (
         <div>
             <div className="tabs mb-4">
@@ -1045,6 +1126,21 @@ function StorekeeperIssueView({ approvedRequests, inventory, userName }: { appro
             </div>
 
             <div className="card">
+                {/* Bulk Actions Header */}
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 bg-gray-50 rounded-lg">
+                    <div>
+                        <span className="font-medium">{selectedRegion}</span>
+                        <span className="badge badge-info ml-2">{regionRequests.length} items</span>
+                    </div>
+                    <button
+                        className="btn btn-success"
+                        onClick={handleIssueAll}
+                        disabled={isLoading || regionRequests.length === 0}
+                    >
+                        📤 Issue All ({regionRequests.length})
+                    </button>
+                </div>
+
                 <table className="data-table">
                     <thead>
                         <tr>
@@ -1453,6 +1549,139 @@ function SupervisorPendingView({ requests }: { requests: Request[] }) {
                     ))}
                 </tbody>
             </table>
+        </div>
+    );
+}
+
+// Supervisor Stocktake View - for manual inventory update
+function SupervisorStocktakeView({
+    localInventory,
+    region,
+    userName
+}: {
+    localInventory: LocalInventory[];
+    region: string;
+    userName: string;
+}) {
+    const [isLoading, setIsLoading] = useState(false);
+    const [quantities, setQuantities] = useState<Record<string, number>>(() => {
+        const init: Record<string, number> = {};
+        localInventory.forEach((item) => {
+            init[item.itemName] = item.qty || 0;
+        });
+        return init;
+    });
+    const [newItemName, setNewItemName] = useState("");
+    const [newItemQty, setNewItemQty] = useState(0);
+
+    const handleSave = async () => {
+        setIsLoading(true);
+        const items = Object.entries(quantities).map(([itemName, qty]) => ({
+            itemName,
+            qty,
+        }));
+
+        const result = await bulkUpdateLocalInventory(region, items, userName);
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    const handleAddItem = async () => {
+        if (!newItemName.trim()) {
+            toast.error("Enter item name");
+            return;
+        }
+        setQuantities({ ...quantities, [newItemName]: newItemQty });
+        setNewItemName("");
+        setNewItemQty(0);
+        toast.info("Item added - click Save to persist");
+    };
+
+    return (
+        <div className="card">
+            <div className="flex items-center justify-between mb-4">
+                <div>
+                    <h3 className="font-bold text-lg">📋 Stocktake - {region}</h3>
+                    <p className="text-sm text-gray-500">Update inventory quantities</p>
+                </div>
+                <button
+                    className="btn btn-success"
+                    onClick={handleSave}
+                    disabled={isLoading}
+                >
+                    {isLoading ? "Saving..." : "💾 Save All Changes"}
+                </button>
+            </div>
+
+            {/* Add New Item */}
+            <div className="flex gap-3 mb-4 p-3 bg-blue-50 rounded-lg">
+                <input
+                    type="text"
+                    className="form-input flex-1"
+                    placeholder="New item name..."
+                    value={newItemName}
+                    onChange={(e) => setNewItemName(e.target.value)}
+                />
+                <input
+                    type="number"
+                    className="form-input w-24"
+                    placeholder="Qty"
+                    min="0"
+                    value={newItemQty}
+                    onChange={(e) => setNewItemQty(parseInt(e.target.value) || 0)}
+                />
+                <button
+                    className="btn"
+                    onClick={handleAddItem}
+                >
+                    ➕ Add
+                </button>
+            </div>
+
+            {Object.keys(quantities).length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No inventory items. Add items above.</p>
+            ) : (
+                <div className="overflow-x-auto max-h-96">
+                    <table className="data-table">
+                        <thead className="sticky top-0 bg-white">
+                            <tr>
+                                <th>Item</th>
+                                <th>Current Qty</th>
+                                <th>New Qty</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {Object.entries(quantities).map(([itemName, qty]) => {
+                                const original = localInventory.find(i => i.itemName === itemName)?.qty || 0;
+                                const changed = qty !== original;
+                                return (
+                                    <tr key={itemName} className={changed ? "bg-yellow-50" : ""}>
+                                        <td className="font-medium">{itemName}</td>
+                                        <td className="text-gray-500">{original}</td>
+                                        <td>
+                                            <input
+                                                type="number"
+                                                className="form-input w-24"
+                                                min="0"
+                                                value={qty}
+                                                onChange={(e) => setQuantities({
+                                                    ...quantities,
+                                                    [itemName]: parseInt(e.target.value) || 0
+                                                })}
+                                            />
+                                            {changed && <span className="text-yellow-600 ml-2">*</span>}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            )}
         </div>
     );
 }
