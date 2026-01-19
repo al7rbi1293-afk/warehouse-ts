@@ -30,12 +30,12 @@ export default function LoginPage() {
             if (result?.error) {
                 toast.error(TEXT.error_login);
             } else {
-                toast.success("تم تسجيل الدخول بنجاح");
+                toast.success("Login successful");
                 router.push("/dashboard");
                 router.refresh();
             }
         } catch {
-            toast.error("حدث خطأ غير متوقع");
+            toast.error("An unexpected error occurred");
         } finally {
             setIsLoading(false);
         }
@@ -72,7 +72,7 @@ export default function LoginPage() {
                         <h1 className="text-3xl font-bold text-gray-800 mb-2">
                             🔐 {TEXT.app_title}
                         </h1>
-                        <p className="text-gray-500">مرحباً بك في نظام إدارة المشاريع</p>
+                        <p className="text-gray-500">Welcome to Project Management System</p>
                     </div>
 
                     {/* Tabs */}
@@ -100,7 +100,7 @@ export default function LoginPage() {
                                     type="text"
                                     name="username"
                                     className="form-input"
-                                    placeholder="أدخل اسم المستخدم"
+                                    placeholder="Enter username"
                                     required
                                     disabled={isLoading}
                                 />
@@ -111,7 +111,7 @@ export default function LoginPage() {
                                     type="password"
                                     name="password"
                                     className="form-input"
-                                    placeholder="أدخل كلمة المرور"
+                                    placeholder="Enter password"
                                     required
                                     disabled={isLoading}
                                 />
@@ -124,7 +124,7 @@ export default function LoginPage() {
                                 {isLoading ? (
                                     <span className="flex items-center justify-center gap-2">
                                         <span className="spinner" />
-                                        جاري تسجيل الدخول...
+                                        Signing in...
                                     </span>
                                 ) : (
                                     TEXT.login_btn
@@ -142,7 +142,7 @@ export default function LoginPage() {
                                     type="text"
                                     name="username"
                                     className="form-input"
-                                    placeholder="اختر اسم المستخدم"
+                                    placeholder="Choose username"
                                     required
                                     disabled={isLoading}
                                 />
@@ -153,7 +153,7 @@ export default function LoginPage() {
                                     type="password"
                                     name="password"
                                     className="form-input"
-                                    placeholder="اختر كلمة المرور"
+                                    placeholder="Choose password"
                                     required
                                     disabled={isLoading}
                                 />
@@ -164,7 +164,7 @@ export default function LoginPage() {
                                     type="text"
                                     name="name"
                                     className="form-input"
-                                    placeholder="أدخل الاسم الكامل"
+                                    placeholder="Enter full name"
                                     required
                                     disabled={isLoading}
                                 />
@@ -185,7 +185,7 @@ export default function LoginPage() {
                                     ))}
                                 </select>
                                 <p className="text-xs text-gray-500 mt-1">
-                                    اضغط Ctrl للاختيار المتعدد
+                                    Hold Ctrl for multiple selection
                                 </p>
                             </div>
                             <button
@@ -196,7 +196,7 @@ export default function LoginPage() {
                                 {isLoading ? (
                                     <span className="flex items-center justify-center gap-2">
                                         <span className="spinner" />
-                                        جاري التسجيل...
+                                        Registering...
                                     </span>
                                 ) : (
                                     TEXT.register_btn

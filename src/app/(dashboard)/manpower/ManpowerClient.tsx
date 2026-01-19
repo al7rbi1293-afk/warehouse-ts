@@ -586,7 +586,7 @@ function SupervisorsTable({ supervisors, shifts }: { supervisors: Supervisor[]; 
         <div className="card">
             <h3 className="font-bold text-lg mb-4">📍 Supervisor Management</h3>
             <p className="text-sm text-gray-600 mb-4">
-                اضغط على ✏️ لتعديل المناطق والشفت للمشرف
+                Click ✏️ to edit regions and shift for supervisor
             </p>
             <div className="overflow-x-auto">
                 <table className="data-table">
@@ -680,7 +680,7 @@ function SupervisorsTable({ supervisors, shifts }: { supervisors: Supervisor[]; 
                                             <button
                                                 className="btn btn-secondary text-xs px-2 py-1"
                                                 onClick={() => handleEdit(s)}
-                                                title="تعديل"
+                                                title="Edit"
                                             >
                                                 ✏️ Edit
                                             </button>

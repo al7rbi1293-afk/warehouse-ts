@@ -129,7 +129,7 @@ export function Sidebar() {
                             <input
                                 type="password"
                                 className="form-input text-sm"
-                                placeholder="اتركه فارغاً للإبقاء على الحالية"
+                                placeholder="Leave empty to keep current"
                                 name="password"
                             />
                         </div>

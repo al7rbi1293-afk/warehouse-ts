@@ -167,7 +167,7 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
                     {data.sncInventory.length > 0 ? (
                         <StockTransferForm items={data.sncInventory} />
                     ) : (
-                        <p className="text-gray-500 text-center py-8">SNC المخزون فارغ</p>
+                        <p className="text-gray-500 text-center py-8">SNC Inventory is empty</p>
                     )}
                 </div>
             )}
@@ -312,7 +312,7 @@ function EditableDataTable({ items, userName }: { items: InventoryItem[]; userNa
     };
 
     const handleDelete = async (id: number, name: string) => {
-        if (!confirm(`هل أنت متأكد من حذف "${name}"؟`)) return;
+        if (!confirm(`Are you sure you want to delete "${name}"؟`)) return;
 
         setIsLoading(true);
         const result = await deleteInventoryItem(id);
@@ -330,7 +330,7 @@ function EditableDataTable({ items, userName }: { items: InventoryItem[]; userNa
     };
 
     if (items.length === 0) {
-        return <p className="text-gray-500 text-center py-8">لا توجد عناصر</p>;
+        return <p className="text-gray-500 text-center py-8">No items found</p>;
     }
 
     return (
@@ -420,14 +420,14 @@ function EditableDataTable({ items, userName }: { items: InventoryItem[]; userNa
                                         <button
                                             className="btn btn-secondary text-xs px-2 py-1"
                                             onClick={() => handleEdit(item)}
-                                            title="تعديل"
+                                            title="Edit"
                                         >
                                             ✏️
                                         </button>
                                         <button
                                             className="btn btn-danger text-xs px-2 py-1"
                                             onClick={() => handleDelete(item.id, item.nameEn)}
-                                            title="حذف"
+                                            title="Delete"
                                         >
                                             🗑️
                                         </button>
@@ -462,7 +462,7 @@ function AddInventoryItemForm() {
         e.preventDefault();
 
         if (!formData.nameEn.trim()) {
-            toast.error("يرجى إدخال اسم العنصر");
+            toast.error("Please enter item name");
             return;
         }
 
@@ -492,10 +492,10 @@ function AddInventoryItemForm() {
 
     return (
         <div className="card max-w-lg">
-            <h3 className="font-bold text-lg mb-4">➕ إضافة عنصر جديد</h3>
+            <h3 className="font-bold text-lg mb-4">➕ Add New Item</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label className="form-label">اسم العنصر (بالإنجليزية)</label>
+                    <label className="form-label">Item Name</label>
                     <input
                         type="text"
                         className="form-input"
@@ -508,7 +508,7 @@ function AddInventoryItemForm() {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="form-label">التصنيف</label>
+                        <label className="form-label">Category</label>
                         <select
                             className="form-input"
                             value={formData.category}
@@ -520,7 +520,7 @@ function AddInventoryItemForm() {
                         </select>
                     </div>
                     <div>
-                        <label className="form-label">الوحدة</label>
+                        <label className="form-label">Unit</label>
                         <select
                             className="form-input"
                             value={formData.unit}
@@ -535,7 +535,7 @@ function AddInventoryItemForm() {
 
                 <div className="grid grid-cols-2 gap-4">
                     <div>
-                        <label className="form-label">الكمية</label>
+                        <label className="form-label">Quantity</label>
                         <input
                             type="number"
                             className="form-input"
@@ -545,7 +545,7 @@ function AddInventoryItemForm() {
                         />
                     </div>
                     <div>
-                        <label className="form-label">الموقع</label>
+                        <label className="form-label">Location</label>
                         <select
                             className="form-input"
                             value={formData.location}
@@ -559,7 +559,7 @@ function AddInventoryItemForm() {
                 </div>
 
                 <button type="submit" className="btn w-full" disabled={isLoading}>
-                    {isLoading ? "جاري الإضافة..." : "➕ إضافة العنصر"}
+                    {isLoading ? "Adding..." : "➕ Add Item"}
                 </button>
             </form>
         </div>
@@ -575,7 +575,7 @@ function StockTransferForm({ items }: { items: InventoryItem[] }) {
         const toTransfer = Object.entries(transfers).filter(([, qty]) => qty > 0);
 
         if (toTransfer.length === 0) {
-            toast.warning("أدخل كمية واحدة على الأقل");
+            toast.warning("Enter at least one quantity");
             setIsLoading(false);
             return;
         }
@@ -589,7 +589,7 @@ function StockTransferForm({ items }: { items: InventoryItem[] }) {
             }
         }
 
-        toast.success(`تم نقل ${successCount} عنصر بنجاح!`);
+        toast.success(`Transferred ${successCount} items successfully!`);
         setTransfers({});
         setIsLoading(false);
     };
@@ -628,7 +628,7 @@ function StockTransferForm({ items }: { items: InventoryItem[] }) {
                 </table>
             </div>
             <button className="btn" onClick={handleTransfer} disabled={isLoading}>
-                {isLoading ? "جاري التنفيذ..." : "🔄 تنفيذ النقل"}
+                {isLoading ? "Processing..." : "🔄 Execute Transfer"}
             </button>
         </div>
     );
@@ -662,7 +662,7 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
         setIsLoading(true);
         const result = await updateRequestStatus(reqId, "Approved", qty, notes);
         if (result.success) {
-            toast.success("تمت الموافقة على الطلب");
+            toast.success("Request approved");
             handleCancelEdit();
         } else {
             toast.error(result.message);
@@ -674,7 +674,7 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
         setIsLoading(true);
         const result = await updateRequestStatus(reqId, "Rejected", undefined, notes);
         if (result.success) {
-            toast.success("تم رفض الطلب");
+            toast.success("Request rejected");
             handleCancelEdit();
         } else {
             toast.error(result.message);
@@ -683,7 +683,7 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
     };
 
     if (requests.length === 0) {
-        return <div className="card text-center text-gray-500 py-8">✅ لا توجد طلبات معلقة</div>;
+        return <div className="card text-center text-gray-500 py-8">✅ No pending requests</div>;
     }
 
     return (
@@ -702,7 +702,7 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
 
             <div className="card">
                 <div className="mb-4 p-3 bg-yellow-50 rounded-lg text-sm">
-                    <p>💡 <strong>ملاحظة:</strong> يمكنك تعديل الكمية قبل الموافقة بالضغط على ✏️</p>
+                    <p>💡 <strong>Note:</strong> You can edit quantity before approval by clicking ✏️</p>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -744,7 +744,7 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
                                                 <input
                                                     type="text"
                                                     className="form-input text-sm"
-                                                    placeholder="ملاحظة..."
+                                                    placeholder="Note..."
                                                     value={editNotes}
                                                     onChange={(e) => setEditNotes(e.target.value)}
                                                 />
@@ -755,21 +755,21 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
                                                     onClick={() => handleApprove(req.reqId, editQty, editNotes)}
                                                     disabled={isLoading || editQty <= 0}
                                                 >
-                                                    ✓ موافقة
+                                                    ✓ Approve
                                                 </button>
                                                 <button
                                                     className="btn btn-danger text-xs"
                                                     onClick={() => handleReject(req.reqId, editNotes)}
                                                     disabled={isLoading}
                                                 >
-                                                    ✗ رفض
+                                                    ✗ Reject
                                                 </button>
                                                 <button
                                                     className="btn btn-secondary text-xs"
                                                     onClick={handleCancelEdit}
                                                     disabled={isLoading}
                                                 >
-                                                    إلغاء
+                                                    Cancel
                                                 </button>
                                             </td>
                                         </>
@@ -787,7 +787,7 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
                                                     className="btn btn-secondary text-xs"
                                                     onClick={() => handleEdit(req)}
                                                     disabled={isLoading}
-                                                    title="تعديل"
+                                                    title="Edit"
                                                 >
                                                     ✏️
                                                 </button>
@@ -845,20 +845,20 @@ function LocalInventoryView({ localInventory }: { localInventory: LocalInventory
             {/* Summary Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="card bg-blue-50 border-blue-200">
-                    <p className="text-sm text-blue-600">إجمالي المناطق</p>
+                    <p className="text-sm text-blue-600">Total Regions</p>
                     <p className="text-2xl font-bold text-blue-800">{regions.length}</p>
                 </div>
                 <div className="card bg-green-50 border-green-200">
-                    <p className="text-sm text-green-600">إجمالي العناصر</p>
+                    <p className="text-sm text-green-600">Total Items</p>
                     <p className="text-2xl font-bold text-green-800">{totalItems}</p>
                 </div>
                 <div className="card bg-purple-50 border-purple-200">
-                    <p className="text-sm text-purple-600">إجمالي الكمية</p>
+                    <p className="text-sm text-purple-600">Total Quantity</p>
                     <p className="text-2xl font-bold text-purple-800">{totalQty}</p>
                 </div>
                 <div className="card bg-yellow-50 border-yellow-200">
-                    <p className="text-sm text-yellow-600">المنطقة المحددة</p>
-                    <p className="text-lg font-bold text-yellow-800">{selectedRegion || "الكل"}</p>
+                    <p className="text-sm text-yellow-600">Selected Region</p>
+                    <p className="text-lg font-bold text-yellow-800">{selectedRegion || "All"}</p>
                 </div>
             </div>
 
@@ -868,7 +868,7 @@ function LocalInventoryView({ localInventory }: { localInventory: LocalInventory
                     <input
                         type="text"
                         className="form-input w-64"
-                        placeholder="🔍 بحث عن عنصر..."
+                        placeholder="🔍 Search items..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
@@ -896,7 +896,7 @@ function LocalInventoryView({ localInventory }: { localInventory: LocalInventory
                 )}
 
                 {filtered.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">لا توجد بيانات</p>
+                    <p className="text-gray-500 text-center py-8">No data available</p>
                 ) : (
                     <div className="overflow-x-auto max-h-96">
                         <table className="data-table">
@@ -1004,7 +1004,7 @@ function StorekeeperIssueView({ approvedRequests, inventory, userName }: { appro
     const handleIssue = async (req: Request) => {
         const issueQty = issueQtys[req.reqId] || req.qty || 0;
         if (issueQty <= 0) {
-            toast.error("أدخل كمية صحيحة");
+            toast.error("Enter valid quantity");
             return;
         }
 
@@ -1019,7 +1019,7 @@ function StorekeeperIssueView({ approvedRequests, inventory, userName }: { appro
         );
 
         if (result.success) {
-            toast.success("تم إصدار العنصر بنجاح");
+            toast.success("Items issued successfully");
         } else {
             toast.error(result.message);
         }
@@ -1027,7 +1027,7 @@ function StorekeeperIssueView({ approvedRequests, inventory, userName }: { appro
     };
 
     if (approvedRequests.length === 0) {
-        return <div className="card text-center text-gray-500 py-8">✅ لا توجد طلبات معتمدة للإصدار</div>;
+        return <div className="card text-center text-gray-500 py-8">✅ No approved requests for issue</div>;
     }
 
     return (
@@ -1111,7 +1111,7 @@ function StockTakeView({ inventory, location, userName }: { inventory: Inventory
         });
 
         if (changes.length === 0) {
-            toast.info("لا توجد تغييرات للحفظ");
+            toast.info("No changes to save");
             return;
         }
 
@@ -1186,7 +1186,7 @@ function StockTakeView({ inventory, location, userName }: { inventory: Inventory
             </div>
 
             <button className="btn" onClick={handleSave} disabled={isLoading}>
-                {isLoading ? "جاري الحفظ..." : "💾 Save Changes"}
+                {isLoading ? "Saving..." : "💾 Save Changes"}
             </button>
         </div>
     );
@@ -1226,7 +1226,7 @@ function SupervisorRequestForm({ inventory, supervisorName, region }: { inventor
             }));
 
         if (items.length === 0) {
-            toast.error("يرجى إدخال كمية واحدة على الأقل");
+            toast.error("Please enter at least one quantity");
             return;
         }
 
@@ -1249,23 +1249,23 @@ function SupervisorRequestForm({ inventory, supervisorName, region }: { inventor
     return (
         <div className="card">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-lg">📝 طلب مواد - Bulk Order</h3>
+                <h3 className="font-bold text-lg">📝 Bulk Material Request</h3>
                 {getTotalItems() > 0 && (
                     <span className="badge badge-info">
-                        {getTotalItems()} عناصر محددة
+                        {getTotalItems()} items selected
                     </span>
                 )}
             </div>
 
             <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm">
-                <p>📌 <strong>المنطقة:</strong> {region}</p>
-                <p>👤 <strong>المشرف:</strong> {supervisorName}</p>
+                <p>📌 <strong>Region:</strong> {region}</p>
+                <p>👤 <strong>Supervisor:</strong> {supervisorName}</p>
             </div>
 
             <input
                 type="text"
                 className="form-input mb-4"
-                placeholder="🔍 بحث عن عنصر..."
+                placeholder="🔍 Search items..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -1316,7 +1316,7 @@ function SupervisorRequestForm({ inventory, supervisorName, region }: { inventor
                     onClick={handleSubmit}
                     disabled={isLoading || getTotalItems() === 0}
                 >
-                    {isLoading ? "جاري الإرسال..." : `📤 إرسال الطلب (${getTotalItems()} عناصر)`}
+                    {isLoading ? "Submitting..." : `📤 Submit Request (${getTotalItems()} items)`}
                 </button>
                 {getTotalItems() > 0 && (
                     <button
@@ -1325,7 +1325,7 @@ function SupervisorRequestForm({ inventory, supervisorName, region }: { inventor
                         onClick={handleClear}
                         disabled={isLoading}
                     >
-                        🗑️ مسح
+                        🗑️ Clear
                     </button>
                 )}
             </div>
@@ -1358,31 +1358,31 @@ function SupervisorPickupView({ requests }: { requests: Request[] }) {
                 successCount++;
             }
         }
-        toast.success(`تم تأكيد استلام ${successCount} عناصر`);
+        toast.success(`Receipt confirmed for ${successCount} items`);
         setIsLoading(false);
     };
 
     if (requests.length === 0) {
-        return <div className="card text-center text-gray-500 py-8">📦 لا توجد عناصر جاهزة للاستلام</div>;
+        return <div className="card text-center text-gray-500 py-8">📦 No items ready for pickup</div>;
     }
 
     return (
         <div className="card">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-lg">🚚 جاهز للاستلام ({requests.length})</h3>
+                <h3 className="font-bold text-lg">🚚 Ready for Pickup ({requests.length})</h3>
                 {requests.length > 1 && (
                     <button
                         className="btn btn-success text-sm"
                         onClick={handleConfirmAll}
                         disabled={isLoading}
                     >
-                        ✓ تأكيد استلام الكل
+                        ✓ Confirm All
                     </button>
                 )}
             </div>
 
             <div className="mb-4 p-3 bg-green-50 rounded-lg text-sm">
-                <p>💡 اضغط على <strong>✓ تأكيد الاستلام</strong> بعد استلام كل عنصر</p>
+                <p>💡 Click <strong>✓ Confirm Receipt</strong> after receiving each item</p>
             </div>
 
             <div className="overflow-x-auto">
@@ -1405,14 +1405,14 @@ function SupervisorPickupView({ requests }: { requests: Request[] }) {
                                 <td>{req.notes || "-"}</td>
                                 <td>
                                     {confirmedIds.includes(req.reqId) ? (
-                                        <span className="badge badge-success">✓ تم الاستلام</span>
+                                        <span className="badge badge-success">✓ Received</span>
                                     ) : (
                                         <button
                                             className="btn btn-success text-xs"
                                             onClick={() => handleConfirmReceipt(req.reqId)}
                                             disabled={isLoading}
                                         >
-                                            ✓ تأكيد الاستلام
+                                            ✓ Confirm Receipt
                                         </button>
                                     )}
                                 </td>
@@ -1427,12 +1427,12 @@ function SupervisorPickupView({ requests }: { requests: Request[] }) {
 
 function SupervisorPendingView({ requests }: { requests: Request[] }) {
     if (requests.length === 0) {
-        return <div className="card text-center text-gray-500 py-8">✅ لا توجد طلبات معلقة</div>;
+        return <div className="card text-center text-gray-500 py-8">✅ No pending requests</div>;
     }
 
     return (
         <div className="card">
-            <h3 className="font-bold text-lg mb-4">⏳ طلباتي المعلقة ({requests.length})</h3>
+            <h3 className="font-bold text-lg mb-4">⏳ My Pending Requests ({requests.length})</h3>
             <table className="data-table">
                 <thead>
                     <tr>

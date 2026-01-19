@@ -66,7 +66,7 @@ export function DashboardClient({ data }: Props) {
                 <h1 className="text-2xl font-bold">📊 Executive Dashboard</h1>
                 <div className="flex items-center gap-4">
                     <span className="text-sm text-gray-500">
-                        آخر تحديث: {lastRefresh.toLocaleTimeString()}
+                        Last update: {lastRefresh.toLocaleTimeString()}
                     </span>
                     <label className="flex items-center gap-2 cursor-pointer">
                         <input

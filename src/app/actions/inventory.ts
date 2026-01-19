@@ -54,7 +54,7 @@ export async function addInventoryItem(
         });
 
         if (existing) {
-            return { success: false, message: "هذا العنصر موجود بالفعل في هذا الموقع" };
+            return { success: false, message: "This item already exists in this location" };
         }
 
         await prisma.inventory.create({
@@ -69,10 +69,10 @@ export async function addInventoryItem(
         });
 
         revalidatePath("/warehouse");
-        return { success: true, message: "تم إضافة العنصر بنجاح" };
+        return { success: true, message: "Item added successfully" };
     } catch (error) {
         console.error("Add inventory error:", error);
-        return { success: false, message: "فشل في إضافة العنصر" };
+        return { success: false, message: "Failed to add item" };
     }
 }
 
@@ -90,7 +90,7 @@ export async function updateInventoryItem(
     try {
         const item = await prisma.inventory.findUnique({ where: { id } });
         if (!item) {
-            return { success: false, message: "العنصر غير موجود" };
+            return { success: false, message: "Item not found" };
         }
 
         const updateData: Record<string, unknown> = { ...data, lastUpdated: new Date() };
@@ -117,10 +117,10 @@ export async function updateInventoryItem(
         });
 
         revalidatePath("/warehouse");
-        return { success: true, message: "تم تحديث العنصر بنجاح" };
+        return { success: true, message: "Item updated successfully" };
     } catch (error) {
         console.error("Update inventory error:", error);
-        return { success: false, message: "فشل في تحديث العنصر" };
+        return { success: false, message: "Failed to update item" };
     }
 }
 
@@ -129,16 +129,16 @@ export async function deleteInventoryItem(id: number) {
     try {
         const item = await prisma.inventory.findUnique({ where: { id } });
         if (!item) {
-            return { success: false, message: "العنصر غير موجود" };
+            return { success: false, message: "Item not found" };
         }
 
         await prisma.inventory.delete({ where: { id } });
 
         revalidatePath("/warehouse");
-        return { success: true, message: "تم حذف العنصر بنجاح" };
+        return { success: true, message: "Item deleted successfully" };
     } catch (error) {
         console.error("Delete inventory error:", error);
-        return { success: false, message: "فشل في حذف العنصر" };
+        return { success: false, message: "Failed to delete item" };
     }
 }
 
@@ -308,7 +308,7 @@ export async function createBulkRequest(
         const validItems = items.filter((item) => item.qty > 0);
 
         if (validItems.length === 0) {
-            return { success: false, message: "لا توجد عناصر للطلب" };
+            return { success: false, message: "No items to request" };
         }
 
         await prisma.$transaction(
@@ -328,10 +328,10 @@ export async function createBulkRequest(
         );
 
         revalidatePath("/warehouse");
-        return { success: true, message: `تم إرسال ${validItems.length} طلب بنجاح` };
+        return { success: true, message: `Submitted ${validItems.length} requests successfully` };
     } catch (error) {
         console.error("Create bulk request error:", error);
-        return { success: false, message: "فشل في إرسال الطلبات" };
+        return { success: false, message: "Failed to submit requests" };
     }
 }
 
@@ -368,7 +368,7 @@ export async function confirmReceipt(reqId: number) {
         });
 
         if (!request) {
-            return { success: false, message: "الطلب غير موجود" };
+            return { success: false, message: "Request not found" };
         }
 
         await prisma.$transaction(async (tx) => {
@@ -420,10 +420,10 @@ export async function confirmReceipt(reqId: number) {
         });
 
         revalidatePath("/warehouse");
-        return { success: true, message: "تم تأكيد الاستلام وتحديث المخزون المحلي" };
+        return { success: true, message: "Receipt confirmed and local inventory updated" };
     } catch (error) {
         console.error("Confirm receipt error:", error);
-        return { success: false, message: "فشل في تأكيد الاستلام" };
+        return { success: false, message: "Failed to confirm receipt" };
     }
 }
 
