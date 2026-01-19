@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { TEXT, CATEGORIES, UNITS, LOCATIONS } from "@/lib/constants";
-import { createRequest, updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem } from "@/app/actions/inventory";
+import { updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem, createBulkRequest } from "@/app/actions/inventory";
 import { toast } from "sonner";
 
 interface InventoryItem {
@@ -636,28 +636,46 @@ function StockTransferForm({ items }: { items: InventoryItem[] }) {
 
 function RequestReviewView({ requests, inventory }: { requests: Request[]; inventory: InventoryItem[] }) {
     const [isLoading, setIsLoading] = useState(false);
+    const [editingId, setEditingId] = useState<number | null>(null);
+    const [editQty, setEditQty] = useState<number>(0);
+    const [editNotes, setEditNotes] = useState<string>("");
+
     const regions = [...new Set(requests.map((r) => r.region))];
     const [selectedRegion, setSelectedRegion] = useState(regions[0] || "");
     const stockMap = Object.fromEntries(inventory.map((i) => [i.nameEn, i.qty]));
 
     const regionRequests = requests.filter((r) => r.region === selectedRegion);
 
-    const handleApprove = async (reqId: number) => {
+    const handleEdit = (req: Request) => {
+        setEditingId(req.reqId);
+        setEditQty(req.qty || 0);
+        setEditNotes(req.notes || "");
+    };
+
+    const handleCancelEdit = () => {
+        setEditingId(null);
+        setEditQty(0);
+        setEditNotes("");
+    };
+
+    const handleApprove = async (reqId: number, qty?: number, notes?: string) => {
         setIsLoading(true);
-        const result = await updateRequestStatus(reqId, "Approved");
+        const result = await updateRequestStatus(reqId, "Approved", qty, notes);
         if (result.success) {
             toast.success("تمت الموافقة على الطلب");
+            handleCancelEdit();
         } else {
             toast.error(result.message);
         }
         setIsLoading(false);
     };
 
-    const handleReject = async (reqId: number) => {
+    const handleReject = async (reqId: number, notes?: string) => {
         setIsLoading(true);
-        const result = await updateRequestStatus(reqId, "Rejected");
+        const result = await updateRequestStatus(reqId, "Rejected", undefined, notes);
         if (result.success) {
             toast.success("تم رفض الطلب");
+            handleCancelEdit();
         } else {
             toast.error(result.message);
         }
@@ -683,47 +701,118 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
             </div>
 
             <div className="card">
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Supervisor</th>
-                            <th>Qty</th>
-                            <th>Available</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {regionRequests.map((req) => (
-                            <tr key={req.reqId}>
-                                <td className="font-medium">{req.itemName}</td>
-                                <td>{req.supervisorName}</td>
-                                <td>{req.qty} {req.unit}</td>
-                                <td>
-                                    <span className={`badge ${(stockMap[req.itemName || ""] || 0) >= (req.qty || 0) ? "badge-success" : "badge-error"}`}>
-                                        {stockMap[req.itemName || ""] || 0}
-                                    </span>
-                                </td>
-                                <td className="space-x-2">
-                                    <button
-                                        className="btn btn-success text-xs"
-                                        onClick={() => handleApprove(req.reqId)}
-                                        disabled={isLoading}
-                                    >
-                                        ✓ Approve
-                                    </button>
-                                    <button
-                                        className="btn btn-danger text-xs"
-                                        onClick={() => handleReject(req.reqId)}
-                                        disabled={isLoading}
-                                    >
-                                        ✗ Reject
-                                    </button>
-                                </td>
+                <div className="mb-4 p-3 bg-yellow-50 rounded-lg text-sm">
+                    <p>💡 <strong>ملاحظة:</strong> يمكنك تعديل الكمية قبل الموافقة بالضغط على ✏️</p>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="data-table">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Supervisor</th>
+                                <th>Requested Qty</th>
+                                <th>Available</th>
+                                <th>Notes</th>
+                                <th>Actions</th>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
+                        </thead>
+                        <tbody>
+                            {regionRequests.map((req) => (
+                                <tr key={req.reqId} className={editingId === req.reqId ? "bg-yellow-50" : ""}>
+                                    <td className="font-medium">{req.itemName}</td>
+                                    <td>{req.supervisorName}</td>
+
+                                    {editingId === req.reqId ? (
+                                        <>
+                                            <td>
+                                                <input
+                                                    type="number"
+                                                    className="form-input w-24"
+                                                    min="1"
+                                                    max={stockMap[req.itemName || ""] || 0}
+                                                    value={editQty}
+                                                    onChange={(e) => setEditQty(parseInt(e.target.value) || 0)}
+                                                />
+                                            </td>
+                                            <td>
+                                                <span className={`badge ${(stockMap[req.itemName || ""] || 0) >= editQty ? "badge-success" : "badge-error"}`}>
+                                                    {stockMap[req.itemName || ""] || 0}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                <input
+                                                    type="text"
+                                                    className="form-input text-sm"
+                                                    placeholder="ملاحظة..."
+                                                    value={editNotes}
+                                                    onChange={(e) => setEditNotes(e.target.value)}
+                                                />
+                                            </td>
+                                            <td className="space-x-1">
+                                                <button
+                                                    className="btn btn-success text-xs"
+                                                    onClick={() => handleApprove(req.reqId, editQty, editNotes)}
+                                                    disabled={isLoading || editQty <= 0}
+                                                >
+                                                    ✓ موافقة
+                                                </button>
+                                                <button
+                                                    className="btn btn-danger text-xs"
+                                                    onClick={() => handleReject(req.reqId, editNotes)}
+                                                    disabled={isLoading}
+                                                >
+                                                    ✗ رفض
+                                                </button>
+                                                <button
+                                                    className="btn btn-secondary text-xs"
+                                                    onClick={handleCancelEdit}
+                                                    disabled={isLoading}
+                                                >
+                                                    إلغاء
+                                                </button>
+                                            </td>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <td>{req.qty} {req.unit}</td>
+                                            <td>
+                                                <span className={`badge ${(stockMap[req.itemName || ""] || 0) >= (req.qty || 0) ? "badge-success" : "badge-error"}`}>
+                                                    {stockMap[req.itemName || ""] || 0}
+                                                </span>
+                                            </td>
+                                            <td className="text-sm text-gray-500">{req.notes || "-"}</td>
+                                            <td className="space-x-1">
+                                                <button
+                                                    className="btn btn-secondary text-xs"
+                                                    onClick={() => handleEdit(req)}
+                                                    disabled={isLoading}
+                                                    title="تعديل"
+                                                >
+                                                    ✏️
+                                                </button>
+                                                <button
+                                                    className="btn btn-success text-xs"
+                                                    onClick={() => handleApprove(req.reqId)}
+                                                    disabled={isLoading}
+                                                >
+                                                    ✓
+                                                </button>
+                                                <button
+                                                    className="btn btn-danger text-xs"
+                                                    onClick={() => handleReject(req.reqId)}
+                                                    disabled={isLoading}
+                                                >
+                                                    ✗
+                                                </button>
+                                            </td>
+                                        </>
+                                    )}
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     );
@@ -1038,84 +1127,140 @@ function StockTakeView({ inventory, location, userName }: { inventory: Inventory
 // ==================== SUPERVISOR COMPONENTS ====================
 
 function SupervisorRequestForm({ inventory, supervisorName, region }: { inventory: InventoryItem[]; supervisorName: string; region: string }) {
-    const [selectedItem, setSelectedItem] = useState("");
-    const [qty, setQty] = useState(1);
+    const [quantities, setQuantities] = useState<Record<string, number>>({});
+    const [searchTerm, setSearchTerm] = useState("");
     const [isLoading, setIsLoading] = useState(false);
 
-    const selectedInventory = inventory.find((i) => i.nameEn === selectedItem);
+    const filteredInventory = inventory.filter((item) =>
+        item.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.category && item.category.toLowerCase().includes(searchTerm.toLowerCase()))
+    );
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedItem || qty <= 0) {
-            toast.error("اختر عنصر وأدخل كمية صحيحة");
+    const handleQuantityChange = (itemName: string, qty: number) => {
+        setQuantities((prev) => ({
+            ...prev,
+            [itemName]: qty,
+        }));
+    };
+
+    const getTotalItems = () => {
+        return Object.values(quantities).filter((q) => q > 0).length;
+    };
+
+    const handleSubmit = async () => {
+        const items = inventory
+            .filter((item) => quantities[item.nameEn] > 0)
+            .map((item) => ({
+                itemName: item.nameEn,
+                category: item.category || "",
+                qty: quantities[item.nameEn],
+                unit: item.unit || "Piece",
+            }));
+
+        if (items.length === 0) {
+            toast.error("يرجى إدخال كمية واحدة على الأقل");
             return;
         }
 
         setIsLoading(true);
-        const result = await createRequest(
-            supervisorName,
-            region,
-            selectedItem,
-            selectedInventory?.category || "",
-            qty,
-            selectedInventory?.unit || "Piece"
-        );
+        const result = await createBulkRequest(supervisorName, region, items);
 
         if (result.success) {
-            toast.success("تم إرسال الطلب بنجاح");
-            setSelectedItem("");
-            setQty(1);
+            toast.success(result.message);
+            setQuantities({});
         } else {
             toast.error(result.message);
         }
         setIsLoading(false);
     };
 
+    const handleClear = () => {
+        setQuantities({});
+    };
+
     return (
         <div className="card">
-            <h3 className="font-bold text-lg mb-4">📝 طلب مواد جديد</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="form-label">اختر العنصر</label>
-                    <select
-                        className="form-input"
-                        value={selectedItem}
-                        onChange={(e) => setSelectedItem(e.target.value)}
-                        required
-                    >
-                        <option value="">-- اختر --</option>
-                        {inventory.map((item) => (
-                            <option key={item.id} value={item.nameEn}>
-                                {item.nameEn} ({item.qty} available)
-                            </option>
-                        ))}
-                    </select>
-                </div>
-
-                {selectedInventory && (
-                    <div className="p-3 bg-blue-50 rounded-lg">
-                        <p><strong>Category:</strong> {selectedInventory.category}</p>
-                        <p><strong>Unit:</strong> {selectedInventory.unit}</p>
-                        <p><strong>Available:</strong> {selectedInventory.qty}</p>
-                    </div>
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-lg">📝 طلب مواد - Bulk Order</h3>
+                {getTotalItems() > 0 && (
+                    <span className="badge badge-info">
+                        {getTotalItems()} عناصر محددة
+                    </span>
                 )}
+            </div>
 
-                <div>
-                    <label className="form-label">الكمية المطلوبة</label>
-                    <input
-                        type="number"
-                        className="form-input"
-                        min="1"
-                        value={qty}
-                        onChange={(e) => setQty(parseInt(e.target.value) || 1)}
-                        required
-                    />
-                </div>
+            <div className="mb-4 p-3 bg-blue-50 rounded-lg text-sm">
+                <p>📌 <strong>المنطقة:</strong> {region}</p>
+                <p>👤 <strong>المشرف:</strong> {supervisorName}</p>
+            </div>
 
-                <button type="submit" className="btn w-full" disabled={isLoading}>
-                    {isLoading ? "جاري الإرسال..." : "📤 إرسال الطلب"}
+            <input
+                type="text"
+                className="form-input mb-4"
+                placeholder="🔍 بحث عن عنصر..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+            />
+
+            <div className="overflow-x-auto max-h-96 mb-4">
+                <table className="data-table">
+                    <thead className="sticky top-0 bg-white">
+                        <tr>
+                            <th>Item</th>
+                            <th>Category</th>
+                            <th>Available</th>
+                            <th>Unit</th>
+                            <th>Request Qty</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {filteredInventory.map((item) => (
+                            <tr key={item.id} className={quantities[item.nameEn] > 0 ? "bg-green-50" : ""}>
+                                <td className="font-medium">{item.nameEn}</td>
+                                <td>{item.category || "-"}</td>
+                                <td>
+                                    <span className={`badge ${item.qty < 10 ? "badge-warning" : "badge-success"}`}>
+                                        {item.qty}
+                                    </span>
+                                </td>
+                                <td>{item.unit || "-"}</td>
+                                <td>
+                                    <input
+                                        type="number"
+                                        className="form-input w-24 text-center"
+                                        min="0"
+                                        max={item.qty}
+                                        value={quantities[item.nameEn] || ""}
+                                        placeholder="0"
+                                        onChange={(e) => handleQuantityChange(item.nameEn, parseInt(e.target.value) || 0)}
+                                    />
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            <div className="flex gap-2">
+                <button
+                    type="button"
+                    className="btn flex-1"
+                    onClick={handleSubmit}
+                    disabled={isLoading || getTotalItems() === 0}
+                >
+                    {isLoading ? "جاري الإرسال..." : `📤 إرسال الطلب (${getTotalItems()} عناصر)`}
                 </button>
-            </form>
+                {getTotalItems() > 0 && (
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={handleClear}
+                        disabled={isLoading}
+                    >
+                        🗑️ مسح
+                    </button>
+                )}
+            </div>
         </div>
     );
 }

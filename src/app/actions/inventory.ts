@@ -298,6 +298,43 @@ export async function createRequest(
     }
 }
 
+// Create bulk requests (multiple items at once)
+export async function createBulkRequest(
+    supervisorName: string,
+    region: string,
+    items: { itemName: string; category: string; qty: number; unit: string }[]
+) {
+    try {
+        const validItems = items.filter((item) => item.qty > 0);
+
+        if (validItems.length === 0) {
+            return { success: false, message: "لا توجد عناصر للطلب" };
+        }
+
+        await prisma.$transaction(
+            validItems.map((item) =>
+                prisma.request.create({
+                    data: {
+                        supervisorName,
+                        region,
+                        itemName: item.itemName,
+                        category: item.category,
+                        qty: item.qty,
+                        unit: item.unit,
+                        status: "Pending",
+                    },
+                })
+            )
+        );
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `تم إرسال ${validItems.length} طلب بنجاح` };
+    } catch (error) {
+        console.error("Create bulk request error:", error);
+        return { success: false, message: "فشل في إرسال الطلبات" };
+    }
+}
+
 export async function updateRequestStatus(
     reqId: number,
     status: string,
