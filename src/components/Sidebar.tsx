@@ -1,149 +1,116 @@
 "use client";
 
-import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
+import { useSession, signOut } from "next-auth/react";
 import { usePathname, useRouter } from "next/navigation";
-import { TEXT } from "@/lib/constants";
-import { useState } from "react";
+import { useUI } from "./UIProvider";
 
-interface NavItem {
-    name: string;
-    href: string;
-    icon: string;
-    roles: string[];
-}
-
-const navItems: NavItem[] = [
-    { name: "Dashboard", href: "/dashboard", icon: "📊", roles: ["manager"] },
-    { name: "Warehouse", href: "/warehouse", icon: "📦", roles: ["manager", "supervisor", "storekeeper"] },
-    { name: "Manpower", href: "/manpower", icon: "👷", roles: ["manager", "supervisor", "night_supervisor"] },
-];
+// Define the exact icons from the mockup conceptually
+const Icons = {
+    Dashboard: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>
+    ),
+    Inventory: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+    ),
+    Orders: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>
+    ),
+    Shipments: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="12" x="2" y="6" rx="2" /><circle cx="12" cy="12" r="2" /><path d="M6 12h.01M18 12h.01" /></svg>
+    ),
+    Reports: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="20" y2="10" /><line x1="18" x2="18" y1="20" y2="4" /><line x1="6" x2="6" y1="20" y2="16" /></svg>
+    ),
+    Settings: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+    ),
+    Profile: (props: any) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+    )
+};
 
 export function Sidebar() {
     const { data: session } = useSession();
     const pathname = usePathname();
     const router = useRouter();
-    const [isProfileOpen, setIsProfileOpen] = useState(false);
+    const { isSidebarOpen } = useUI();
 
     if (!session?.user) return null;
 
-    const user = session.user;
-    const isNightShift = user.role === "night_supervisor" || ["B", "B1"].includes(user.shiftName || "");
+    const navItems = [
+        { name: "Overview", href: "/dashboard", icon: Icons.Dashboard },
+        { name: "Inventory", href: "/warehouse", icon: Icons.Inventory },
+        { name: "Orders", href: "/warehouse", icon: Icons.Orders }, // Mapping requests to orders for visual match
+        { name: "Shipments", href: "/warehouse", icon: Icons.Shipments }, // Placeholder for future
+        { name: "Reports", href: "/manpower", icon: Icons.Reports },
+    ];
 
-    const filteredNav = navItems.filter((item) => {
-        if (isNightShift && item.name !== "Manpower") return false;
-        if (user.role === "storekeeper" && item.name === "Dashboard") return false;
-        return item.roles.includes(user.role);
-    });
-
-    const handleLogout = async () => {
-        await signOut({ redirect: false });
-        router.push("/login");
-    };
+    const bottomItems = [
+        { name: "Settings", href: "#", icon: Icons.Settings },
+        { name: "Profile", href: "#", icon: Icons.Profile, action: () => {/* Profile action */ } },
+    ];
 
     return (
-        <aside className="sidebar">
-            {/* Header - User Info */}
-            <div className="sidebar-header">
-                <div>
-                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                        👤 {user.name}
-                    </h2>
-                    <p className="text-xs text-gray-500">
-                        📍 {user.region?.split(",")[0]}... | {user.role}
-                    </p>
+        <aside
+            className={`fixed top-0 left-0 h-full w-[260px] bg-[#1E64EB] text-white transition-transform duration-300 z-50 flex flex-col ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+                }`}
+            style={{
+                background: "linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%)",
+                boxShadow: "4px 0 15px rgba(0,0,0,0.05)"
+            }}
+        >
+            {/* Logo Area */}
+            <div className="p-6 flex items-center gap-3">
+                <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                 </div>
-                {isNightShift && (
-                    <span className="px-2 py-1 bg-blue-100 rounded text-xs text-blue-700">
-                        🌙 Night
-                    </span>
-                )}
+                <div>
+                    <h1 className="font-bold text-lg leading-tight">WAREFLOW</h1>
+                    <p className="text-[10px] opacity-70 tracking-widest font-medium">SOLUTIONS</p>
+                </div>
             </div>
 
-            {/* Navigation */}
-            <nav className="sidebar-nav">
-                {filteredNav.map((item) => (
-                    <Link
-                        key={item.href}
-                        href={item.href}
-                        className={`nav-item ${pathname.startsWith(item.href) ? "active" : ""}`}
-                    >
-                        <span>{item.icon}</span>
-                        <span className="nav-text">{item.name}</span>
-                    </Link>
-                ))}
+            {/* Main Navigation */}
+            <nav className="flex-1 px-4 py-4 space-y-1">
+                {navItems.map((item) => {
+                    // Startswith /dashboard for Overview, others are specific
+                    const isActive = item.name === "Overview"
+                        ? pathname === "/dashboard"
+                        : pathname.startsWith(item.href);
+
+                    return (
+                        <Link
+                            key={item.name}
+                            href={item.href}
+                            className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
+                                    ? "bg-white/10 shadow-[inner_0_0_0_1px_rgba(255,255,255,0.1)]"
+                                    : "hover:bg-white/5"
+                                }`}
+                        >
+                            <item.icon className={`w-5 h-5 ${isActive ? "opacity-100" : "opacity-70 group-hover:opacity-100"}`} />
+                            <span className={`text-sm font-medium ${isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"}`}>
+                                {item.name}
+                            </span>
+                        </Link>
+                    )
+                })}
             </nav>
 
-            {/* Actions - only show on larger screens */}
-            <div className="sidebar-actions">
-                {/* Refresh Button */}
-                <button
-                    onClick={() => router.refresh()}
-                    className="btn w-full mb-2"
-                >
-                    {TEXT.refresh_data}
-                </button>
-
-                {/* Profile Editor */}
-                <div className="mb-2">
+            {/* Bottom Section */}
+            <div className="p-4 space-y-1 mt-auto border-t border-white/10">
+                {bottomItems.map((item) => (
                     <button
-                        onClick={() => setIsProfileOpen(!isProfileOpen)}
-                        className="w-full text-left p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-sm"
+                        key={item.name}
+                        onClick={item.action || (() => { })}
+                        className="w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/5 transition-all duration-200 group text-left"
                     >
-                        <span className="flex items-center gap-2">
-                            🛠 {TEXT.edit_profile}
-                            <span className="ml-auto">{isProfileOpen ? "▲" : "▼"}</span>
+                        <item.icon className="w-5 h-5 opacity-70 group-hover:opacity-100" />
+                        <span className="text-sm font-medium opacity-80 group-hover:opacity-100">
+                            {item.name}
                         </span>
                     </button>
-
-                    {isProfileOpen && (
-                        <form className="mt-2 space-y-2 p-2 bg-gray-50 rounded-lg">
-                            <div>
-                                <label className="form-label text-xs">{TEXT.username}</label>
-                                <input
-                                    type="text"
-                                    className="form-input text-sm"
-                                    defaultValue={user.username}
-                                    name="username"
-                                />
-                            </div>
-                            <div>
-                                <label className="form-label text-xs">{TEXT.new_name}</label>
-                                <input
-                                    type="text"
-                                    className="form-input text-sm"
-                                    defaultValue={user.name}
-                                    name="name"
-                                />
-                            </div>
-                            <div>
-                                <label className="form-label text-xs">{TEXT.new_pass}</label>
-                                <input
-                                    type="password"
-                                    className="form-input text-sm"
-                                    placeholder="Leave empty to keep"
-                                    name="password"
-                                />
-                            </div>
-                            <button type="submit" className="btn w-full text-sm">
-                                {TEXT.save_changes}
-                            </button>
-                        </form>
-                    )}
-                </div>
-
-                {/* Logout */}
-                <button
-                    onClick={handleLogout}
-                    className="btn btn-secondary w-full"
-                >
-                    {TEXT.logout}
-                </button>
-            </div>
-
-            {/* Footer */}
-            <div className="sidebar-footer">
-                <p className="text-xs text-gray-400">v2.0 - TypeScript</p>
+                ))}
             </div>
         </aside>
     );

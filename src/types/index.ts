@@ -74,12 +74,12 @@ export interface Attendance {
   workerName?: string;
 }
 
-export type AttendanceStatus = 
-  | 'Present' 
-  | 'Absent' 
-  | 'Vacation' 
-  | 'Day Off' 
-  | 'Eid Holiday' 
+export type AttendanceStatus =
+  | 'Present'
+  | 'Absent'
+  | 'Vacation'
+  | 'Day Off'
+  | 'Eid Holiday'
   | 'Sick Leave';
 
 export interface AttendanceFormData {
@@ -209,4 +209,15 @@ export interface ApiResponse<T> {
 export interface FormState {
   success: boolean;
   message: string;
+}
+
+// =====================
+// Manpower Data Type
+// =====================
+export interface ManpowerData {
+  workers: Worker[];
+  shifts: Shift[];
+  supervisors: User[];
+  allAttendance: any[];
+  dailyReports?: any[]; // For the aggregated view
 }

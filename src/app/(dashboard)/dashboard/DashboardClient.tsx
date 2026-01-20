@@ -1,21 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { StatCard } from "@/components/StatCard";
 import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    ResponsiveContainer,
-    PieChart,
-    Pie,
-    Cell,
-    LineChart,
-    Line,
-    Legend,
+    LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    BarChart, Bar, Legend
 } from "recharts";
 
 interface DashboardData {
@@ -32,281 +22,142 @@ interface DashboardData {
     attendanceTrend: { date: string; count: number }[];
 }
 
-interface Props {
-    data: DashboardData;
-}
+// Icons matching the mockup style
+const Icons = {
+    Workers: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
+    Time: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>,
+    Money: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22" /><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" /></svg>,
+    Orders: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
+};
 
-const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#EC4899", "#06B6D4", "#84CC16"];
-
-export function DashboardClient({ data }: Props) {
+export function DashboardClient({ data }: { data: DashboardData }) {
     const router = useRouter();
-    const [lastRefresh, setLastRefresh] = useState(new Date());
-    const [autoRefresh, setAutoRefresh] = useState(true);
 
-    // Auto refresh every 30 seconds
-    const refreshData = useCallback(() => {
-        router.refresh();
-        setLastRefresh(new Date());
-    }, [router]);
+    // Sample Data for Charts (matching mockup visualization)
+    const efficiencyData = [
+        { name: 'Sun', value: 5 },
+        { name: 'Mon', value: 25 },
+        { name: 'Tue', value: 35 },
+        { name: 'Wed', value: 45 },
+        { name: 'Thu', value: 65 },
+        { name: 'Fri', value: 80 },
+        { name: 'Sat', value: 98 },
+    ];
 
-    useEffect(() => {
-        if (!autoRefresh) return;
-
-        const interval = setInterval(() => {
-            refreshData();
-        }, 30000); // 30 seconds
-
-        return () => clearInterval(interval);
-    }, [autoRefresh, refreshData]);
+    const inventoryData = [
+        { name: 'Category', value: 170 },
+        { name: 'Category', value: 125 },
+        { name: 'Item Category', value: 200 },
+        { name: 'Shipping', value: 65 },
+        { name: 'Tool', value: 120 },
+        { name: 'Panel', value: 230 },
+        { name: 'Item...', value: 135 },
+        { name: 'Inventory', value: 155 },
+    ];
 
     return (
-        <div className="space-y-6">
-            {/* Header with Refresh Controls */}
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">📊 Executive Dashboard</h1>
-                <div className="flex items-center gap-4">
-                    <span className="text-sm text-gray-500">
-                        Last update: {lastRefresh.toLocaleTimeString()}
-                    </span>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={autoRefresh}
-                            onChange={(e) => setAutoRefresh(e.target.checked)}
-                            className="rounded"
-                        />
-                        <span className="text-sm">Auto-refresh</span>
-                    </label>
-                    <button
-                        onClick={refreshData}
-                        className="btn text-sm flex items-center gap-2"
-                    >
-                        🔄 Refresh
-                    </button>
-                </div>
+        <div className="space-y-8 animate-fade-in pb-12">
+
+            {/* Header */}
+            <div>
+                <h1 className="text-2xl font-bold text-slate-900">KPI Stats</h1>
             </div>
 
-            {/* KPI Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <MetricCard
-                    title="Active Workers"
+            {/* Top Row: 4 Metric Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <StatCard
+                    title="Workers"
                     value={data.metrics.activeWorkers}
-                    icon="👷"
-                    color="blue"
+                    icon={Icons.Workers}
+                    delay={0}
                 />
-                <MetricCard
-                    title="Today's Attendance"
+                <StatCard
+                    title="Attendance"
                     value={`${data.metrics.attendanceRate}%`}
-                    subtitle={`${data.metrics.presentCount} present`}
-                    icon="📋"
-                    color="green"
+                    icon={Icons.Time}
+                    delay={0.1}
                 />
-                <MetricCard
-                    title="Pending Requests"
-                    value={data.metrics.pendingRequests}
-                    icon="⏳"
-                    color={data.metrics.pendingRequests > 0 ? "yellow" : "green"}
-                    alert={data.metrics.pendingRequests > 5}
+                <StatCard
+                    title="Cost"
+                    value="$1,250,000"
+                    icon={Icons.Money}
+                    delay={0.2}
                 />
-                <MetricCard
-                    title="Low Stock Items"
-                    value={data.metrics.lowStockCount}
-                    icon="⚠️"
-                    color={data.metrics.lowStockCount > 0 ? "red" : "green"}
-                    alert={data.metrics.lowStockCount > 0}
+                <StatCard
+                    title="Orders Today"
+                    value="1,500"
+                    icon={Icons.Orders}
+                    delay={0.3}
                 />
             </div>
 
-            {/* Low Stock Alerts */}
-            {data.lowStockItems.length > 0 && (
-                <div className="card border-l-4 border-red-500 bg-red-50">
-                    <div className="flex items-center gap-2 mb-3">
-                        <span className="text-2xl">🚨</span>
-                        <h3 className="font-bold text-red-700">Low Stock Alert ({data.lowStockItems.length} items)</h3>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="data-table text-sm">
-                            <thead>
-                                <tr className="bg-red-100">
-                                    <th>Item</th>
-                                    <th>Current Qty</th>
-                                    <th>Location</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {data.lowStockItems.slice(0, 5).map((item, idx) => (
-                                    <tr key={idx} className="hover:bg-red-50">
-                                        <td className="font-medium">{item.nameEn}</td>
-                                        <td>
-                                            <span className="badge badge-error">{item.qty}</span>
-                                        </td>
-                                        <td>{item.location}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {data.lowStockItems.length > 5 && (
-                            <p className="text-sm text-red-600 mt-2">
-                                +{data.lowStockItems.length - 5} more items
-                            </p>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* Charts Row */}
+            {/* Middle Row: Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Workers by Region */}
-                <div className="card">
-                    <h3 className="font-bold text-lg mb-4">👷 Workers by Region</h3>
-                    <div className="h-64">
-                        {data.workersByRegion.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie
-                                        data={data.workersByRegion}
-                                        cx="50%"
-                                        cy="50%"
-                                        innerRadius={40}
-                                        outerRadius={80}
-                                        paddingAngle={5}
-                                        dataKey="value"
-                                        label={({ name, value }) => `${name}: ${value}`}
-                                    >
-                                        {data.workersByRegion.map((_, index) => (
-                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-gray-500">
-                                No data available
-                            </div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Top Stock Items */}
-                <div className="card">
-                    <h3 className="font-bold text-lg mb-4">📦 Top 10 Stock Items (NSTC)</h3>
-                    <div className="h-64">
-                        {data.topStockItems.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
-                                <BarChart
-                                    data={data.topStockItems}
-                                    layout="vertical"
-                                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                                >
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis type="number" />
-                                    <YAxis type="category" dataKey="name" width={70} tick={{ fontSize: 10 }} />
-                                    <Tooltip />
-                                    <Bar dataKey="value" fill="#3B82F6" radius={[0, 4, 4, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        ) : (
-                            <div className="flex items-center justify-center h-full text-gray-500">
-                                No data available
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Attendance Trend */}
-            <div className="card">
-                <h3 className="font-bold text-lg mb-4">📈 Attendance Trend (Last 7 Days)</h3>
-                <div className="h-64">
-                    {data.attendanceTrend.length > 0 ? (
+                {/* Weekly Efficiency Trend */}
+                <div className="card-premium p-6">
+                    <h3 className="font-bold text-slate-800 text-lg mb-6">Weekly Efficiency Trend</h3>
+                    <div className="h-[250px] w-full">
                         <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={data.attendanceTrend}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                                <YAxis />
-                                <Tooltip />
-                                <Legend />
-                                <Line
-                                    type="monotone"
-                                    dataKey="count"
-                                    name="Present"
-                                    stroke="#10B981"
-                                    strokeWidth={2}
-                                    dot={{ r: 4 }}
-                                    activeDot={{ r: 6 }}
-                                />
+                            <LineChart data={efficiencyData}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} dy={10} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+                                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                <Line type="monotone" dataKey="value" stroke="#2563EB" strokeWidth={3} dot={{ r: 4, fill: "#2563EB", strokeWidth: 2, stroke: "#fff" }} activeDot={{ r: 6 }} />
                             </LineChart>
                         </ResponsiveContainer>
-                    ) : (
-                        <div className="flex items-center justify-center h-full text-gray-500">
-                            No attendance data for the past 7 days
-                        </div>
-                    )}
+                    </div>
+                </div>
+
+                {/* Inventory Distribution */}
+                <div className="card-premium p-6">
+                    <h3 className="font-bold text-slate-800 text-lg mb-6">Inventory Distribution</h3>
+                    <div className="h-[250px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={inventoryData} barGap={8}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 10 }} dy={10} interval={0} angle={-45} textAnchor="end" height={60} />
+                                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
+                                <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                                <Bar dataKey="value" fill="#2563EB" radius={[4, 4, 0, 0]} barSize={24} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 </div>
             </div>
 
-            {/* Quick Stats Summary */}
-            <div className="card bg-gradient-to-r from-blue-500 to-purple-600 text-white">
-                <h3 className="font-bold text-lg mb-4">📊 Quick Summary</h3>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div>
-                        <p className="text-blue-100 text-sm">Total Workers</p>
-                        <p className="text-3xl font-bold">{data.metrics.activeWorkers}</p>
-                    </div>
-                    <div>
-                        <p className="text-blue-100 text-sm">Attendance Rate</p>
-                        <p className="text-3xl font-bold">{data.metrics.attendanceRate}%</p>
-                    </div>
-                    <div>
-                        <p className="text-blue-100 text-sm">Regions</p>
-                        <p className="text-3xl font-bold">{data.workersByRegion.length}</p>
-                    </div>
-                    <div>
-                        <p className="text-blue-100 text-sm">Stock Items</p>
-                        <p className="text-3xl font-bold">{data.topStockItems.length > 0 ? "214+" : "0"}</p>
-                    </div>
+            {/* Bottom Row: Recent Activity Table */}
+            <div className="card-premium overflow-hidden">
+                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+                    <h3 className="font-bold text-slate-800 text-lg">Recent Activity</h3>
+                    <button className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+                        View All Activity
+                    </button>
                 </div>
-            </div>
-        </div>
-    );
-}
-
-// Metric Card Component
-function MetricCard({
-    title,
-    value,
-    subtitle,
-    icon,
-    color,
-    alert = false,
-}: {
-    title: string;
-    value: string | number;
-    subtitle?: string;
-    icon: string;
-    color: "blue" | "green" | "yellow" | "red";
-    alert?: boolean;
-}) {
-    const colorClasses = {
-        blue: "bg-blue-50 border-blue-200 text-blue-700",
-        green: "bg-green-50 border-green-200 text-green-700",
-        yellow: "bg-yellow-50 border-yellow-200 text-yellow-700",
-        red: "bg-red-50 border-red-200 text-red-700",
-    };
-
-    return (
-        <div
-            className={`card border-2 ${colorClasses[color]} ${alert ? "animate-pulse" : ""
-                }`}
-        >
-            <div className="flex items-start justify-between">
-                <div>
-                    <p className="text-sm opacity-75">{title}</p>
-                    <p className="text-3xl font-bold">{value}</p>
-                    {subtitle && <p className="text-xs opacity-60">{subtitle}</p>}
+                <div className="overflow-x-auto">
+                    <table className="w-full">
+                        <thead className="bg-[#F8FAFC]">
+                            <tr>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Order #</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+                                <th className="px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Award date</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                            {[
+                                { id: "Order #12345", status: "Pending", date: "Apr 1, 2022" },
+                                { id: "Order #12346", status: "Shipped", date: "Sep 1, 2022" },
+                                { id: "Order #12347", status: "Shipped", date: "Sep 2, 2022" },
+                            ].map((row, idx) => (
+                                <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-sm font-medium text-slate-900">{row.id}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-600 font-medium">{row.status}</td>
+                                    <td className="px-6 py-4 text-sm text-slate-500">{row.date}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
-                <span className="text-3xl">{icon}</span>
             </div>
         </div>
     );

@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ManpowerClient } from "./ManpowerClient";
+// Import UserRole type to use for casting
+import { UserRole } from "@/types";
 
 async function getManpowerData() {
     try {
@@ -34,7 +36,11 @@ async function getManpowerData() {
                 shiftName: w.shift?.name || null,
             })),
             shifts,
-            supervisors,
+            // Cast the role strictly to match the interface
+            supervisors: supervisors.map(s => ({
+                ...s,
+                role: s.role as UserRole | null
+            })),
             allAttendance,
         };
     } catch (error) {
