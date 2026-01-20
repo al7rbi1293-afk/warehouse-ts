@@ -878,14 +878,21 @@ function RequestReviewView({ requests, inventory }: { requests: Request[]; inven
 
 function LocalInventoryView({ localInventory }: { localInventory: LocalInventory[] }) {
     const regions = [...new Set(localInventory.map((i) => i.region))].sort();
-    const [selectedRegion, setSelectedRegion] = useState<string | null>(regions[0] || null);
+    const [selectedRegion, setSelectedRegion] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
 
+    // If only 1 region, use it; otherwise allow selection
+    const activeRegion = regions.length === 1 ? regions[0] : selectedRegion;
+
     const filtered = localInventory
-        .filter((i) => !selectedRegion || i.region === selectedRegion)
+        .filter((i) => !activeRegion || i.region === activeRegion)
         .filter((i) => !searchTerm || i.itemName.toLowerCase().includes(searchTerm.toLowerCase()));
 
-    // Calculate totals per region
+    // Calculate totals for filtered data
+    const filteredItems = filtered.length;
+    const filteredQty = filtered.reduce((sum, i) => sum + (i.qty || 0), 0);
+
+    // Calculate totals per region (for tabs)
     const regionTotals = regions.map((region) => {
         const items = localInventory.filter((i) => i.region === region);
         return {
@@ -894,9 +901,6 @@ function LocalInventoryView({ localInventory }: { localInventory: LocalInventory
             totalQty: items.reduce((sum, i) => sum + (i.qty || 0), 0),
         };
     });
-
-    const totalItems = localInventory.length;
-    const totalQty = localInventory.reduce((sum, i) => sum + (i.qty || 0), 0);
 
     return (
         <div className="space-y-4">
@@ -908,15 +912,15 @@ function LocalInventoryView({ localInventory }: { localInventory: LocalInventory
                 </div>
                 <div className="card bg-green-50 border-green-200">
                     <p className="text-sm text-green-600">Total Items</p>
-                    <p className="text-2xl font-bold text-green-800">{totalItems}</p>
+                    <p className="text-2xl font-bold text-green-800">{filteredItems}</p>
                 </div>
                 <div className="card bg-purple-50 border-purple-200">
                     <p className="text-sm text-purple-600">Total Quantity</p>
-                    <p className="text-2xl font-bold text-purple-800">{totalQty}</p>
+                    <p className="text-2xl font-bold text-purple-800">{filteredQty}</p>
                 </div>
                 <div className="card bg-yellow-50 border-yellow-200">
                     <p className="text-sm text-yellow-600">Selected Region</p>
-                    <p className="text-lg font-bold text-yellow-800">{selectedRegion || "All"}</p>
+                    <p className="text-lg font-bold text-yellow-800">{activeRegion || "All"}</p>
                 </div>
             </div>
 
@@ -939,7 +943,7 @@ function LocalInventoryView({ localInventory }: { localInventory: LocalInventory
                             className={`tab ${!selectedRegion ? "active" : ""}`}
                             onClick={() => setSelectedRegion(null)}
                         >
-                            All ({totalItems})
+                            All ({localInventory.length})
                         </button>
                         {regionTotals.map((rt) => (
                             <button
