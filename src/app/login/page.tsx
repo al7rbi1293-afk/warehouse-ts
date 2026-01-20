@@ -3,22 +3,35 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { registerUser } from "@/app/actions/auth";
-import { AREAS, TEXT } from "@/lib/constants";
+import { TEXT } from "@/lib/constants";
 import { toast } from "sonner";
 
 export default function LoginPage() {
-    const [activeTab, setActiveTab] = useState<"login" | "register">("login");
     const [isLoading, setIsLoading] = useState(false);
+    const [attempts, setAttempts] = useState(0);
     const router = useRouter();
 
     const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+
+        // Rate limiting - block after 5 failed attempts
+        if (attempts >= 5) {
+            toast.error("Too many attempts. Please wait 5 minutes.");
+            return;
+        }
+
         setIsLoading(true);
 
         const formData = new FormData(e.currentTarget);
         const username = formData.get("username") as string;
         const password = formData.get("password") as string;
+
+        // Basic input validation
+        if (!username.trim() || !password.trim()) {
+            toast.error("Please enter username and password");
+            setIsLoading(false);
+            return;
+        }
 
         try {
             const result = await signIn("credentials", {
@@ -28,36 +41,17 @@ export default function LoginPage() {
             });
 
             if (result?.error) {
+                setAttempts(prev => prev + 1);
                 toast.error(TEXT.error_login);
             } else {
+                setAttempts(0);
                 toast.success("Login successful");
                 router.push("/dashboard");
                 router.refresh();
             }
         } catch {
+            setAttempts(prev => prev + 1);
             toast.error("An unexpected error occurred");
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setIsLoading(true);
-
-        const formData = new FormData(e.currentTarget);
-
-        try {
-            const result = await registerUser(formData);
-
-            if (result.success) {
-                toast.success(TEXT.success_reg);
-                setActiveTab("login");
-            } else {
-                toast.error(result.message);
-            }
-        } catch {
-            toast.error("Registration failed");
         } finally {
             setIsLoading(false);
         }
@@ -72,138 +66,63 @@ export default function LoginPage() {
                         <h1 className="text-3xl font-bold text-gray-800 mb-2">
                             🔐 {TEXT.app_title}
                         </h1>
-                        <p className="text-gray-500">Welcome to Project Management System</p>
-                    </div>
-
-                    {/* Tabs */}
-                    <div className="tabs justify-center">
-                        <button
-                            className={`tab ${activeTab === "login" ? "active" : ""}`}
-                            onClick={() => setActiveTab("login")}
-                        >
-                            {TEXT.login_page}
-                        </button>
-                        <button
-                            className={`tab ${activeTab === "register" ? "active" : ""}`}
-                            onClick={() => setActiveTab("register")}
-                        >
-                            {TEXT.register_page}
-                        </button>
+                        <p className="text-gray-500">Warehouse Management System</p>
                     </div>
 
                     {/* Login Form */}
-                    {activeTab === "login" && (
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <div>
-                                <label className="form-label">{TEXT.username}</label>
-                                <input
-                                    type="text"
-                                    name="username"
-                                    className="form-input"
-                                    placeholder="Enter username"
-                                    required
-                                    disabled={isLoading}
-                                />
-                            </div>
-                            <div>
-                                <label className="form-label">{TEXT.password}</label>
-                                <input
-                                    type="password"
-                                    name="password"
-                                    className="form-input"
-                                    placeholder="Enter password"
-                                    required
-                                    disabled={isLoading}
-                                />
-                            </div>
-                            <button
-                                type="submit"
-                                className="btn w-full py-3"
+                    <form onSubmit={handleLogin} className="space-y-4">
+                        <div>
+                            <label className="form-label">{TEXT.username}</label>
+                            <input
+                                type="text"
+                                name="username"
+                                className="form-input"
+                                placeholder="Enter username"
+                                required
                                 disabled={isLoading}
-                            >
-                                {isLoading ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <span className="spinner" />
-                                        Signing in...
-                                    </span>
-                                ) : (
-                                    TEXT.login_btn
-                                )}
-                            </button>
-                        </form>
-                    )}
+                                autoComplete="username"
+                            />
+                        </div>
+                        <div>
+                            <label className="form-label">{TEXT.password}</label>
+                            <input
+                                type="password"
+                                name="password"
+                                className="form-input"
+                                placeholder="Enter password"
+                                required
+                                disabled={isLoading}
+                                autoComplete="current-password"
+                            />
+                        </div>
 
-                    {/* Register Form */}
-                    {activeTab === "register" && (
-                        <form onSubmit={handleRegister} className="space-y-4">
-                            <div>
-                                <label className="form-label">{TEXT.username}</label>
-                                <input
-                                    type="text"
-                                    name="username"
-                                    className="form-input"
-                                    placeholder="Choose username"
-                                    required
-                                    disabled={isLoading}
-                                />
+                        {attempts >= 3 && (
+                            <div className="text-sm text-red-500 text-center">
+                                ⚠️ {5 - attempts} attempts remaining
                             </div>
-                            <div>
-                                <label className="form-label">{TEXT.password}</label>
-                                <input
-                                    type="password"
-                                    name="password"
-                                    className="form-input"
-                                    placeholder="Choose password"
-                                    required
-                                    disabled={isLoading}
-                                />
-                            </div>
-                            <div>
-                                <label className="form-label">{TEXT.fullname}</label>
-                                <input
-                                    type="text"
-                                    name="name"
-                                    className="form-input"
-                                    placeholder="Enter full name"
-                                    required
-                                    disabled={isLoading}
-                                />
-                            </div>
-                            <div>
-                                <label className="form-label">{TEXT.region}</label>
-                                <select
-                                    name="regions"
-                                    multiple
-                                    className="form-input h-32"
-                                    required
-                                    disabled={isLoading}
-                                >
-                                    {AREAS.map((area) => (
-                                        <option key={area} value={area}>
-                                            {area}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Hold Ctrl for multiple selection
-                                </p>
-                            </div>
-                            <button
-                                type="submit"
-                                className="btn w-full py-3"
-                                disabled={isLoading}
-                            >
-                                {isLoading ? (
-                                    <span className="flex items-center justify-center gap-2">
-                                        <span className="spinner" />
-                                        Registering...
-                                    </span>
-                                ) : (
-                                    TEXT.register_btn
-                                )}
-                            </button>
-                        </form>
-                    )}
+                        )}
+
+                        <button
+                            type="submit"
+                            className="btn w-full py-3"
+                            disabled={isLoading || attempts >= 5}
+                        >
+                            {isLoading ? (
+                                <span className="flex items-center justify-center gap-2">
+                                    <span className="spinner" />
+                                    Signing in...
+                                </span>
+                            ) : (
+                                TEXT.login_btn
+                            )}
+                        </button>
+                    </form>
+
+                    {/* Security Notice */}
+                    <div className="mt-6 p-3 bg-gray-50 rounded-lg text-center text-sm text-gray-500">
+                        <p>🔒 Authorized personnel only</p>
+                        <p className="text-xs mt-1">Contact your administrator for access</p>
+                    </div>
                 </div>
 
                 {/* Footer */}
