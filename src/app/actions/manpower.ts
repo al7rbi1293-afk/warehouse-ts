@@ -55,6 +55,26 @@ export async function updateWorker(
     }
 }
 
+export async function deleteWorker(id: number) {
+    try {
+        // Delete related attendance records first
+        await prisma.attendance.deleteMany({
+            where: { workerId: id },
+        });
+
+        // Delete the worker
+        await prisma.worker.delete({
+            where: { id },
+        });
+
+        revalidatePath("/manpower");
+        return { success: true, message: "Worker deleted successfully" };
+    } catch (error) {
+        console.error("Delete worker error:", error);
+        return { success: false, message: "Failed to delete worker" };
+    }
+}
+
 export async function createShift(formData: FormData) {
     const name = formData.get("name") as string;
     const startTime = formData.get("startTime") as string;

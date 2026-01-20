@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AREAS, ATTENDANCE_STATUSES } from "@/lib/constants";
-import { createWorker, createShift, submitBulkAttendance, updateSupervisorProfile } from "@/app/actions/manpower";
+import { createWorker, createShift, submitBulkAttendance, updateSupervisorProfile, updateWorker, deleteWorker } from "@/app/actions/manpower";
 import { toast } from "sonner";
 
 interface Worker {
@@ -310,23 +310,16 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
                                     <th>Region</th>
                                     <th>Shift</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredWorkers.map((w) => (
-                                    <tr key={w.id}>
-                                        <td>{w.id}</td>
-                                        <td>{w.name}</td>
-                                        <td>{w.empId || "-"}</td>
-                                        <td>{w.role || "-"}</td>
-                                        <td>{w.region || "-"}</td>
-                                        <td>{w.shiftName || "-"}</td>
-                                        <td>
-                                            <span className={`badge ${w.status === "Active" ? "badge-success" : "badge-error"}`}>
-                                                {w.status}
-                                            </span>
-                                        </td>
-                                    </tr>
+                                    <WorkerRow
+                                        key={w.id}
+                                        worker={w}
+                                        shifts={data.shifts}
+                                    />
                                 ))}
                             </tbody>
                         </table>
@@ -693,5 +686,135 @@ function SupervisorsTable({ supervisors, shifts }: { supervisors: Supervisor[]; 
                 </table>
             </div>
         </div>
+    );
+}
+
+// ==================== WORKER ROW COMPONENT ====================
+
+function WorkerRow({ worker, shifts }: { worker: Worker; shifts: Shift[] }) {
+    const [isEditing, setIsEditing] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [editData, setEditData] = useState({
+        region: worker.region || "",
+        role: worker.role || "",
+        shiftId: worker.shiftId,
+        status: worker.status,
+    });
+
+    const handleSave = async () => {
+        setIsLoading(true);
+        const result = await updateWorker(worker.id, {
+            region: editData.region,
+            role: editData.role,
+            shiftId: editData.shiftId,
+            status: editData.status,
+        });
+        if (result.success) {
+            toast.success(result.message);
+            setIsEditing(false);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    const handleDelete = async () => {
+        if (!confirm(`Delete worker "${worker.name}"?`)) return;
+        setIsLoading(true);
+        const result = await deleteWorker(worker.id);
+        if (result.success) {
+            toast.success(result.message);
+        } else {
+            toast.error(result.message);
+        }
+        setIsLoading(false);
+    };
+
+    if (isEditing) {
+        return (
+            <tr className="bg-yellow-50">
+                <td>{worker.id}</td>
+                <td>{worker.name}</td>
+                <td>{worker.empId || "-"}</td>
+                <td>
+                    <input
+                        type="text"
+                        className="form-input text-sm"
+                        value={editData.role}
+                        onChange={(e) => setEditData({ ...editData, role: e.target.value })}
+                    />
+                </td>
+                <td>
+                    <select
+                        className="form-input text-sm"
+                        value={editData.region}
+                        onChange={(e) => setEditData({ ...editData, region: e.target.value })}
+                    >
+                        {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>
+                </td>
+                <td>
+                    <select
+                        className="form-input text-sm"
+                        value={editData.shiftId || ""}
+                        onChange={(e) => setEditData({ ...editData, shiftId: e.target.value ? parseInt(e.target.value) : null })}
+                    >
+                        <option value="">-</option>
+                        {shifts.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                </td>
+                <td>
+                    <select
+                        className="form-input text-sm"
+                        value={editData.status}
+                        onChange={(e) => setEditData({ ...editData, status: e.target.value })}
+                    >
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </td>
+                <td className="space-x-1">
+                    <button className="btn btn-success text-xs" onClick={handleSave} disabled={isLoading}>
+                        ✓
+                    </button>
+                    <button className="btn btn-secondary text-xs" onClick={() => setIsEditing(false)} disabled={isLoading}>
+                        ✗
+                    </button>
+                </td>
+            </tr>
+        );
+    }
+
+    return (
+        <tr>
+            <td>{worker.id}</td>
+            <td>{worker.name}</td>
+            <td>{worker.empId || "-"}</td>
+            <td>{worker.role || "-"}</td>
+            <td>{worker.region || "-"}</td>
+            <td>{worker.shiftName || "-"}</td>
+            <td>
+                <span className={`badge ${worker.status === "Active" ? "badge-success" : "badge-error"}`}>
+                    {worker.status}
+                </span>
+            </td>
+            <td className="space-x-1">
+                <button
+                    className="btn btn-secondary text-xs"
+                    onClick={() => setIsEditing(true)}
+                    title="Edit"
+                >
+                    ✏️
+                </button>
+                <button
+                    className="btn btn-danger text-xs"
+                    onClick={handleDelete}
+                    disabled={isLoading}
+                    title="Delete"
+                >
+                    🗑️
+                </button>
+            </td>
+        </tr>
     );
 }
