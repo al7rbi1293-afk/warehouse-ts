@@ -238,6 +238,16 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
                             );
                         }
 
+                        // Group by region
+                        const attendanceByRegion: Record<string, typeof dateFiltered> = {};
+                        dateFiltered.forEach(a => {
+                            const region = a.worker.region || "Unknown";
+                            if (!attendanceByRegion[region]) attendanceByRegion[region] = [];
+                            attendanceByRegion[region].push(a);
+                        });
+
+                        const sortedRegions = Object.keys(attendanceByRegion).sort();
+
                         return (
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -245,52 +255,66 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
                                         <div className="metric-value text-green-600">
                                             {dateFiltered.filter((a) => a.status === "Present").length}
                                         </div>
-                                        <div className="metric-label">Present</div>
+                                        <div className="metric-label">Total Present</div>
                                     </div>
                                     <div className="metric-card">
                                         <div className="metric-value text-red-600">
                                             {dateFiltered.filter((a) => a.status === "Absent").length}
                                         </div>
-                                        <div className="metric-label">Absent</div>
+                                        <div className="metric-label">Total Absent</div>
                                     </div>
                                     <div className="metric-card">
                                         <div className="metric-value text-yellow-600">
                                             {dateFiltered.filter((a) => a.status === "Vacation").length}
                                         </div>
-                                        <div className="metric-label">On Leave</div>
+                                        <div className="metric-label">Total On Leave</div>
                                     </div>
                                 </div>
 
-                                {/* Attendance Table */}
-                                <div className="card overflow-x-auto">
-                                    <table className="data-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Worker</th>
-                                                <th>Region</th>
-                                                <th>Status</th>
-                                                <th>Notes</th>
-                                                <th>Supervisor</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {dateFiltered.map((a) => (
-                                                <tr key={a.id}>
-                                                    <td>{a.worker.name}</td>
-                                                    <td>{a.worker.region || "-"}</td>
-                                                    <td>
-                                                        <span className={`badge ${a.status === "Present" ? "badge-success" :
-                                                            a.status === "Absent" ? "badge-error" : "badge-warning"
-                                                            }`}>
-                                                            {a.status}
-                                                        </span>
-                                                    </td>
-                                                    <td>{a.notes || "-"}</td>
-                                                    <td>{a.supervisor || "-"}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                                <div className="space-y-8">
+                                    {sortedRegions.map(region => (
+                                        <div key={region} className="card overflow-hidden">
+                                            <h4 className="font-bold text-lg mb-3 pb-2 border-b flex justify-between items-center">
+                                                <span>📍 {region}</span>
+                                                <span className="text-sm font-normal text-gray-500">
+                                                    {attendanceByRegion[region].length} Workers
+                                                </span>
+                                            </h4>
+                                            <div className="overflow-x-auto">
+                                                <table className="data-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Worker</th>
+                                                            <th className="w-24">Status</th>
+                                                            <th>Shift</th>
+                                                            <th>Notes</th>
+                                                            <th>Supervisor</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {attendanceByRegion[region].map((a) => (
+                                                            <tr key={a.id}>
+                                                                <td>
+                                                                    <div className="font-medium">{a.worker.name}</div>
+                                                                    <div className="text-xs text-gray-400">ID: {a.worker.id}</div>
+                                                                </td>
+                                                                <td>
+                                                                    <span className={`badge ${a.status === "Present" ? "badge-success" :
+                                                                        a.status === "Absent" ? "badge-error" : "badge-warning"
+                                                                        }`}>
+                                                                        {a.status}
+                                                                    </span>
+                                                                </td>
+                                                                <td>{data.shifts.find(s => s.id === a.shiftId)?.name || "-"}</td>
+                                                                <td className="text-sm text-gray-600 max-w-xs truncate">{a.notes || "-"}</td>
+                                                                <td className="text-sm">{a.supervisor || "-"}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    ))}
                                 </div>
                             </>
                         );
