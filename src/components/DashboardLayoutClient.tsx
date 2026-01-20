@@ -17,7 +17,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     }, []);
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC]"> {/* Mockup Background Color */}
+        <div className="min-h-screen bg-[#F8FAFC]">
             <MobileNav />
 
             <div className="hidden md:block">
@@ -25,7 +25,11 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             </div>
 
             <main
-                className={`transition-all duration-300 ease-in-out ${!isMobile && isSidebarOpen ? "md:ml-[260px]" : ""
+                className={`transition-all duration-300 ease-in-out ${
+                    // Adjust margin based on collapsed/expanded state if not mobile
+                    !isMobile
+                        ? (isSidebarOpen ? "md:ml-[260px]" : "md:ml-[80px]")
+                        : ""
                     }`}
             >
                 <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
