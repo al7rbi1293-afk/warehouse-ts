@@ -223,32 +223,78 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
                         onChange={(e) => setSelectedDate(e.target.value)}
                     />
 
-                    {data.allAttendance.length === 0 ? (
-                        <div className="card text-center text-gray-500 py-8">
-                            No attendance records for {selectedDate}
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                            <div className="metric-card">
-                                <div className="metric-value text-green-600">
-                                    {data.allAttendance.filter((a) => a.status === "Present").length}
+                    {(() => {
+                        // Filter attendance by selected date
+                        const dateFiltered = data.allAttendance.filter((a) => {
+                            const attendanceDate = new Date(a.date).toISOString().split('T')[0];
+                            return attendanceDate === selectedDate;
+                        });
+
+                        if (dateFiltered.length === 0) {
+                            return (
+                                <div className="card text-center text-gray-500 py-8">
+                                    No attendance records for {selectedDate}
                                 </div>
-                                <div className="metric-label">Present</div>
-                            </div>
-                            <div className="metric-card">
-                                <div className="metric-value text-red-600">
-                                    {data.allAttendance.filter((a) => a.status === "Absent").length}
+                            );
+                        }
+
+                        return (
+                            <>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                    <div className="metric-card">
+                                        <div className="metric-value text-green-600">
+                                            {dateFiltered.filter((a) => a.status === "Present").length}
+                                        </div>
+                                        <div className="metric-label">Present</div>
+                                    </div>
+                                    <div className="metric-card">
+                                        <div className="metric-value text-red-600">
+                                            {dateFiltered.filter((a) => a.status === "Absent").length}
+                                        </div>
+                                        <div className="metric-label">Absent</div>
+                                    </div>
+                                    <div className="metric-card">
+                                        <div className="metric-value text-yellow-600">
+                                            {dateFiltered.filter((a) => a.status === "Vacation").length}
+                                        </div>
+                                        <div className="metric-label">On Leave</div>
+                                    </div>
                                 </div>
-                                <div className="metric-label">Absent</div>
-                            </div>
-                            <div className="metric-card">
-                                <div className="metric-value text-yellow-600">
-                                    {data.allAttendance.filter((a) => a.status === "Vacation").length}
+
+                                {/* Attendance Table */}
+                                <div className="card overflow-x-auto">
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Worker</th>
+                                                <th>Region</th>
+                                                <th>Status</th>
+                                                <th>Notes</th>
+                                                <th>Supervisor</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {dateFiltered.map((a) => (
+                                                <tr key={a.id}>
+                                                    <td>{a.worker.name}</td>
+                                                    <td>{a.worker.region || "-"}</td>
+                                                    <td>
+                                                        <span className={`badge ${a.status === "Present" ? "badge-success" :
+                                                            a.status === "Absent" ? "badge-error" : "badge-warning"
+                                                            }`}>
+                                                            {a.status}
+                                                        </span>
+                                                    </td>
+                                                    <td>{a.notes || "-"}</td>
+                                                    <td>{a.supervisor || "-"}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
                                 </div>
-                                <div className="metric-label">On Leave</div>
-                            </div>
-                        </div>
-                    )}
+                            </>
+                        );
+                    })()}
                 </div>
             )}
 
@@ -469,7 +515,10 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
             {/* Supervisor: My Workers */}
             {userRole !== "manager" && activeTab === "myworkers" && (
                 <div className="card">
-                    <h3 className="font-bold text-lg mb-4">👥 Workers in {selectedRegion}</h3>
+                    <h3 className="font-bold text-lg mb-4">
+                        👥 Workers in {selectedRegion}
+                        {targetShift && <span className="text-gray-500 text-sm ml-2">({targetShift.name} shift)</span>}
+                    </h3>
                     <table className="data-table">
                         <thead>
                             <tr>
@@ -482,7 +531,7 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
                         </thead>
                         <tbody>
                             {data.workers
-                                .filter((w) => w.region === selectedRegion)
+                                .filter((w) => w.region === selectedRegion && w.shiftId === targetShift?.id)
                                 .map((w) => (
                                     <tr key={w.id}>
                                         <td>{w.id}</td>

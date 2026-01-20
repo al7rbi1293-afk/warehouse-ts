@@ -245,6 +245,7 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
             {userRole === "supervisor" && activeTab === "stocktake" && (
                 <SupervisorStocktakeView
                     localInventory={data.localInventory.filter(i => i.region === selectedRegion)}
+                    nstcInventory={data.nstcInventory}
                     region={selectedRegion}
                     userName={userName}
                 />
@@ -1560,10 +1561,12 @@ function SupervisorPendingView({ requests }: { requests: Request[] }) {
 // Supervisor Stocktake View - for manual inventory update
 function SupervisorStocktakeView({
     localInventory,
+    nstcInventory,
     region,
     userName
 }: {
     localInventory: LocalInventory[];
+    nstcInventory: InventoryItem[];
     region: string;
     userName: string;
 }) {
@@ -1575,8 +1578,7 @@ function SupervisorStocktakeView({
         });
         return init;
     });
-    const [newItemName, setNewItemName] = useState("");
-    const [newItemQty, setNewItemQty] = useState(0);
+    const [searchTerm, setSearchTerm] = useState("");
 
     const handleSave = async () => {
         setIsLoading(true);
@@ -1594,98 +1596,156 @@ function SupervisorStocktakeView({
         setIsLoading(false);
     };
 
-    const handleAddItem = async () => {
-        if (!newItemName.trim()) {
-            toast.error("Enter item name");
-            return;
+    const handleAddFromNstc = (itemName: string) => {
+        if (!quantities[itemName] && quantities[itemName] !== 0) {
+            setQuantities({ ...quantities, [itemName]: 0 });
+            toast.info(`${itemName} added - set quantity and save`);
         }
-        setQuantities({ ...quantities, [newItemName]: newItemQty });
-        setNewItemName("");
-        setNewItemQty(0);
-        toast.info("Item added - click Save to persist");
     };
 
-    return (
-        <div className="card">
-            <div className="flex items-center justify-between mb-4">
-                <div>
-                    <h3 className="font-bold text-lg">📋 Stocktake - {region}</h3>
-                    <p className="text-sm text-gray-500">Update inventory quantities</p>
-                </div>
-                <button
-                    className="btn btn-success"
-                    onClick={handleSave}
-                    disabled={isLoading}
-                >
-                    {isLoading ? "Saving..." : "💾 Save All Changes"}
-                </button>
-            </div>
+    const handleAddAllFromNstc = () => {
+        const filtered = filteredNstc.filter(item => !quantities[item.nameEn]);
+        const newQtys = { ...quantities };
+        filtered.forEach(item => {
+            newQtys[item.nameEn] = 0;
+        });
+        setQuantities(newQtys);
+        toast.success(`Added ${filtered.length} items`);
+    };
 
-            {/* Add New Item */}
-            <div className="flex gap-3 mb-4 p-3 bg-blue-50 rounded-lg">
+    // Filter NSTC items for search
+    const filteredNstc = nstcInventory.filter(item =>
+        item.nameEn.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Left: NSTC Materials List */}
+            <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="font-bold text-lg">📦 Available Materials</h3>
+                        <p className="text-sm text-gray-500">Click to add to stocktake</p>
+                    </div>
+                    <button
+                        className="btn text-sm"
+                        onClick={handleAddAllFromNstc}
+                    >
+                        ➕ Add All
+                    </button>
+                </div>
+
                 <input
                     type="text"
-                    className="form-input flex-1"
-                    placeholder="New item name..."
-                    value={newItemName}
-                    onChange={(e) => setNewItemName(e.target.value)}
+                    className="form-input mb-3"
+                    placeholder="🔍 Search materials..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                <input
-                    type="number"
-                    className="form-input w-24"
-                    placeholder="Qty"
-                    min="0"
-                    value={newItemQty}
-                    onChange={(e) => setNewItemQty(parseInt(e.target.value) || 0)}
-                />
-                <button
-                    className="btn"
-                    onClick={handleAddItem}
-                >
-                    ➕ Add
-                </button>
+
+                <div className="overflow-y-auto max-h-80 space-y-1">
+                    {filteredNstc.length === 0 ? (
+                        <p className="text-gray-400 text-center py-4">No materials found</p>
+                    ) : (
+                        filteredNstc.map((item) => {
+                            const isAdded = quantities[item.nameEn] !== undefined;
+                            return (
+                                <div
+                                    key={item.id}
+                                    className={`p-2 rounded-lg border cursor-pointer transition-all ${isAdded
+                                            ? "bg-green-50 border-green-300"
+                                            : "bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300"
+                                        }`}
+                                    onClick={() => handleAddFromNstc(item.nameEn)}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-medium text-sm">{item.nameEn}</span>
+                                        {isAdded ? (
+                                            <span className="badge badge-success">✓ Added</span>
+                                        ) : (
+                                            <span className="badge badge-secondary">+ Add</span>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-500">{item.category} • {item.unit}</p>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
             </div>
 
-            {Object.keys(quantities).length === 0 ? (
-                <p className="text-gray-500 text-center py-8">No inventory items. Add items above.</p>
-            ) : (
-                <div className="overflow-x-auto max-h-96">
-                    <table className="data-table">
-                        <thead className="sticky top-0 bg-white">
-                            <tr>
-                                <th>Item</th>
-                                <th>Current Qty</th>
-                                <th>New Qty</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {Object.entries(quantities).map(([itemName, qty]) => {
-                                const original = localInventory.find(i => i.itemName === itemName)?.qty || 0;
-                                const changed = qty !== original;
-                                return (
-                                    <tr key={itemName} className={changed ? "bg-yellow-50" : ""}>
-                                        <td className="font-medium">{itemName}</td>
-                                        <td className="text-gray-500">{original}</td>
-                                        <td>
-                                            <input
-                                                type="number"
-                                                className="form-input w-24"
-                                                min="0"
-                                                value={qty}
-                                                onChange={(e) => setQuantities({
-                                                    ...quantities,
-                                                    [itemName]: parseInt(e.target.value) || 0
-                                                })}
-                                            />
-                                            {changed && <span className="text-yellow-600 ml-2">*</span>}
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+            {/* Right: Stocktake Form */}
+            <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 className="font-bold text-lg">📋 Stocktake - {region}</h3>
+                        <p className="text-sm text-gray-500">{Object.keys(quantities).length} items</p>
+                    </div>
+                    <button
+                        className="btn btn-success"
+                        onClick={handleSave}
+                        disabled={isLoading || Object.keys(quantities).length === 0}
+                    >
+                        {isLoading ? "Saving..." : "💾 Save All"}
+                    </button>
                 </div>
-            )}
+
+                {Object.keys(quantities).length === 0 ? (
+                    <p className="text-gray-500 text-center py-8">
+                        👈 Select items from materials list
+                    </p>
+                ) : (
+                    <div className="overflow-y-auto max-h-80">
+                        <table className="data-table">
+                            <thead className="sticky top-0 bg-white">
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Current</th>
+                                    <th>New Qty</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {Object.entries(quantities).map(([itemName, qty]) => {
+                                    const original = localInventory.find(i => i.itemName === itemName)?.qty || 0;
+                                    const changed = qty !== original;
+                                    return (
+                                        <tr key={itemName} className={changed ? "bg-yellow-50" : ""}>
+                                            <td className="font-medium text-sm">{itemName}</td>
+                                            <td className="text-gray-500">{original}</td>
+                                            <td>
+                                                <input
+                                                    type="number"
+                                                    className="form-input w-20 text-sm"
+                                                    min="0"
+                                                    value={qty}
+                                                    onChange={(e) => setQuantities({
+                                                        ...quantities,
+                                                        [itemName]: parseInt(e.target.value) || 0
+                                                    })}
+                                                />
+                                            </td>
+                                            <td>
+                                                <button
+                                                    className="text-red-500 hover:text-red-700"
+                                                    onClick={() => {
+                                                        const newQtys = { ...quantities };
+                                                        delete newQtys[itemName];
+                                                        setQuantities(newQtys);
+                                                    }}
+                                                    title="Remove"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

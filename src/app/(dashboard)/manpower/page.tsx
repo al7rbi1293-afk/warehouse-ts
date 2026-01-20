@@ -20,10 +20,11 @@ async function getManpowerData() {
             prisma.attendance.findMany({
                 where: {
                     date: {
-                        gte: new Date(new Date().setHours(0, 0, 0, 0)),
+                        gte: new Date(new Date().setDate(new Date().getDate() - 30)), // Last 30 days
                     },
                 },
                 include: { worker: true },
+                orderBy: { date: 'desc' },
             }),
         ]);
 
