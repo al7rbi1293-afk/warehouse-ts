@@ -147,30 +147,27 @@ export async function submitBulkAttendance(
 ) {
     try {
         const dateObj = new Date(date);
+        const workerIds = attendanceData.map(r => r.workerId);
 
-        await prisma.$transaction(async (tx) => {
-            for (const record of attendanceData) {
-                // Delete existing
-                await tx.attendance.deleteMany({
-                    where: {
-                        workerId: record.workerId,
-                        date: dateObj,
-                        shiftId,
-                    },
-                });
+        // Delete all existing attendance records for these workers on this date/shift
+        await prisma.attendance.deleteMany({
+            where: {
+                workerId: { in: workerIds },
+                date: dateObj,
+                shiftId,
+            },
+        });
 
-                // Create new
-                await tx.attendance.create({
-                    data: {
-                        workerId: record.workerId,
-                        date: dateObj,
-                        status: record.status,
-                        notes: record.notes || null,
-                        shiftId,
-                        supervisor,
-                    },
-                });
-            }
+        // Create all new records in one operation
+        await prisma.attendance.createMany({
+            data: attendanceData.map(record => ({
+                workerId: record.workerId,
+                date: dateObj,
+                status: record.status,
+                notes: record.notes || null,
+                shiftId,
+                supervisor,
+            })),
         });
 
         revalidatePath("/manpower");
