@@ -244,6 +244,24 @@ body {
   color: white;
 }
 
+/* Sidebar components */
+.sidebar-header {
+  margin-bottom: 1rem;
+}
+
+.sidebar-nav {
+  margin-bottom: 1rem;
+}
+
+.sidebar-actions {
+  margin-top: auto;
+}
+
+.sidebar-footer {
+  margin-top: 1rem;
+  text-align: center;
+}
+
 /* Footer */
 .footer {
   position: fixed;
@@ -380,42 +398,310 @@ body {
   }
 }
 
-@media (max-width: 480px) {
+/* ==================== RESPONSIVE DESIGN ==================== */
+
+/* Large screens / TV (> 1400px) */
+@media (min-width: 1400px) {
+  .main-content {
+    max-width: 1600px;
+    margin-left: 280px;
+    padding: 2rem 3rem;
+  }
+
+  .card {
+    padding: 2rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 1rem 1.5rem;
+    font-size: 0.95rem;
+  }
+
+  h1 {
+    font-size: 2.5rem !important;
+  }
+
+  .metric-card {
+    padding: 2rem;
+  }
+
+  .metric-value {
+    font-size: 3rem !important;
+  }
+}
+
+/* Desktop (1024px - 1399px) */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .main-content {
+    padding: 1.5rem 2rem;
+  }
+}
+
+/* Tablet (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
   .sidebar {
-    padding: 0.75rem;
+    width: 220px;
+    padding: 1rem;
   }
 
   .main-content {
-    padding: 0.75rem;
+    margin-left: 220px;
+    padding: 1.25rem;
+  }
+
+  .tabs {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .tab {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .grid-cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Mobile Landscape / Small Tablet (480px - 767px) */
+@media (min-width: 480px) and (max-width: 767px) {
+  .sidebar {
+    position: fixed;
+    width: 100%;
+    height: auto;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    padding: 0.75rem 1rem;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: row;
+    gap: 0.25rem;
+  }
+
+  .sidebar-nav a {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .sidebar-footer {
+    position: relative;
+    text-align: center;
+    padding: 0.5rem;
+  }
+
+  .main-content {
+    margin-left: 0;
+    margin-top: 120px;
+    padding: 1rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .tabs {
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    overflow-x: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .tab {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+
+  .data-table {
+    font-size: 0.8rem;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 0.5rem 0.5rem;
+  }
+
+  h1 {
+    font-size: 1.5rem !important;
+  }
+}
+
+/* Mobile Portrait (< 480px) */
+@media (max-width: 479px) {
+  .sidebar {
+    position: fixed;
+    width: 100%;
+    height: auto;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    background: var(--card);
+  }
+
+  .sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    margin-bottom: 0.5rem;
+  }
+
+  .sidebar-header h2 {
+    font-size: 1rem;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    width: 100%;
+  }
+
+  .sidebar-nav a {
+    flex: 1;
+    min-width: 80px;
+    padding: 0.4rem 0.5rem;
+    font-size: 0.75rem;
+    text-align: center;
+    border-radius: 6px;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
+
+  .main-content {
+    margin-left: 0;
+    margin-top: 140px;
+    padding: 0.5rem;
   }
 
   .card {
     padding: 0.75rem;
     border-radius: 8px;
+    margin-bottom: 0.75rem;
+  }
+
+  .tabs {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 0.25rem;
+    padding-bottom: 0.5rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .tab {
-    padding: 0.4rem 0.5rem;
-    font-size: 0.75rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.7rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Responsive tables for mobile */
+  .data-table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .data-table th,
   .data-table td {
-    padding: 0.4rem 0.3rem;
+    padding: 0.4rem 0.35rem;
     font-size: 0.7rem;
+    min-width: 60px;
   }
 
   .badge {
-    font-size: 0.65rem;
-    padding: 0.15rem 0.5rem;
+    font-size: 0.6rem;
+    padding: 0.15rem 0.4rem;
+  }
+
+  .btn {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.75rem;
+  }
+
+  .form-input {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+
+  .form-label {
+    font-size: 0.8rem;
+    margin-bottom: 0.25rem;
   }
 
   h1 {
-    font-size: 1.25rem !important;
+    font-size: 1.1rem !important;
   }
 
   h3 {
-    font-size: 1rem !important;
+    font-size: 0.95rem !important;
+  }
+
+  /* Grid adjustments */
+  .grid {
+    gap: 0.5rem !important;
+  }
+
+  .grid-cols-2,
+  .grid-cols-3,
+  .grid-cols-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .metric-card {
+    padding: 0.75rem;
+  }
+
+  .metric-value {
+    font-size: 1.25rem !important;
+  }
+
+  .metric-label {
+    font-size: 0.7rem;
+  }
+
+  /* Space between button icons */
+  .space-x-1>*+* {
+    margin-left: 0.15rem;
   }
 }
 
@@ -432,7 +718,7 @@ body {
   margin-right: 280px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767px) {
   [dir="rtl"] .main-content {
     margin-right: 0;
   }
@@ -451,4 +737,39 @@ body {
     margin: 0;
     padding: 0;
   }
+
+  .card {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #ddd;
+  }
+}
+
+/* Touch-friendly styles for mobile */
+@media (hover: none) and (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .tab {
+    min-height: 40px;
+  }
+
+  .form-input {
+    min-height: 44px;
+  }
+}
+
+/* Dark mode support (optional) */
+@media (prefers-color-scheme: dark) {
+  /* Uncomment to enable dark mode */
+  /*
+  :root {
+    --background: #0f172a;
+    --foreground: #f1f5f9;
+    --card: #1e293b;
+    --border: #334155;
+  }
+  */
 }

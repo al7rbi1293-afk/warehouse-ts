@@ -31,9 +31,7 @@ export function Sidebar() {
     const isNightShift = user.role === "night_supervisor" || ["B", "B1"].includes(user.shiftName || "");
 
     const filteredNav = navItems.filter((item) => {
-        // Night shift can only access Manpower
         if (isNightShift && item.name !== "Manpower") return false;
-        // Storekeeper cannot access Dashboard
         if (user.role === "storekeeper" && item.name === "Dashboard") return false;
         return item.roles.includes(user.role);
     });
@@ -45,113 +43,108 @@ export function Sidebar() {
 
     return (
         <aside className="sidebar">
-            {/* User Info */}
-            <div className="mb-6">
-                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                    👤 {user.name}
-                </h2>
-                <p className="text-sm text-gray-500 mt-1">
-                    📍 {user.region} | 🔑 {user.role}
-                </p>
+            {/* Header - User Info */}
+            <div className="sidebar-header">
+                <div>
+                    <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                        👤 {user.name}
+                    </h2>
+                    <p className="text-xs text-gray-500">
+                        📍 {user.region?.split(",")[0]}... | {user.role}
+                    </p>
+                </div>
                 {isNightShift && (
-                    <div className="mt-2 px-3 py-2 bg-blue-50 rounded-lg text-sm text-blue-700">
-                        🌙 Night Shift Mode ({user.shiftName})
-                    </div>
+                    <span className="px-2 py-1 bg-blue-100 rounded text-xs text-blue-700">
+                        🌙 Night
+                    </span>
                 )}
             </div>
-
-            <hr className="my-4 border-gray-200" />
 
             {/* Navigation */}
-            {!isNightShift && (
-                <>
-                    <p className="text-xs font-semibold text-gray-400 uppercase mb-2">
-                        🔀 Module Selection
-                    </p>
-                    <nav className="space-y-1">
-                        {filteredNav.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className={`nav-item ${pathname.startsWith(item.href) ? "active" : ""}`}
-                            >
-                                <span>{item.icon}</span>
-                                <span>{item.name}</span>
-                            </Link>
-                        ))}
-                    </nav>
-                    <hr className="my-4 border-gray-200" />
-                </>
-            )}
+            <nav className="sidebar-nav">
+                {filteredNav.map((item) => (
+                    <Link
+                        key={item.href}
+                        href={item.href}
+                        className={`nav-item ${pathname.startsWith(item.href) ? "active" : ""}`}
+                    >
+                        <span>{item.icon}</span>
+                        <span className="nav-text">{item.name}</span>
+                    </Link>
+                ))}
+            </nav>
 
-            {/* Refresh Button */}
-            <button
-                onClick={() => router.refresh()}
-                className="btn w-full mb-4"
-            >
-                {TEXT.refresh_data}
-            </button>
-
-            {/* Profile Editor */}
-            <div className="mb-4">
+            {/* Actions - only show on larger screens */}
+            <div className="sidebar-actions">
+                {/* Refresh Button */}
                 <button
-                    onClick={() => setIsProfileOpen(!isProfileOpen)}
-                    className="w-full text-left p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                    onClick={() => router.refresh()}
+                    className="btn w-full mb-2"
                 >
-                    <span className="flex items-center gap-2">
-                        🛠 {TEXT.edit_profile}
-                        <span className="ml-auto">{isProfileOpen ? "▲" : "▼"}</span>
-                    </span>
+                    {TEXT.refresh_data}
                 </button>
 
-                {isProfileOpen && (
-                    <form className="mt-3 space-y-3 p-3 bg-gray-50 rounded-lg">
-                        <div>
-                            <label className="form-label text-sm">{TEXT.username}</label>
-                            <input
-                                type="text"
-                                className="form-input text-sm"
-                                defaultValue={user.username}
-                                name="username"
-                            />
-                        </div>
-                        <div>
-                            <label className="form-label text-sm">{TEXT.new_name}</label>
-                            <input
-                                type="text"
-                                className="form-input text-sm"
-                                defaultValue={user.name}
-                                name="name"
-                            />
-                        </div>
-                        <div>
-                            <label className="form-label text-sm">{TEXT.new_pass}</label>
-                            <input
-                                type="password"
-                                className="form-input text-sm"
-                                placeholder="Leave empty to keep current"
-                                name="password"
-                            />
-                        </div>
-                        <button type="submit" className="btn w-full text-sm">
-                            {TEXT.save_changes}
-                        </button>
-                    </form>
-                )}
+                {/* Profile Editor */}
+                <div className="mb-2">
+                    <button
+                        onClick={() => setIsProfileOpen(!isProfileOpen)}
+                        className="w-full text-left p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors text-sm"
+                    >
+                        <span className="flex items-center gap-2">
+                            🛠 {TEXT.edit_profile}
+                            <span className="ml-auto">{isProfileOpen ? "▲" : "▼"}</span>
+                        </span>
+                    </button>
+
+                    {isProfileOpen && (
+                        <form className="mt-2 space-y-2 p-2 bg-gray-50 rounded-lg">
+                            <div>
+                                <label className="form-label text-xs">{TEXT.username}</label>
+                                <input
+                                    type="text"
+                                    className="form-input text-sm"
+                                    defaultValue={user.username}
+                                    name="username"
+                                />
+                            </div>
+                            <div>
+                                <label className="form-label text-xs">{TEXT.new_name}</label>
+                                <input
+                                    type="text"
+                                    className="form-input text-sm"
+                                    defaultValue={user.name}
+                                    name="name"
+                                />
+                            </div>
+                            <div>
+                                <label className="form-label text-xs">{TEXT.new_pass}</label>
+                                <input
+                                    type="password"
+                                    className="form-input text-sm"
+                                    placeholder="Leave empty to keep"
+                                    name="password"
+                                />
+                            </div>
+                            <button type="submit" className="btn w-full text-sm">
+                                {TEXT.save_changes}
+                            </button>
+                        </form>
+                    )}
+                </div>
+
+                {/* Logout */}
+                <button
+                    onClick={handleLogout}
+                    className="btn btn-secondary w-full"
+                >
+                    {TEXT.logout}
+                </button>
             </div>
 
-            {/* Logout */}
-            <button
-                onClick={handleLogout}
-                className="btn btn-secondary w-full"
-            >
-                {TEXT.logout}
-            </button>
-
-            {/* Version */}
-            <p className="text-xs text-gray-400 mt-4 text-center">
-                v2.0 - TypeScript Edition
-            </p>
+            {/* Footer */}
+            <div className="sidebar-footer">
+                <p className="text-xs text-gray-400">v2.0 - TypeScript</p>
+            </div>
         </aside>
     );
 }
