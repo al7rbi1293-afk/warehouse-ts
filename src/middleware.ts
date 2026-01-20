@@ -16,10 +16,22 @@ function addSecurityHeaders(response: NextResponse) {
     // Referrer policy
     response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
 
-    // Permissions policy
+    // Permissions policy - disable unnecessary APIs
     response.headers.set(
         "Permissions-Policy",
-        "camera=(), microphone=(), geolocation=()"
+        "camera=(), microphone=(), geolocation=(), payment=()"
+    );
+
+    // HTTP Strict Transport Security (HTTPS only)
+    response.headers.set(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains"
+    );
+
+    // Content Security Policy - protect against XSS and injection
+    response.headers.set(
+        "Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none';"
     );
 
     return response;
