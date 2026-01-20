@@ -4,6 +4,7 @@ import { useState } from "react";
 import { TEXT, CATEGORIES, UNITS, LOCATIONS } from "@/lib/constants";
 import { updateRequestStatus, issueRequest, updateBulkStock, addInventoryItem, updateInventoryItem, deleteInventoryItem, createBulkRequest, confirmReceipt, bulkUpdateLocalInventory } from "@/app/actions/inventory";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 interface InventoryItem {
     id: number;
@@ -102,6 +103,17 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
 
     const tabs = userRole === "manager" ? managerTabs : userRole === "storekeeper" ? storekeeperTabs : supervisorTabs;
 
+    const handleExportExcel = (dataToExport: (InventoryItem | LocalInventory)[], fileName: string) => {
+        if (!dataToExport || dataToExport.length === 0) {
+            toast.error("No data to export");
+            return;
+        }
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Inventory");
+        XLSX.writeFile(workbook, `${fileName}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    };
+
     const filteredNstc = data.nstcInventory.filter((item) =>
         item.nameEn.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -116,18 +128,33 @@ export function WarehouseClient({ data, userRole, userName, userRegion }: Props)
                 <h1 className="text-2xl font-bold">
                     {userRole === "manager" ? "📦 " + TEXT.manager_role : userRole === "storekeeper" ? "📤 " + TEXT.storekeeper_role : "📝 " + TEXT.supervisor_role}
                 </h1>
-                {/* Region Selector */}
-                {userRole === "supervisor" && regions.length > 1 && (
-                    <select
-                        className="form-input w-auto"
-                        value={selectedRegion}
-                        onChange={(e) => setSelectedRegion(e.target.value)}
+
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => {
+                            if (activeTab === 'stock' || activeTab === 'nstc') handleExportExcel(data.nstcInventory, "NSTC_Inventory");
+                            else if (activeTab === 'snc') handleExportExcel(data.sncInventory, "SNC_Inventory");
+                            else if (activeTab === 'local') handleExportExcel(data.localInventory, "Local_Inventory");
+                            else toast.error("Select an inventory tab (Stock, NSTC, SNC, or Local) to export");
+                        }}
+                        className="btn bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 text-sm px-3 py-2"
                     >
-                        {regions.map((r) => (
-                            <option key={r} value={r}>{r}</option>
-                        ))}
-                    </select>
-                )}
+                        📅 Export Excel
+                    </button>
+
+                    {/* Region Selector */}
+                    {userRole === "supervisor" && regions.length > 1 && (
+                        <select
+                            className="form-input w-auto"
+                            value={selectedRegion}
+                            onChange={(e) => setSelectedRegion(e.target.value)}
+                        >
+                            {regions.map((r) => (
+                                <option key={r} value={r}>{r}</option>
+                            ))}
+                        </select>
+                    )}
+                </div>
             </div>
 
             {/* Tabs */}
@@ -1653,8 +1680,8 @@ function SupervisorStocktakeView({
                                 <div
                                     key={item.id}
                                     className={`p-2 rounded-lg border cursor-pointer transition-all ${isAdded
-                                            ? "bg-green-50 border-green-300"
-                                            : "bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300"
+                                        ? "bg-green-50 border-green-300"
+                                        : "bg-white border-gray-200 hover:bg-blue-50 hover:border-blue-300"
                                         }`}
                                     onClick={() => handleAddFromNstc(item.nameEn)}
                                 >

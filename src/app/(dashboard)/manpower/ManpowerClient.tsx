@@ -4,6 +4,7 @@ import { useState } from "react";
 import { AREAS, ATTENDANCE_STATUSES } from "@/lib/constants";
 import { createWorker, createShift, submitBulkAttendance, updateSupervisorProfile, updateWorker, deleteWorker } from "@/app/actions/manpower";
 import { toast } from "sonner";
+import * as XLSX from "xlsx";
 
 interface Worker {
     id: number;
@@ -177,6 +178,22 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
         (w.empId && w.empId.includes(searchTerm))
     );
 
+    const handleExportExcel = (dataToExport: typeof data.allAttendance) => {
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport.map(a => ({
+            "Worker Name": a.worker.name,
+            "Worker ID": a.worker.id,
+            "Region": a.worker.region || "Unknown",
+            "Shift": data.shifts.find(s => s.id === a.shiftId)?.name || "Unknown",
+            "Status": a.status,
+            "Date": new Date(a.date).toLocaleDateString(),
+            "Supervisor": a.supervisor,
+            "Notes": a.notes || ""
+        })));
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
+        XLSX.writeFile(workbook, `Attendance_Report_${selectedDate}.xlsx`);
+    };
+
     return (
         <div>
             <h1 className="text-2xl font-bold mb-6">
@@ -215,13 +232,30 @@ export function ManpowerClient({ data, userRole, userName, userRegion, userShift
             {/* Manager: Reports */}
             {userRole === "manager" && activeTab === "reports" && (
                 <div>
-                    <h3 className="font-bold text-lg mb-4">📊 Daily Attendance Report</h3>
-                    <input
-                        type="date"
-                        className="form-input w-auto mb-4"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                    />
+                    <div className="flex justify-between items-end mb-4">
+                        <div>
+                            <h3 className="font-bold text-lg mb-4">📊 Daily Attendance Report</h3>
+                            <input
+                                type="date"
+                                className="form-input w-auto mb-0"
+                                value={selectedDate}
+                                onChange={(e) => setSelectedDate(e.target.value)}
+                            />
+                        </div>
+                        <button
+                            onClick={() => {
+                                const dateFiltered = data.allAttendance.filter((a) => {
+                                    const attendanceDate = new Date(a.date).toISOString().split('T')[0];
+                                    return attendanceDate === selectedDate;
+                                });
+                                if (dateFiltered.length > 0) handleExportExcel(dateFiltered);
+                                else toast.error("No data to export");
+                            }}
+                            className="btn bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+                        >
+                            📅 Export to Excel
+                        </button>
+                    </div>
 
                     {(() => {
                         // Filter attendance by selected date
