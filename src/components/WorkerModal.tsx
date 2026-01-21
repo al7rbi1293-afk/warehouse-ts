@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Worker, Shift } from "@/types";
+import { Worker, Shift, Region } from "@/types";
 import { createWorker, updateWorker } from "@/app/actions/manpower";
 
 interface WorkerModalProps {
@@ -10,10 +10,11 @@ interface WorkerModalProps {
     onClose: () => void;
     worker?: Worker | null;
     shifts: Shift[];
+    regions: Region[];
     onSuccess: () => void;
 }
 
-export function WorkerModal({ isOpen, onClose, worker, shifts, onSuccess }: WorkerModalProps) {
+export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSuccess }: WorkerModalProps) {
     const [isLoading, setIsLoading] = useState(false);
 
     if (!isOpen) return null;
@@ -121,11 +122,9 @@ export function WorkerModal({ isOpen, onClose, worker, shifts, onSuccess }: Work
                                 defaultValue={worker?.region || "Riyadh"}
                                 className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none bg-white"
                             >
-                                <option value="Riyadh">Riyadh</option>
-                                <option value="Jeddah">Jeddah</option>
-                                <option value="Dammam">Dammam</option>
-                                <option value="Neom">Neom</option>
-                                <option value="Tabuk">Tabuk</option>
+                                {regions.map(region => (
+                                    <option key={region.id} value={region.name}>{region.name}</option>
+                                ))}
                             </select>
                         </div>
 

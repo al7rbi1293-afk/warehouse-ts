@@ -235,4 +235,16 @@ export interface ManpowerData {
   supervisors: User[];
   allAttendance: Attendance[];
   dailyReports?: DailyReport[]; // For the aggregated view
+  regions: Region[];
+}
+
+export interface Region {
+  id: number;
+  name: string;
+}
+
+export interface Warehouse {
+  id: number;
+  name: string;
+  location: string | null;
 }

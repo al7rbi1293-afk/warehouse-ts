@@ -156,3 +156,33 @@ model AuditLog {
 
   @@map("audit_logs")
 }
+
+// =====================
+// LOOKUP TABLES
+// =====================
+
+model Project {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  status    String   @default("Active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("projects")
+}
+
+model Warehouse {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  location  String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("warehouses")
+}
+
+model Region {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("regions")
+}

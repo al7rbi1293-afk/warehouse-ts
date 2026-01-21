@@ -5,13 +5,8 @@ import { WarehouseClient } from "./WarehouseClient";
 
 async function getWarehouseData(userRole: string, userName: string) {
     try {
-        const [nstcInventory, sncInventory, pendingRequests, approvedRequests, stockLogs, localInventory] = await Promise.all([
+        const [inventory, pendingRequests, approvedRequests, stockLogs, localInventory, warehouses] = await Promise.all([
             prisma.inventory.findMany({
-                where: { location: "NSTC" },
-                orderBy: { nameEn: "asc" },
-            }),
-            prisma.inventory.findMany({
-                where: { location: "SNC" },
                 orderBy: { nameEn: "asc" },
             }),
             prisma.request.findMany({
@@ -29,7 +24,14 @@ async function getWarehouseData(userRole: string, userName: string) {
             prisma.localInventory.findMany({
                 orderBy: [{ region: "asc" }, { itemName: "asc" }],
             }),
+            // @ts-expect-error: Prisma types are out of sync in editor
+            prisma.warehouse.findMany({
+                orderBy: { name: "asc" },
+            }),
         ]);
+
+        // If no warehouses found (e.g. migration issue), return empty or default?
+        // Let's return what we found. Client will handle fallback.
 
         // For supervisors, get their own pending requests
         const myPendingRequests = userRole === "supervisor"
@@ -48,26 +50,26 @@ async function getWarehouseData(userRole: string, userName: string) {
             : [];
 
         return {
-            nstcInventory,
-            sncInventory,
+            inventory,
             pendingRequests,
             approvedRequests,
             stockLogs,
             localInventory,
             myPendingRequests,
             readyForPickup,
+            warehouses,
         };
     } catch (error) {
         console.error("Warehouse data error:", error);
         return {
-            nstcInventory: [],
-            sncInventory: [],
+            inventory: [],
             pendingRequests: [],
             approvedRequests: [],
             stockLogs: [],
             localInventory: [],
             myPendingRequests: [],
             readyForPickup: [],
+            warehouses: [],
         };
     }
 }

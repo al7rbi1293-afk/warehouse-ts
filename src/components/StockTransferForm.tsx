@@ -9,15 +9,16 @@ interface Props {
     inventory: InventoryItem[];
 }
 
-const INTERNAL_PROJECTS = [
-    "Royal Commission Project",
-    "Neom Infrastructure",
-    "Riyadh Metro Extension",
-    "Red Sea Development",
-    "Qiddiya Project",
-    "Diriyah Gate",
-    "General Maintainance"
-];
+import { getProjects, getWarehouses } from "@/app/actions/references";
+import { useEffect } from "react";
+
+interface Props {
+    inventory: InventoryItem[];
+}
+
+// Types for local state
+interface ProjectOption { id: number; name: string; }
+interface WarehouseOption { id: number; name: string; }
 
 type TransferType = "transfer" | "lend" | "borrow";
 
@@ -26,6 +27,28 @@ export function StockTransferForm({ inventory }: Props) {
     const [isLoading, setIsLoading] = useState(false);
     const [transferType, setTransferType] = useState<TransferType>("transfer");
     const [selectedItem, setSelectedItem] = useState<string>("");
+
+    // Dynamic Data State
+    const [projects, setProjects] = useState<ProjectOption[]>([]);
+    const [warehouses, setWarehouses] = useState<WarehouseOption[]>([]);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            const [projRes, whRes] = await Promise.all([
+                getProjects(),
+                getWarehouses()
+            ]);
+
+            if (projRes.success && projRes.data) setProjects(projRes.data);
+            if (whRes.success && whRes.data) setWarehouses(whRes.data);
+            // Fallback if empty (e.g. migration not run yet)
+            if (!projRes.data || projRes.data.length === 0) {
+                // Keep UI usable even if DB empty? 
+                // For now, let's rely on DB data as requested.
+            }
+        };
+        fetchData();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -71,8 +94,8 @@ export function StockTransferForm({ inventory }: Props) {
                     type="button"
                     onClick={() => setTransferType("transfer")}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${transferType === "transfer"
-                            ? "bg-white text-blue-600 shadow-sm"
-                            : "text-slate-600 hover:text-slate-900"
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
                         }`}
                 >
                     Warehouse Transfer
@@ -81,8 +104,8 @@ export function StockTransferForm({ inventory }: Props) {
                     type="button"
                     onClick={() => setTransferType("lend")}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${transferType === "lend"
-                            ? "bg-white text-amber-600 shadow-sm"
-                            : "text-slate-600 hover:text-slate-900"
+                        ? "bg-white text-amber-600 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
                         }`}
                 >
                     Lend (To Project)
@@ -91,8 +114,8 @@ export function StockTransferForm({ inventory }: Props) {
                     type="button"
                     onClick={() => setTransferType("borrow")}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${transferType === "borrow"
-                            ? "bg-white text-green-600 shadow-sm"
-                            : "text-slate-600 hover:text-slate-900"
+                        ? "bg-white text-green-600 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
                         }`}
                 >
                     Borrow (From Project)
@@ -126,23 +149,35 @@ export function StockTransferForm({ inventory }: Props) {
 
                     {transferType === "transfer" && (
                         <select name="fromLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
-                            <option value="NSTC">NSTC Warehouse</option>
-                            <option value="SNC">SNC Warehouse</option>
+                            {warehouses.length > 0 ? warehouses.map(w => (
+                                <option key={w.id} value={w.name}>{w.name} Warehouse</option>
+                            )) : (
+                                <>
+                                    <option value="NSTC">NSTC Warehouse</option>
+                                    <option value="SNC">SNC Warehouse</option>
+                                </>
+                            )}
                         </select>
                     )}
 
                     {transferType === "lend" && (
                         <select name="fromLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
-                            <option value="NSTC">NSTC Warehouse</option>
-                            <option value="SNC">SNC Warehouse</option>
+                            {warehouses.length > 0 ? warehouses.map(w => (
+                                <option key={w.id} value={w.name}>{w.name} Warehouse</option>
+                            )) : (
+                                <>
+                                    <option value="NSTC">NSTC Warehouse</option>
+                                    <option value="SNC">SNC Warehouse</option>
+                                </>
+                            )}
                         </select>
                     )}
 
                     {transferType === "borrow" && (
                         <select name="fromLocation" required className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
                             <option value="">Select Project...</option>
-                            {INTERNAL_PROJECTS.map(proj => (
-                                <option key={proj} value={proj}>{proj}</option>
+                            {projects.map(proj => (
+                                <option key={proj.id} value={proj.name}>{proj.name}</option>
                             ))}
                         </select>
                     )}
@@ -154,24 +189,36 @@ export function StockTransferForm({ inventory }: Props) {
 
                     {transferType === "transfer" && (
                         <select name="toLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
-                            <option value="SNC">SNC Warehouse</option>
-                            <option value="NSTC">NSTC Warehouse</option>
+                            {warehouses.length > 0 ? warehouses.map(w => (
+                                <option key={w.id} value={w.name}>{w.name} Warehouse</option>
+                            )) : (
+                                <>
+                                    <option value="SNC">SNC Warehouse</option>
+                                    <option value="NSTC">NSTC Warehouse</option>
+                                </>
+                            )}
                         </select>
                     )}
 
                     {transferType === "lend" && (
                         <select name="toLocation" required className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
                             <option value="">Select Project...</option>
-                            {INTERNAL_PROJECTS.map(proj => (
-                                <option key={proj} value={proj}>{proj}</option>
+                            {projects.map(proj => (
+                                <option key={proj.id} value={proj.name}>{proj.name}</option>
                             ))}
                         </select>
                     )}
 
                     {transferType === "borrow" && (
                         <select name="toLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
-                            <option value="NSTC">NSTC Warehouse</option>
-                            <option value="SNC">SNC Warehouse</option>
+                            {warehouses.length > 0 ? warehouses.map(w => (
+                                <option key={w.id} value={w.name}>{w.name} Warehouse</option>
+                            )) : (
+                                <>
+                                    <option value="NSTC">NSTC Warehouse</option>
+                                    <option value="SNC">SNC Warehouse</option>
+                                </>
+                            )}
                         </select>
                     )}
                 </div>

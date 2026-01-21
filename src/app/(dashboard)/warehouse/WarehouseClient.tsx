@@ -4,19 +4,19 @@ import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
 import { StockTransferForm } from "@/components/StockTransferForm";
-import { InventoryItem, Request, StockLog, LocalInventoryItem } from "@/types";
+import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
 
 // Define simplified props matching what the page actually sends
 interface Props {
     data: {
-        nstcInventory: InventoryItem[];
-        sncInventory: InventoryItem[];
+        inventory: InventoryItem[];
         pendingRequests: Request[];
         approvedRequests: Request[];
         stockLogs: StockLog[];
         localInventory: LocalInventoryItem[];
         myPendingRequests: Request[];
         readyForPickup: Request[];
+        warehouses: Warehouse[];
     };
     userRole?: string;
     userName: string;
@@ -26,17 +26,18 @@ interface Props {
 export function WarehouseClient({ data }: Props) {
     const [activeTab, setActiveTab] = useState("stock");
     const [searchTerm, setSearchTerm] = useState("");
-    const [warehouseFilter, setWarehouseFilter] = useState<"NSTC" | "SNC">("NSTC");
+    // Default to first warehouse if available, else empty or generic
+    const [warehouseFilter, setWarehouseFilter] = useState<string>(data.warehouses[0]?.name || "NSTC");
 
     // Filter Logic
-    const currentInventory = warehouseFilter === "NSTC" ? data.nstcInventory : data.sncInventory;
+    const currentInventory = data.inventory.filter(item => item.location === warehouseFilter);
     const filteredInventory = currentInventory.filter(item =>
         item.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item.nameAr && item.nameAr.includes(searchTerm))
     );
 
     // Combined inventory for transfer dropdown
-    const allInventory = [...data.nstcInventory, ...data.sncInventory];
+    const allInventory = data.inventory;
 
     const inventoryColumns = [
         {
@@ -120,18 +121,32 @@ export function WarehouseClient({ data }: Props) {
                             />
                         </div>
                         <div className="flex rounded-lg bg-slate-100 p-1">
-                            {["NSTC", "SNC"].map(wh => (
-                                <button
-                                    key={wh}
-                                    onClick={() => setWarehouseFilter(wh as "NSTC" | "SNC")}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === wh
-                                        ? "bg-white text-blue-600 shadow-sm"
-                                        : "text-slate-500 hover:text-slate-700"
-                                        }`}
-                                >
-                                    {wh} Warehouse
-                                </button>
-                            ))}
+                            {data.warehouses.length > 0 ? (
+                                data.warehouses.map(wh => (
+                                    <button
+                                        key={wh.id}
+                                        onClick={() => setWarehouseFilter(wh.name)}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === wh.name
+                                            ? "bg-white text-blue-600 shadow-sm"
+                                            : "text-slate-500 hover:text-slate-700"
+                                            }`}
+                                    >
+                                        {wh.name} Warehouse
+                                    </button>
+                                ))
+                            ) : (
+                                // Fallback if no warehouses in DB yet
+                                <>
+                                    <button
+                                        onClick={() => setWarehouseFilter("NSTC")}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === "NSTC" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+                                    >NSTC Warehouse</button>
+                                    <button
+                                        onClick={() => setWarehouseFilter("SNC")}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === "SNC" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+                                    >SNC Warehouse</button>
+                                </>
+                            )}
                         </div>
                     </div>
                 )}

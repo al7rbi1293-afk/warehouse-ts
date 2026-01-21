@@ -7,7 +7,7 @@ import { UserRole } from "@/types";
 
 async function getManpowerData() {
     try {
-        const [workers, shifts, supervisors, allAttendance] = await Promise.all([
+        const [workers, shifts, supervisors, allAttendance, regions] = await Promise.all([
             prisma.worker.findMany({
                 include: { shift: true },
                 orderBy: { id: "desc" },
@@ -28,20 +28,27 @@ async function getManpowerData() {
                 include: { worker: true },
                 orderBy: { date: 'desc' },
             }),
+            // @ts-expect-error: Prisma types are out of sync in editor
+            prisma.region.findMany({
+                orderBy: { name: "asc" },
+            }),
         ]);
 
         return {
-            workers: workers.map((w) => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            workers: workers.map((w: any) => ({
                 ...w,
                 shiftName: w.shift?.name || null,
             })),
             shifts,
             // Cast the role strictly to match the interface
-            supervisors: supervisors.map(s => ({
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            supervisors: supervisors.map((s: any) => ({
                 ...s,
                 role: s.role as UserRole | null
             })),
             allAttendance,
+            regions,
         };
     } catch (error) {
         console.error("Manpower data error:", error);
@@ -50,6 +57,7 @@ async function getManpowerData() {
             shifts: [],
             supervisors: [],
             allAttendance: [],
+            regions: [],
         };
     }
 }

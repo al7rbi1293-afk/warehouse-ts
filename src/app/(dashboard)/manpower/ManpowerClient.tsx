@@ -217,6 +217,7 @@ export function ManpowerClient({ data }: Props) {
                 onClose={() => setIsModalOpen(false)}
                 worker={editingWorker}
                 shifts={data.shifts}
+                regions={data.regions}
                 onSuccess={() => { }}
             />
         </div>
