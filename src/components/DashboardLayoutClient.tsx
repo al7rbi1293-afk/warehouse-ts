@@ -8,24 +8,27 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     const { isSidebarOpen } = useUI();
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row">
-            {/* Mobile Navigation (Fixed Top, only visible on mobile) */}
-            <div className="md:hidden">
+        <div className="min-h-screen bg-[#F8FAFC] flex">
+            {/* Mobile Navigation */}
+            <div className="md:hidden fixed top-0 left-0 right-0 z-50">
                 <MobileNav />
             </div>
 
-            {/* Desktop Sidebar (Sticky, only visible on desktop) */}
-            <div className="hidden md:block sticky top-0 h-screen shrink-0 z-50">
-                <Sidebar staticPositioning={true} className="h-full" />
+            {/* Desktop Sidebar Container - Width set on wrapper! */}
+            <div
+                className={`hidden md:flex shrink-0 transition-all duration-300 ${isSidebarOpen ? 'w-[260px]' : 'w-[80px]'
+                    }`}
+            >
+                <div className="sticky top-0 h-screen w-full">
+                    <Sidebar staticPositioning={true} className="h-full w-full" />
+                </div>
             </div>
 
-            {/* 
-                Main Content Area
-                - Flex-1 to fill remaining space
-                - No manual margins needed because it's a flex item
-            */}
-            <main className="flex-1 w-full p-6 md:p-8 max-w-[1600px] mx-auto overflow-x-hidden">
-                {children}
+            {/* Main Content - Takes remaining space */}
+            <main className="flex-1 min-w-0 pt-16 md:pt-0">
+                <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+                    {children}
+                </div>
             </main>
         </div>
     );
