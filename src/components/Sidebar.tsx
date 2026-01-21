@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useUI } from "./UIProvider";
+import { useEffect } from "react";
 
 // Define the exact icons from the mockup conceptually
 const Icons = {
@@ -42,7 +43,23 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     const { data: session } = useSession();
     const pathname = usePathname();
 
-    const { isSidebarOpen, toggleSidebar } = useUI();
+    const { isSidebarOpen, toggleSidebar, closeSidebar } = useUI();
+
+    // Close sidebar on mobile mount
+    useEffect(() => {
+        const handleResize = () => {
+            if (window.innerWidth < 768) {
+                closeSidebar();
+            }
+        };
+
+        // Initial check
+        handleResize();
+
+        // Optional: Listen for resize if we want dynamic adaptation
+        // window.addEventListener('resize', handleResize);
+        // return () => window.removeEventListener('resize', handleResize);
+    }, [closeSidebar]); // Run once on mount, but depends on closeSidebar identity which should be stable
 
     if (!session?.user) return null;
 
@@ -59,79 +76,90 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     ];
 
     return (
-        <aside
-            className={`${staticPositioning ? "relative" : "fixed top-0 left-0"} h-full bg-[#1E64EB] text-white transition-all duration-300 z-50 flex flex-col ${isSidebarOpen ? "w-[260px]" : "w-[80px]"
-                } ${className}`}
-            style={{
-                background: "linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%)",
-                boxShadow: "4px 0 15px rgba(0,0,0,0.05)"
-            }}
-        >
-            {/* Logo Area */}
-            <div className={`p-6 flex items-center gap-3 ${!isSidebarOpen && "justify-center"}`}>
-                <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm shrink-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
-                </div>
-                {isSidebarOpen && (
-                    <div className="whitespace-nowrap overflow-hidden">
-                        <h1 className="font-bold text-lg leading-tight">WAREFLOW</h1>
-                        <p className="text-[10px] opacity-70 tracking-widest font-medium">SOLUTIONS</p>
+        <>
+            {/* Mobile Backdrop */}
+            {isSidebarOpen && (
+                <div
+                    className="fixed inset-0 bg-black/50 z-40 md:hidden backdrop-blur-sm transition-opacity"
+                    onClick={closeSidebar}
+                />
+            )}
+
+            <aside
+                className={`${staticPositioning ? "relative" : "fixed top-0 left-0"} h-full bg-[#1E64EB] text-white transition-all duration-300 z-50 flex flex-col 
+                ${isSidebarOpen ? "translate-x-0 w-[260px]" : "-translate-x-full md:translate-x-0 w-[260px] md:w-[80px]"} 
+                ${className}`}
+                style={{
+                    background: "linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%)",
+                    boxShadow: "4px 0 15px rgba(0,0,0,0.05)"
+                }}
+            >
+                {/* Logo Area */}
+                <div className={`p-6 flex items-center gap-3 ${!isSidebarOpen && "justify-center"}`}>
+                    <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center backdrop-blur-sm shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                     </div>
-                )}
-            </div>
+                    {isSidebarOpen && (
+                        <div className="whitespace-nowrap overflow-hidden">
+                            <h1 className="font-bold text-lg leading-tight">WAREFLOW</h1>
+                            <p className="text-[10px] opacity-70 tracking-widest font-medium">SOLUTIONS</p>
+                        </div>
+                    )}
+                </div>
 
-            {/* Main Navigation */}
-            <nav className="flex-1 px-4 py-4 space-y-1">
-                {navItems.map((item) => {
-                    const isActive = item.name === "Overview"
-                        ? pathname === "/dashboard"
-                        : pathname.startsWith(item.href);
+                {/* Main Navigation */}
+                <nav className="flex-1 px-4 py-4 space-y-1">
+                    {navItems.map((item) => {
+                        const isActive = item.name === "Overview"
+                            ? pathname === "/dashboard"
+                            : pathname.startsWith(item.href);
 
-                    return (
-                        <Link
+                        return (
+                            <Link
+                                key={item.name}
+                                href={item.href}
+                                className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
+                                    ? "bg-white/10 shadow-[inner_0_0_0_1px_rgba(255,255,255,0.1)]"
+                                    : "hover:bg-white/5"
+                                    } ${!isSidebarOpen && "justify-center px-2"}`}
+                            >
+                                <item.icon className={`w-5 h-5 shrink-0 ${isActive ? "opacity-100" : "opacity-70 group-hover:opacity-100"}`} />
+                                {isSidebarOpen && (
+                                    <span className={`text-sm font-medium whitespace-nowrap ${isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"}`}>
+                                        {item.name}
+                                    </span>
+                                )}
+                            </Link>
+                        )
+                    })}
+                </nav>
+
+                {/* Toggle Button */}
+                <button
+                    onClick={toggleSidebar}
+                    className="absolute -right-3 top-20 bg-white text-blue-600 rounded-full p-1 shadow-md border border-slate-100 hover:bg-slate-50 transition-colors z-50 md:flex hidden"
+                >
+                    {isSidebarOpen ? <Icons.ChevronLeft className="w-4 h-4" /> : <Icons.ChevronRight className="w-4 h-4" />}
+                </button>
+
+                {/* Bottom Section */}
+                <div className="p-4 space-y-1 mt-auto border-t border-white/10">
+                    {bottomItems.map((item) => (
+                        <button
                             key={item.name}
-                            href={item.href}
-                            className={`flex items-center gap-4 px-4 py-3 rounded-xl transition-all duration-200 group ${isActive
-                                ? "bg-white/10 shadow-[inner_0_0_0_1px_rgba(255,255,255,0.1)]"
-                                : "hover:bg-white/5"
-                                } ${!isSidebarOpen && "justify-center px-2"}`}
+                            onClick={item.action || (() => { })}
+                            className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/5 transition-all duration-200 group text-left ${!isSidebarOpen && "justify-center px-2"}`}
                         >
-                            <item.icon className={`w-5 h-5 shrink-0 ${isActive ? "opacity-100" : "opacity-70 group-hover:opacity-100"}`} />
+                            <item.icon className="w-5 h-5 opacity-70 group-hover:opacity-100 shrink-0" />
                             {isSidebarOpen && (
-                                <span className={`text-sm font-medium whitespace-nowrap ${isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"}`}>
+                                <span className="text-sm font-medium opacity-80 group-hover:opacity-100 whitespace-nowrap">
                                     {item.name}
                                 </span>
                             )}
-                        </Link>
-                    )
-                })}
-            </nav>
-
-            {/* Toggle Button */}
-            <button
-                onClick={toggleSidebar}
-                className="absolute -right-3 top-20 bg-white text-blue-600 rounded-full p-1 shadow-md border border-slate-100 hover:bg-slate-50 transition-colors z-50 md:flex hidden"
-            >
-                {isSidebarOpen ? <Icons.ChevronLeft className="w-4 h-4" /> : <Icons.ChevronRight className="w-4 h-4" />}
-            </button>
-
-            {/* Bottom Section */}
-            <div className="p-4 space-y-1 mt-auto border-t border-white/10">
-                {bottomItems.map((item) => (
-                    <button
-                        key={item.name}
-                        onClick={item.action || (() => { })}
-                        className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/5 transition-all duration-200 group text-left ${!isSidebarOpen && "justify-center px-2"}`}
-                    >
-                        <item.icon className="w-5 h-5 opacity-70 group-hover:opacity-100 shrink-0" />
-                        {isSidebarOpen && (
-                            <span className="text-sm font-medium opacity-80 group-hover:opacity-100 whitespace-nowrap">
-                                {item.name}
-                            </span>
-                        )}
-                    </button>
-                ))}
-            </div>
-        </aside>
+                        </button>
+                    ))}
+                </div>
+            </aside>
+        </>
     );
 }
