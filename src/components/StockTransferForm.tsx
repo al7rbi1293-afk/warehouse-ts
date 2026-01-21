@@ -7,25 +7,46 @@ import { InventoryItem } from "@/types";
 
 interface Props {
     inventory: InventoryItem[];
-    userName: string;
 }
+
+const INTERNAL_PROJECTS = [
+    "Royal Commission Project",
+    "Neom Infrastructure",
+    "Riyadh Metro Extension",
+    "Red Sea Development",
+    "Qiddiya Project",
+    "Diriyah Gate",
+    "General Maintainance"
+];
+
+type TransferType = "transfer" | "lend" | "borrow";
 
 export function StockTransferForm({ inventory }: Props) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
+    const [transferType, setTransferType] = useState<TransferType>("transfer");
     const [selectedItem, setSelectedItem] = useState<string>("");
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         setIsLoading(true);
 
+        const formData = new FormData(e.currentTarget);
+        const type = formData.get("transferType");
+        const from = formData.get("fromLocation");
+        const to = formData.get("toLocation");
+
+        // Log logic for now since we don't have backend support fully ready
+        console.log({ type, from, to });
+
         try {
             // Simulate API call
             await new Promise(resolve => setTimeout(resolve, 1000));
-            toast.success("Transfer request submitted");
+            toast.success("Transfer request submitted successfully");
             router.refresh();
             (e.target as HTMLFormElement).reset();
             setSelectedItem("");
+            setTransferType("transfer");
         } catch {
             toast.error("Transfer failed");
         } finally {
@@ -35,9 +56,50 @@ export function StockTransferForm({ inventory }: Props) {
 
     return (
         <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="bg-blue-50/50 p-4 rounded-lg text-sm text-blue-700 border border-blue-100 mb-6">
-                Transfering stock between warehouses requires approval from the manager.
+            <div className="bg-blue-50/50 p-4 rounded-lg text-sm text-blue-700 border border-blue-100 mb-6 flex flex-col gap-2">
+                <p><strong>Note:</strong> Transfering stock requires manager approval.</p>
+                <ul className="list-disc list-inside text-xs opacity-80">
+                    <li><strong>Warehouse Transfer:</strong> Move items between NSTC and SNC.</li>
+                    <li><strong>Lend (Issue):</strong> Issue items to a project (decreases stock).</li>
+                    <li><strong>Borrow (Return):</strong> Return items from a project (increases stock).</li>
+                </ul>
             </div>
+
+            {/* Transfer Type Selector */}
+            <div className="grid grid-cols-3 gap-2 p-1 bg-slate-100 rounded-lg">
+                <button
+                    type="button"
+                    onClick={() => setTransferType("transfer")}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${transferType === "transfer"
+                            ? "bg-white text-blue-600 shadow-sm"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                >
+                    Warehouse Transfer
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTransferType("lend")}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${transferType === "lend"
+                            ? "bg-white text-amber-600 shadow-sm"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                >
+                    Lend (To Project)
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setTransferType("borrow")}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all ${transferType === "borrow"
+                            ? "bg-white text-green-600 shadow-sm"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                >
+                    Borrow (From Project)
+                </button>
+            </div>
+
+            <input type="hidden" name="transferType" value={transferType} />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
@@ -49,7 +111,7 @@ export function StockTransferForm({ inventory }: Props) {
                         onChange={(e) => setSelectedItem(e.target.value)}
                         className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                     >
-                        <option value="">Select an item to transfer...</option>
+                        <option value="">Select an item...</option>
                         {inventory.map(item => (
                             <option key={item.id} value={item.id}>
                                 {item.nameEn} ({item.qty} {item.unit} available at {item.location})
@@ -58,33 +120,64 @@ export function StockTransferForm({ inventory }: Props) {
                     </select>
                 </div>
 
+                {/* From Location */}
                 <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">From Location</label>
-                    <select
-                        name="fromLocation"
-                        required
-                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 outline-none cursor-not-allowed"
-                    >
-                        <option value="NSTC">NSTC</option>
-                        <option value="SNC">SNC</option>
-                    </select>
+
+                    {transferType === "transfer" && (
+                        <select name="fromLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                            <option value="NSTC">NSTC Warehouse</option>
+                            <option value="SNC">SNC Warehouse</option>
+                        </select>
+                    )}
+
+                    {transferType === "lend" && (
+                        <select name="fromLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                            <option value="NSTC">NSTC Warehouse</option>
+                            <option value="SNC">SNC Warehouse</option>
+                        </select>
+                    )}
+
+                    {transferType === "borrow" && (
+                        <select name="fromLocation" required className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                            <option value="">Select Project...</option>
+                            {INTERNAL_PROJECTS.map(proj => (
+                                <option key={proj} value={proj}>{proj}</option>
+                            ))}
+                        </select>
+                    )}
                 </div>
 
+                {/* To Location */}
                 <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">To Location</label>
-                    <select
-                        name="toLocation"
-                        required
-                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    >
-                        <option value="SNC">SNC</option>
-                        <option value="NSTC">NSTC</option>
-                        <option value="Project">External Project</option>
-                    </select>
+
+                    {transferType === "transfer" && (
+                        <select name="toLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                            <option value="SNC">SNC Warehouse</option>
+                            <option value="NSTC">NSTC Warehouse</option>
+                        </select>
+                    )}
+
+                    {transferType === "lend" && (
+                        <select name="toLocation" required className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                            <option value="">Select Project...</option>
+                            {INTERNAL_PROJECTS.map(proj => (
+                                <option key={proj} value={proj}>{proj}</option>
+                            ))}
+                        </select>
+                    )}
+
+                    {transferType === "borrow" && (
+                        <select name="toLocation" className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none">
+                            <option value="NSTC">NSTC Warehouse</option>
+                            <option value="SNC">SNC Warehouse</option>
+                        </select>
+                    )}
                 </div>
 
                 <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-2">Quantity to Transfer</label>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Quantity</label>
                     <input
                         type="number"
                         name="qty"
@@ -112,7 +205,7 @@ export function StockTransferForm({ inventory }: Props) {
                     disabled={isLoading || !selectedItem}
                     className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg shadow-lg shadow-blue-500/30 transition-all disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                    {isLoading ? "Submit Request..." : "Request Transfer"}
+                    {isLoading ? "Processing..." : "Submit Request"}
                 </button>
             </div>
         </form>
