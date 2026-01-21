@@ -144,7 +144,7 @@ export interface Request {
   notes: string | null;
 }
 
-export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Issued' | 'Received';
+export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Issued' | 'Received' | string;
 
 export interface RequestFormData {
   itemName: string;
