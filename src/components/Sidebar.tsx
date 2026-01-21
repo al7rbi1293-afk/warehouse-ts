@@ -71,8 +71,8 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     ];
 
     const bottomItems = [
-        { name: "Settings", href: "#", icon: Icons.Settings },
-        { name: "Profile", href: "#", icon: Icons.Profile, action: () => {/* Profile action */ } },
+        { name: "Settings", href: "/settings", icon: Icons.Settings },
+        { name: "Profile", href: "/profile", icon: Icons.Profile },
     ];
 
     return (
@@ -145,9 +145,9 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
                 {/* Bottom Section */}
                 <div className="p-4 space-y-1 mt-auto border-t border-white/10">
                     {bottomItems.map((item) => (
-                        <button
+                        <Link
                             key={item.name}
-                            onClick={item.action || (() => { })}
+                            href={item.href}
                             className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/5 transition-all duration-200 group text-left ${!isSidebarOpen && "justify-center px-2"}`}
                         >
                             <item.icon className="w-5 h-5 opacity-70 group-hover:opacity-100 shrink-0" />
@@ -156,7 +156,7 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
                                     {item.name}
                                 </span>
                             )}
-                        </button>
+                        </Link>
                     ))}
                 </div>
             </aside>

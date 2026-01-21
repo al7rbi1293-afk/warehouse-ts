@@ -122,7 +122,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             <ResponsiveContainer width="100%" height="100%">
                                 <BarChart data={inventoryData} barGap={8}>
                                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
-                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 10 }} dy={10} interval={0} angle={-45} textAnchor="end" height={60} />
+                                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 10 }} dy={10} interval={0} angle={-45} textAnchor="end" height={100} />
                                     <YAxis axisLine={false} tickLine={false} tick={{ fill: '#64748B', fontSize: 12 }} />
                                     <Tooltip cursor={{ fill: 'transparent' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
                                     <Bar dataKey="value" fill="#2563EB" radius={[4, 4, 0, 0]} barSize={24} />
