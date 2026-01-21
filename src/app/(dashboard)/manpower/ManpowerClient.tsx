@@ -3,6 +3,9 @@
 import { useState, useMemo } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { ManpowerData, Attendance, DailyReport, Worker } from "@/types";
+import { WorkerModal } from "@/components/WorkerModal";
+import { deleteWorker } from "@/app/actions/manpower";
+import { toast } from "sonner";
 
 interface Props {
     data: ManpowerData;
@@ -94,6 +97,36 @@ export function ManpowerClient({ data }: Props) {
         },
     ];
 
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
+
+    // Handlers
+    const handleAddWorker = () => {
+        setEditingWorker(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEditWorker = (worker: Worker) => {
+        setEditingWorker(worker);
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteWorker = async (id: number) => {
+        if (confirm("Are you sure you want to delete this worker? This will also delete their attendance records.")) {
+            try {
+                // Determine if we need to call a server action. 
+                // Since deleteWorker is a server action, we need to import it.
+                // Dynamic import or passed prop would be better but let's assume we can import it.
+                // We'll need to import deleteWorker at top of file.
+                await deleteWorker(id);
+                toast.success("Worker deleted successfully");
+            } catch {
+                toast.error("Failed to delete worker");
+            }
+        }
+    };
+
     // Filter workers based on search
     const filteredWorkers = data.workers.filter(w =>
         w.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -109,19 +142,31 @@ export function ManpowerClient({ data }: Props) {
                 </div>
             </div>
 
-            <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex shadow-sm">
-                {["attendance", "workers"].map((tab) => (
+            <div className="flex justify-between items-center">
+                <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex shadow-sm">
+                    {["attendance", "workers"].map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
+                                ? "bg-blue-600 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                }`}
+                        >
+                            {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        </button>
+                    ))}
+                </div>
+
+                {activeTab === "workers" && (
                     <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                            }`}
+                        onClick={handleAddWorker}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium text-sm"
                     >
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
+                        Add Worker
                     </button>
-                ))}
+                )}
             </div>
 
             <div className="card-premium p-6">
@@ -147,12 +192,33 @@ export function ManpowerClient({ data }: Props) {
                     <PremiumTable
                         columns={workerColumns}
                         data={filteredWorkers}
-                        actions={() => (
-                            <button className="text-blue-600 text-sm font-medium hover:underline">View</button>
+                        actions={(item) => (
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => handleEditWorker(item as Worker)}
+                                    className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1"
+                                >
+                                    Edit
+                                </button>
+                                <button
+                                    onClick={() => handleDeleteWorker((item as Worker).id)}
+                                    className="text-red-600 text-sm font-medium hover:underline flex items-center gap-1"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         )}
                     />
                 )}
             </div>
+
+            <WorkerModal
+                isOpen={isModalOpen}
+                onClose={() => setIsModalOpen(false)}
+                worker={editingWorker}
+                shifts={data.shifts}
+                onSuccess={() => { }}
+            />
         </div>
     );
 }
