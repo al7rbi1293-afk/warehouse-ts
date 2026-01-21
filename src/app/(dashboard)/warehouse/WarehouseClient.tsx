@@ -17,6 +17,7 @@ interface Props {
         myPendingRequests: Request[];
         readyForPickup: Request[];
         warehouses: Warehouse[];
+        regions: { id: number; name: string }[];
     };
     userRole?: string;
     userName: string;
@@ -169,7 +170,7 @@ export function WarehouseClient({ data }: Props) {
                             <h2 className="text-lg font-bold text-slate-800">Add New Inventory Item</h2>
                             <p className="text-sm text-slate-500">Register new stock into the system</p>
                         </div>
-                        <AddInventoryItemForm />
+                        <AddInventoryItemForm warehouses={data.warehouses} />
                     </div>
                 )}
 

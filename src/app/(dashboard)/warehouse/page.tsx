@@ -57,6 +57,7 @@ async function getWarehouseData(userRole: string, userName: string) {
             myPendingRequests,
             readyForPickup,
             warehouses,
+            regions: await prisma.region.findMany({ orderBy: { name: "asc" } }),
         };
     } catch (error) {
         console.error("Warehouse data error:", error);
@@ -69,6 +70,7 @@ async function getWarehouseData(userRole: string, userName: string) {
             myPendingRequests: [],
             readyForPickup: [],
             warehouses: [],
+            regions: [],
         };
     }
 }

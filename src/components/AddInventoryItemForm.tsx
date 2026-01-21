@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-// import { WarehouseLocation } from "@/types";
-// import { addInventoryItem } from "@/app/actions/inventory"; // Hypothetical action
+import { Warehouse } from "@/types";
+import { createInventoryItem } from "@/app/actions/inventory";
 
-export function AddInventoryItemForm() {
+interface Props {
+    warehouses: Warehouse[];
+}
+
+export function AddInventoryItemForm({ warehouses }: Props) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
 
@@ -14,18 +18,18 @@ export function AddInventoryItemForm() {
         e.preventDefault();
         setIsLoading(true);
 
-        // const formData = new FormData(e.currentTarget);
+        const formData = new FormData(e.currentTarget);
 
         try {
-            // In a real app, call server action here
-            // await addInventoryItem(formData);
+            const result = await createInventoryItem(formData);
 
-            // Simulating success for UI demo
-            await new Promise(resolve => setTimeout(resolve, 1000));
-
-            toast.success("Item added successfully");
-            router.refresh();
-            (e.target as HTMLFormElement).reset();
+            if (result.success) {
+                toast.success(result.message);
+                router.refresh();
+                (e.target as HTMLFormElement).reset();
+            } else {
+                toast.error(result.message);
+            }
         } catch {
             toast.error("Failed to add item");
         } finally {
@@ -110,8 +114,12 @@ export function AddInventoryItemForm() {
                         required
                         className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                     >
-                        <option value="NSTC">NSTC</option>
-                        <option value="SNC">SNC</option>
+                        <option value="">Select Warehouse</option>
+                        {warehouses.map((wh) => (
+                            <option key={wh.id} value={wh.name}>
+                                {wh.name}
+                            </option>
+                        ))}
                     </select>
                 </div>
             </div>
