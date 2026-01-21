@@ -13,7 +13,7 @@ const Icons = {
     Inventory: (props: any) => (
         <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
     ),
-    Orders: (props: any) => (
+    Requests: (props: any) => (
         <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><path d="M16 13H8" /><path d="M16 17H8" /><path d="M10 9H8" /></svg>
     ),
     Reports: (props: any) => (
@@ -33,18 +33,23 @@ const Icons = {
     )
 };
 
-export function Sidebar() {
+interface SidebarProps {
+    className?: string;
+    staticPositioning?: boolean;
+}
+
+export function Sidebar({ className = "", staticPositioning = false }: SidebarProps) {
     const { data: session } = useSession();
     const pathname = usePathname();
     const router = useRouter();
-    const { isSidebarOpen, toggleSidebar } = useUI(); // Ensure toggleSidebar is available in UIProvider
+    const { isSidebarOpen, toggleSidebar } = useUI();
 
     if (!session?.user) return null;
 
     const navItems = [
         { name: "Overview", href: "/dashboard", icon: Icons.Dashboard },
         { name: "Inventory", href: "/warehouse", icon: Icons.Inventory },
-        { name: "Requests", href: "/warehouse", icon: Icons.Orders }, // Renamed logic to requests to match data
+        { name: "Requests", href: "/warehouse", icon: Icons.Requests },
         { name: "Reports", href: "/manpower", icon: Icons.Reports },
     ];
 
@@ -55,8 +60,8 @@ export function Sidebar() {
 
     return (
         <aside
-            className={`fixed top-0 left-0 h-full bg-[#1E64EB] text-white transition-all duration-300 z-50 flex flex-col ${isSidebarOpen ? "w-[260px]" : "w-[80px]"
-                }`}
+            className={`${staticPositioning ? "relative" : "fixed top-0 left-0"} h-full bg-[#1E64EB] text-white transition-all duration-300 z-50 flex flex-col ${isSidebarOpen ? "w-[260px]" : "w-[80px]"
+                } ${className}`}
             style={{
                 background: "linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%)",
                 boxShadow: "4px 0 15px rgba(0,0,0,0.05)"
@@ -102,7 +107,7 @@ export function Sidebar() {
                 })}
             </nav>
 
-            {/* Toggle Button - Centered or shifted based on state, but let's put it at bottom for ergonomics or overlay edge */}
+            {/* Toggle Button */}
             <button
                 onClick={toggleSidebar}
                 className="absolute -right-3 top-20 bg-white text-blue-600 rounded-full p-1 shadow-md border border-slate-100 hover:bg-slate-50 transition-colors z-50 md:flex hidden"
