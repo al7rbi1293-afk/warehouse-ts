@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { Sidebar } from "@/components/Sidebar";
+import { DashboardContent } from "@/components/DashboardContent";
 
 export default async function DashboardLayout({
     children,
@@ -15,14 +16,16 @@ export default async function DashboardLayout({
     }
 
     return (
-        <div className="flex min-h-screen">
+        <div className="flex min-h-screen bg-slate-50">
             <Sidebar />
-            <main className="main-content flex-1">
-                {children}
-            </main>
-            <footer className="footer">
-                COPYRIGHT © abdulaziz alhazmi AST.Project manager
-            </footer>
+            <DashboardContent>
+                <main className="flex-1 p-6">
+                    {children}
+                </main>
+                <footer className="px-6 py-4 text-center text-xs text-slate-400 border-t border-slate-100">
+                    COPYRIGHT © abdulaziz alhazmi AST.Project manager
+                </footer>
+            </DashboardContent>
         </div>
     );
 }
