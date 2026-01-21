@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
+import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
+import { StockTransferForm } from "@/components/StockTransferForm";
 import { toast } from "sonner";
 
 // Define simplified props matching what the page actually sends
@@ -32,6 +34,9 @@ export function WarehouseClient({ data, userRole, userName }: Props) {
         item.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item.nameAr && item.nameAr.includes(searchTerm))
     );
+
+    // Combined inventory for transfer dropdown
+    const allInventory = [...data.nstcInventory, ...data.sncInventory];
 
     const inventoryColumns = [
         {
@@ -80,13 +85,13 @@ export function WarehouseClient({ data, userRole, userName }: Props) {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Inventory Management</h1>
-                    <p className="text-slate-500 text-sm">Manage stock across warehouses</p>
+                    <p className="text-slate-500 text-sm">Manage stock, transfers, and warehouse operations</p>
                 </div>
             </div>
 
             {/* Navigation Tabs */}
             <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex shadow-sm overflow-x-auto max-w-full">
-                {["stock", "requests", "approved", "logs"].map((tab) => (
+                {["stock", "add", "transfer", "requests", "approved", "logs"].map((tab) => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -101,7 +106,7 @@ export function WarehouseClient({ data, userRole, userName }: Props) {
             </div>
 
             {/* Main Content */}
-            <div className="card-premium p-6">
+            <div className="card-premium p-6 min-h-[500px]">
 
                 {/* Stock View Controls */}
                 {activeTab === "stock" && (
@@ -141,6 +146,28 @@ export function WarehouseClient({ data, userRole, userName }: Props) {
                             <button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>
                         )}
                     />
+                )}
+
+                {/* Add Item Form */}
+                {activeTab === "add" && (
+                    <div className="max-w-3xl mx-auto py-4">
+                        <div className="mb-6 border-b border-slate-100 pb-4">
+                            <h2 className="text-lg font-bold text-slate-800">Add New Inventory Item</h2>
+                            <p className="text-sm text-slate-500">Register new stock into the system</p>
+                        </div>
+                        <AddInventoryItemForm />
+                    </div>
+                )}
+
+                {/* Transfer Form */}
+                {activeTab === "transfer" && (
+                    <div className="max-w-3xl mx-auto py-4">
+                        <div className="mb-6 border-b border-slate-100 pb-4">
+                            <h2 className="text-lg font-bold text-slate-800">Transfer Stock</h2>
+                            <p className="text-sm text-slate-500">Move inventory between warehouses or projects</p>
+                        </div>
+                        <StockTransferForm inventory={allInventory} userName={userName} />
+                    </div>
                 )}
 
                 {activeTab === "requests" && (
