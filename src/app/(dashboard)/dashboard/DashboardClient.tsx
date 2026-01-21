@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 
 import { StatCard } from "@/components/StatCard";
 import {
@@ -50,30 +52,41 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             </div>
 
             {/* Top Row: 4 Metric Cards - REAL DATA ONLY */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <StatCard
                     title="Active Workers"
                     value={data.metrics.activeWorkers}
                     icon={Icons.Workers}
                     delay={0}
+                    href="/manpower"
                 />
                 <StatCard
                     title="Attendance Rate"
                     value={`${data.metrics.attendanceRate}%`}
                     icon={Icons.Time}
                     delay={0.1}
+                    href="/manpower"
                 />
                 <StatCard
                     title="Present Today"
                     value={data.metrics.presentCount}
                     icon={Icons.Present}
                     delay={0.2}
+                    href="/manpower"
                 />
                 <StatCard
                     title="Pending Requests"
                     value={data.metrics.pendingRequests}
                     icon={Icons.Requests}
                     delay={0.3}
+                    href="/warehouse"
+                />
+                <StatCard
+                    title="Low Stock Items"
+                    value={data.metrics.lowStockCount}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /></svg>}
+                    delay={0.4}
+                    href="/warehouse"
                 />
             </div>
 
@@ -128,7 +141,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             {data.lowStockItems.length > 0 && (
                 <div className="card-premium overflow-hidden">
                     <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                        <h3 className="font-bold text-slate-800 text-lg">Low Stock Alerts</h3>
+                        <Link href="/warehouse" className="font-bold text-slate-800 text-lg hover:text-blue-600 transition-colors">
+                            Low Stock Alerts
+                        </Link>
                         <span className="text-red-500 font-medium text-sm">Requires Attention</span>
                     </div>
                     <div className="overflow-x-auto">

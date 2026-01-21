@@ -7,21 +7,20 @@ interface StatCardProps {
     value: string | number;
     icon: React.ReactNode;
     delay?: number;
+    href?: string;
 }
 
-export function StatCard({ title, value, icon, delay = 0 }: StatCardProps) {
-    return (
+import Link from "next/link";
+
+export function StatCard({ title, value, icon, delay = 0, href }: StatCardProps) {
+    const content = (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay }}
-            className="card-premium p-6 flex items-center gap-5"
+            className={`card-premium p-6 flex items-center gap-5 ${href ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
         >
             <div className="flex-shrink-0">
-                {/* Icon Container: White with light blue text? Or Light blue bg? 
-                 Mockup shows white circle with blue icon inside, OR light blue circle. 
-                 Let's go with light blue circle for contrast on white card. 
-             */}
                 <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
                     {icon}
                 </div>
@@ -32,4 +31,10 @@ export function StatCard({ title, value, icon, delay = 0 }: StatCardProps) {
             </div>
         </motion.div>
     );
+
+    if (href) {
+        return <Link href={href} className="block">{content}</Link>;
+    }
+
+    return content;
 }
