@@ -123,7 +123,7 @@ export function WarehouseClient({ data }: Props) {
                             {["NSTC", "SNC"].map(wh => (
                                 <button
                                     key={wh}
-                                    onClick={() => setWarehouseFilter(wh as any)}
+                                    onClick={() => setWarehouseFilter(wh as "NSTC" | "SNC")}
                                     className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === wh
                                         ? "bg-white text-blue-600 shadow-sm"
                                         : "text-slate-500 hover:text-slate-700"
