@@ -72,6 +72,7 @@ export interface Attendance {
   supervisor: string | null;
   createdAt: Date;
   workerName?: string;
+  worker?: Worker;
 }
 
 export type AttendanceStatus =
@@ -80,7 +81,8 @@ export type AttendanceStatus =
   | 'Vacation'
   | 'Day Off'
   | 'Eid Holiday'
-  | 'Sick Leave';
+  | 'Sick Leave'
+  | string; // Relaxed to allow string from DB
 
 export interface AttendanceFormData {
   workerId: number;
@@ -95,6 +97,8 @@ export interface AttendanceFormData {
 export interface InventoryItem {
   id: number;
   nameEn: string;
+  nameAr?: string;
+  materialCode?: string;
   category: string | null;
   unit: string | null;
   qty: number;
@@ -103,7 +107,7 @@ export interface InventoryItem {
   lastUpdated: Date;
 }
 
-export type WarehouseLocation = 'NSTC' | 'SNC';
+export type WarehouseLocation = 'NSTC' | 'SNC' | string;
 
 export interface InventoryFormData {
   nameEn: string;
@@ -214,10 +218,21 @@ export interface FormState {
 // =====================
 // Manpower Data Type
 // =====================
+
+export interface DailyReport {
+  id: string;
+  date: string;
+  region: string;
+  shift: string;
+  totalWorkers: number;
+  presentCount: number;
+  absentCount: number;
+}
+
 export interface ManpowerData {
   workers: Worker[];
   shifts: Shift[];
   supervisors: User[];
-  allAttendance: any[];
-  dailyReports?: any[]; // For the aggregated view
+  allAttendance: Attendance[];
+  dailyReports?: DailyReport[]; // For the aggregated view
 }

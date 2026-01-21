@@ -10,7 +10,7 @@ interface Props {
     userName: string;
 }
 
-export function StockTransferForm({ inventory, userName }: Props) {
+export function StockTransferForm({ inventory }: Props) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [selectedItem, setSelectedItem] = useState<string>("");
@@ -26,7 +26,7 @@ export function StockTransferForm({ inventory, userName }: Props) {
             router.refresh();
             (e.target as HTMLFormElement).reset();
             setSelectedItem("");
-        } catch (error) {
+        } catch {
             toast.error("Transfer failed");
         } finally {
             setIsLoading(false);

@@ -2,18 +2,18 @@
 
 import { useState, useMemo } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
-import { ManpowerData } from "@/types";
+import { ManpowerData, Attendance, DailyReport, Worker } from "@/types";
 
 interface Props {
     data: ManpowerData;
-    userRole: string;
-    userName: string;
+    userRole?: string;
+    userName?: string;
     userRegion?: string | null;
     userShiftId?: number | null;
     userShiftName?: string | null;
 }
 
-export function ManpowerClient({ data, userRole, userName }: Props) {
+export function ManpowerClient({ data }: Props) {
     const [activeTab, setActiveTab] = useState("attendance");
     const [searchTerm, setSearchTerm] = useState("");
 
@@ -27,12 +27,12 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
 
         // Mocking aggregated rows for display if raw data isn't pre-aggregated
         // Using the raw attendance to create summary rows
-        const grouped = new Map();
+        const grouped = new Map<string, DailyReport>();
 
-        data.allAttendance.forEach((record: any) => {
+        data.allAttendance.forEach((record: Attendance) => {
             const dateStr = new Date(record.date).toLocaleDateString();
             const region = record.worker?.region || "Unknown";
-            const shiftId = record.shiftId || "General";
+            const shiftId = (record.shiftId || "General").toString();
             const key = `${dateStr}-${region}-${shiftId}`;
 
             if (!grouped.has(key)) {
@@ -47,7 +47,7 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
                 });
             }
 
-            const group = grouped.get(key);
+            const group = grouped.get(key)!;
             group.totalWorkers++;
             if (record.status === "Present") group.presentCount++;
             if (record.status === "Absent") group.absentCount++;
@@ -62,17 +62,17 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
         { header: "Date", accessorKey: "date" as const },
         { header: "Region", accessorKey: "region" as const },
         {
-            header: "Total Workers", accessorKey: "totalWorkers" as const, render: (row: any) => (
+            header: "Total Workers", accessorKey: "totalWorkers" as const, render: (row: DailyReport) => (
                 <span className="font-semibold text-slate-700">{row.totalWorkers}</span>
             )
         },
         {
-            header: "Present", accessorKey: "presentCount" as const, render: (row: any) => (
+            header: "Present", accessorKey: "presentCount" as const, render: (row: DailyReport) => (
                 <span className="text-green-600 font-bold">{row.presentCount}</span>
             )
         },
         {
-            header: "Absent", accessorKey: "absentCount" as const, render: (row: any) => (
+            header: "Absent", accessorKey: "absentCount" as const, render: (row: DailyReport) => (
                 <span className="text-red-500">{row.absentCount}</span>
             )
         },
@@ -80,7 +80,7 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
 
     const workerColumns = [
         {
-            header: "Name", accessorKey: "name" as const, render: (row: any) => (
+            header: "Name", accessorKey: "name" as const, render: (row: Worker) => (
                 <span className="font-medium text-slate-900">{row.name}</span>
             )
         },
@@ -88,7 +88,7 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
         { header: "Role", accessorKey: "role" as const },
         { header: "Region", accessorKey: "region" as const },
         {
-            header: "Shift", accessorKey: "shiftName" as const, render: (row: any) => (
+            header: "Shift", accessorKey: "shiftName" as const, render: (row: Worker) => (
                 <span className="px-2 py-1 rounded bg-slate-100 text-xs text-slate-600">{row.shiftName || "-"}</span>
             )
         },
@@ -115,8 +115,8 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
                         key={tab}
                         onClick={() => setActiveTab(tab)}
                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab
-                                ? "bg-blue-600 text-white shadow-sm"
-                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                             }`}
                     >
                         {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -147,7 +147,7 @@ export function ManpowerClient({ data, userRole, userName }: Props) {
                     <PremiumTable
                         columns={workerColumns}
                         data={filteredWorkers}
-                        actions={(item) => (
+                        actions={() => (
                             <button className="text-blue-600 text-sm font-medium hover:underline">View</button>
                         )}
                     />

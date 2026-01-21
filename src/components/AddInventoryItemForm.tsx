@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { addInventoryItem } from "@/app/actions/inventory"; // Hypothetical action
-import { WarehouseLocation } from "@/types";
+// import { WarehouseLocation } from "@/types";
+// import { addInventoryItem } from "@/app/actions/inventory"; // Hypothetical action
 
 export function AddInventoryItemForm() {
     const router = useRouter();
@@ -14,7 +14,7 @@ export function AddInventoryItemForm() {
         e.preventDefault();
         setIsLoading(true);
 
-        const formData = new FormData(e.currentTarget);
+        // const formData = new FormData(e.currentTarget);
 
         try {
             // In a real app, call server action here
@@ -26,7 +26,7 @@ export function AddInventoryItemForm() {
             toast.success("Item added successfully");
             router.refresh();
             (e.target as HTMLFormElement).reset();
-        } catch (error) {
+        } catch {
             toast.error("Failed to add item");
         } finally {
             setIsLoading(false);
