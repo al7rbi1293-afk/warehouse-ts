@@ -104,7 +104,7 @@ export interface InventoryItem {
   qty: number;
   location: WarehouseLocation;
   status: string | null;
-  lastUpdated: Date;
+  lastUpdated: Date | null;
 }
 
 export type WarehouseLocation = 'NSTC' | 'SNC' | string;
