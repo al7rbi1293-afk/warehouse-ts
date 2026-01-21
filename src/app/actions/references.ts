@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 
 export async function getProjects() {
     try {
-        // @ts-expect-error: Prisma types are out of sync in editor
         const projects = await prisma.project.findMany({
             where: { status: "Active" },
             orderBy: { name: "asc" }
@@ -19,7 +18,6 @@ export async function getProjects() {
 
 export async function getWarehouses() {
     try {
-        // @ts-expect-error: Prisma types are out of sync in editor
         const warehouses = await prisma.warehouse.findMany({
             orderBy: { name: "asc" }
         });
@@ -33,7 +31,6 @@ export async function getWarehouses() {
 
 export async function getRegions() {
     try {
-        // @ts-expect-error: Prisma types are out of sync in editor
         const regions = await prisma.region.findMany({
             orderBy: { name: "asc" }
         });

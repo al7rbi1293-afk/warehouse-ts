@@ -28,7 +28,6 @@ async function getManpowerData() {
                 include: { worker: true },
                 orderBy: { date: 'desc' },
             }),
-            // @ts-expect-error: Prisma types are out of sync in editor
             prisma.region.findMany({
                 orderBy: { name: "asc" },
             }),

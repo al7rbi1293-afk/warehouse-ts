@@ -24,7 +24,6 @@ async function getWarehouseData(userRole: string, userName: string) {
             prisma.localInventory.findMany({
                 orderBy: [{ region: "asc" }, { itemName: "asc" }],
             }),
-            // @ts-expect-error: Prisma types are out of sync in editor
             prisma.warehouse.findMany({
                 orderBy: { name: "asc" },
             }),
