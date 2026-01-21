@@ -23,7 +23,7 @@ interface Props {
     userRegion?: string | null;
 }
 
-export function WarehouseClient({ data, userName }: Props) {
+export function WarehouseClient({ data }: Props) {
     const [activeTab, setActiveTab] = useState("stock");
     const [searchTerm, setSearchTerm] = useState("");
     const [warehouseFilter, setWarehouseFilter] = useState<"NSTC" | "SNC">("NSTC");
@@ -165,7 +165,7 @@ export function WarehouseClient({ data, userName }: Props) {
                             <h2 className="text-lg font-bold text-slate-800">Transfer Stock</h2>
                             <p className="text-sm text-slate-500">Move inventory between warehouses or projects</p>
                         </div>
-                        <StockTransferForm inventory={allInventory} userName={userName} />
+                        <StockTransferForm inventory={allInventory} />
                     </div>
                 )}
 
