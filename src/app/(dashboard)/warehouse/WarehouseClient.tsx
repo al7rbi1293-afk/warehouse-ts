@@ -45,6 +45,8 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     // Stocktake State
     const [isStocktakeMode, setIsStocktakeMode] = useState(false);
     const [stocktakeBuffer, setStocktakeBuffer] = useState<Record<string, number>>({});
+    const [stocktakeSearch, setStocktakeSearch] = useState("");
+    const [stocktakeCategory, setStocktakeCategory] = useState("All");
 
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -512,50 +514,87 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             </>
                         ) : (
                             <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                                <div className="flex justify-between items-center mb-6">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-slate-800">Stocktake: {selectedLocalRegion}</h3>
-                                        <p className="text-sm text-slate-500">Enter current counts for all items.</p>
+                                <div className="flex flex-col gap-4 mb-6">
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-slate-800">Stocktake: {selectedLocalRegion}</h3>
+                                            <p className="text-sm text-slate-500">Enter current counts for all items.</p>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setIsStocktakeMode(false)}
+                                                className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={handleStocktakeSubmit}
+                                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm shadow-sm"
+                                            >
+                                                Submit Stocktake
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-2">
-                                        <button
-                                            onClick={() => setIsStocktakeMode(false)}
-                                            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm"
+
+                                    {/* Stocktake Filters */}
+                                    <div className="flex gap-4">
+                                        <input
+                                            type="text"
+                                            placeholder="Search items..."
+                                            value={stocktakeSearch}
+                                            onChange={(e) => setStocktakeSearch(e.target.value)}
+                                            className="flex-1 px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                        />
+                                        <select
+                                            value={stocktakeCategory}
+                                            onChange={(e) => setStocktakeCategory(e.target.value)}
+                                            className="px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
-                                            Cancel
-                                        </button>
-                                        <button
-                                            onClick={handleStocktakeSubmit}
-                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm shadow-sm"
-                                        >
-                                            Submit Stocktake
-                                        </button>
+                                            <option value="All">All Categories</option>
+                                            {Array.from(new Set(data.inventory.map(i => i.category || "Uncategorized"))).sort().map(cat => (
+                                                <option key={cat} value={cat}>{cat}</option>
+                                            ))}
+                                        </select>
                                     </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {/* Get unique items from global inventory as catalog */}
-                                    {Array.from(new Set(data.inventory.map(i => i.nameEn))).sort().map(itemName => {
-                                        const currentVal = stocktakeBuffer[itemName] ?? 0;
-                                        return (
-                                            <div key={itemName} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
-                                                <span className="font-medium text-slate-700 truncate mr-2" title={itemName}>{itemName}</span>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={currentVal}
-                                                    onChange={(e) => {
-                                                        const val = parseInt(e.target.value) || 0;
-                                                        setStocktakeBuffer(prev => ({
-                                                            ...prev,
-                                                            [itemName]: val
-                                                        }));
-                                                    }}
-                                                    className="w-24 px-3 py-1 border border-slate-200 rounded focus:ring-2 focus:ring-blue-500 outline-none text-right font-mono"
-                                                />
-                                            </div>
-                                        );
-                                    })}
+                                    {/* Get unique items filter by search and category */}
+                                    {Array.from(new Set(data.inventory.map(i => i.nameEn)))
+                                        .filter(itemName => {
+                                            // 1. Search Filter
+                                            if (stocktakeSearch && !itemName.toLowerCase().includes(stocktakeSearch.toLowerCase())) return false;
+
+                                            // 2. Category Filter
+                                            if (stocktakeCategory !== "All") {
+                                                const item = data.inventory.find(i => i.nameEn === itemName);
+                                                // Determine category... use the first item found with this name
+                                                if (item?.category !== stocktakeCategory) return false;
+                                            }
+                                            return true;
+                                        })
+                                        .sort()
+                                        .map(itemName => {
+                                            const currentVal = stocktakeBuffer[itemName] ?? 0;
+                                            return (
+                                                <div key={itemName} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
+                                                    <span className="font-medium text-slate-700 truncate mr-2" title={itemName}>{itemName}</span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={currentVal}
+                                                        onChange={(e) => {
+                                                            const val = parseInt(e.target.value) || 0;
+                                                            setStocktakeBuffer(prev => ({
+                                                                ...prev,
+                                                                [itemName]: val
+                                                            }));
+                                                        }}
+                                                        className="w-24 px-3 py-1 border border-slate-200 rounded focus:ring-2 focus:ring-blue-500 outline-none text-right font-mono"
+                                                    />
+                                                </div>
+                                            );
+                                        })}
                                 </div>
                             </div>
                         )}
