@@ -10,6 +10,7 @@ import { useRouter } from "next/navigation";
 import { UserManagement } from "@/components/UserManagement";
 import { AttendanceActionControls } from "@/components/AttendanceActionControls";
 import { AttendanceTable } from "@/components/AttendanceTable";
+import { StaffManagement } from "@/components/StaffManagement";
 
 interface Props {
     data: ManpowerData & { allUsers?: User[] };
@@ -110,10 +111,19 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                 if (selectedRegion !== "All" && w.region?.toLowerCase().trim() !== selectedRegion.toLowerCase().trim()) return false;
             }
 
-            // 2. Shift Filter (ID based)
+            // 2. Shift Filter (Smart Parent/Child)
             if (selectedShift !== "All") {
-                // strict ID match is safer than name matching
-                if (!w.shiftId || w.shiftId.toString() !== selectedShift) return false;
+                const shiftObj = data.shifts.find(s => s.id.toString() === selectedShift);
+                if (shiftObj) {
+                    // If filtering by "A", show "A", "A1", "A2" etc.
+                    // If filtering by "B", show "B", "B1"
+                    if (shiftObj.name === "A" || shiftObj.name === "B") {
+                        if (!w.shiftName || !w.shiftName.startsWith(shiftObj.name)) return false;
+                    } else {
+                        // Strict ID match for specific shifts (e.g. if user selected "A1" specifically)
+                        if (!w.shiftId || w.shiftId.toString() !== selectedShift) return false;
+                    }
+                }
             }
 
             // 3. Search
@@ -122,7 +132,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
 
             return true;
         });
-    }, [data.workers, selectedRegion, selectedShift, searchTerm, userRole, supervisorRegions]);
+    }, [data.workers, selectedRegion, selectedShift, searchTerm, userRole, supervisorRegions, data.shifts]);
 
 
     const handleSubmitAttendance = async () => {
@@ -312,7 +322,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
     const isManager = userRole === "manager";
 
     if (isManager) {
-        tabs.push("workers", "users");
+        tabs.push("workers", "users", "staff");
     }
 
     return (
@@ -555,6 +565,10 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                         shifts={data.shifts}
                         regions={data.regions}
                     />
+                )}
+
+                {activeTab === "staff" && (
+                    <StaffManagement />
                 )}
             </div>
 

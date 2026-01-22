@@ -14,6 +14,7 @@ declare module "next-auth" {
             region: string;
             shiftId: number | null;
             shiftName: string | null;
+            dbId: number;
         } & DefaultSession["user"];
     }
 
@@ -24,6 +25,7 @@ declare module "next-auth" {
         region: string;
         shiftId: number | null;
         shiftName: string | null;
+        dbId: number;
     }
 }
 
@@ -35,6 +37,7 @@ declare module "next-auth/jwt" {
         region: string;
         shiftId: number | null;
         shiftName: string | null;
+        dbId: number;
     }
 }
 
@@ -126,6 +129,7 @@ export const authOptions: NextAuthOptions = {
                         region: user.region || "",
                         shiftId: user.shiftId,
                         shiftName: user.shift?.name || null,
+                        dbId: user.id
                     };
                 } catch (error) {
                     console.error("Auth error:", error);
@@ -143,6 +147,7 @@ export const authOptions: NextAuthOptions = {
                 token.region = user.region;
                 token.shiftId = user.shiftId;
                 token.shiftName = user.shiftName;
+                token.dbId = user.dbId;
             }
             return token;
         },
@@ -155,7 +160,48 @@ export const authOptions: NextAuthOptions = {
                 region: token.region,
                 shiftId: token.shiftId,
                 shiftName: token.shiftName,
+                dbId: token.dbId,
             };
+
+            // Check for active coverage
+            try {
+                if (token.dbId) {
+                    const today = new Date();
+                    const startOfDay = new Date(today.setHours(0, 0, 0, 0));
+                    const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+
+                    // @ts-expect-error - Prisma client type update lag
+                    const coverages = await prisma.staffAttendance.findMany({
+                        where: {
+                            coveredBy: token.dbId,
+                            status: "Absent",
+                            date: {
+                                gte: startOfDay,
+                                lte: endOfDay
+                            }
+                        },
+                        include: { user: true }
+                    });
+
+                    if (coverages.length > 0) {
+                        const coveredRegions = coverages
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                            .map((c: any) => c.user.region)
+                            .filter(Boolean)
+                            .join(",");
+
+                        if (coveredRegions) {
+                            const currentRegions = session.user.region ? session.user.region.split(",") : [];
+                            const newRegions = coveredRegions.split(",");
+                            const allRegions = Array.from(new Set([...currentRegions, ...newRegions].map(r => r.trim())));
+                            session.user.region = allRegions.join(",");
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error("Session coverage error", e);
+            }
+
             return session;
         },
     },

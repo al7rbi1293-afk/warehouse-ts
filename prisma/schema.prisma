@@ -18,7 +18,26 @@ model User {
   shift     Shift?   @relation(fields: [shiftId], references: [id])
   createdAt DateTime @default(now()) @map("created_at")
 
+  attendance StaffAttendance[] @relation("UserAttendance")
+  covering   StaffAttendance[] @relation("CoveringUser")
+
   @@map("users")
+}
+
+model StaffAttendance {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  date      DateTime @db.Date
+  status    String?  // Present, Absent
+  coveredBy Int?     @map("covered_by") // User ID of the covering supervisor
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation("UserAttendance", fields: [userId], references: [id])
+  coverUser User?    @relation("CoveringUser", fields: [coveredBy], references: [id])
+
+  @@unique([userId, date])
+  @@map("staff_attendance")
 }
 
 model Shift {

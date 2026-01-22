@@ -724,9 +724,18 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             </div>
                         ) : (
                             (() => {
-                                // Group by Region
+                                // Group by Region (Filtered by Role)
+                                // Use myLocalStock logic but without the TAB filter (selectedLocalRegion)
+                                // We want "All Allowed Regions" here
+                                const visibleStock = data.localInventory.filter(item => {
+                                    if (userRole === "supervisor") {
+                                        return allowedRegions.includes(item.region);
+                                    }
+                                    return true;
+                                });
+
                                 const groupedStock: Record<string, LocalInventoryItem[]> = {};
-                                data.localInventory.forEach(item => {
+                                visibleStock.forEach(item => {
                                     const region = item.region || "Unassigned";
                                     if (!groupedStock[region]) groupedStock[region] = [];
                                     groupedStock[region].push(item);
