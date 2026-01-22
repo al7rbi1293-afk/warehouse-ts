@@ -64,10 +64,9 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     if (!session?.user) return null;
 
     const navItems = [
-        { name: "Overview", href: "/dashboard", icon: Icons.Dashboard },
-        { name: "Inventory", href: "/warehouse", icon: Icons.Inventory },
-        { name: "Requests", href: "/warehouse", icon: Icons.Requests },
-        { name: "Reports", href: "/manpower", icon: Icons.Reports },
+        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard },
+        { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory },
+        { name: "Manpower", href: "/manpower", icon: Icons.Reports },
     ];
 
     const bottomItems = [
@@ -100,9 +99,8 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                     </div>
                     {isSidebarOpen && (
-                        <div className="whitespace-nowrap overflow-hidden">
-                            <h1 className="font-bold text-lg leading-tight">WAREFLOW</h1>
-                            <p className="text-[10px] opacity-70 tracking-widest font-medium">SOLUTIONS</p>
+                        <div className="overflow-hidden">
+                            <h1 className="font-bold text-sm leading-tight">NSTC Project Management System</h1>
                         </div>
                     )}
                 </div>

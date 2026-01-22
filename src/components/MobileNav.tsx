@@ -35,7 +35,7 @@ export function MobileNav() {
                     >
                         <Icons.Menu className="w-6 h-6" />
                     </button>
-                    <span className="font-bold text-lg text-white tracking-wide">WAREFLOW</span>
+                    <span className="font-bold text-sm text-white tracking-wide">NSTC Project Management System</span>
                 </div>
 
                 <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white text-xs font-bold border border-white/20">
@@ -63,18 +63,16 @@ export function MobileNav() {
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                         </div>
                         <div className="text-white">
-                            <h2 className="font-bold text-lg">WAREFLOW</h2>
-                            <p className="text-[10px] opacity-70 tracking-widest">SOLUTIONS</p>
+                            <h2 className="font-bold text-sm">NSTC Project Management System</h2>
                         </div>
                     </div>
                 </div>
 
                 <div className="p-4 flex flex-col h-[calc(100%-89px)]">
                     <nav className="space-y-1">
-                        <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Overview</Link>
-                        <Link href="/warehouse" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Inventory</Link>
-                        <Link href="/warehouse" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Orders</Link>
-                        <Link href="/manpower" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Reports</Link>
+                        <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Dashboard</Link>
+                        <Link href="/warehouse" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Inventory and Supply Request</Link>
+                        <Link href="/manpower" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Manpower</Link>
                     </nav>
 
                     <div className="mt-auto pt-4 border-t border-white/10">
