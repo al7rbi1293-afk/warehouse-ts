@@ -40,6 +40,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     const [searchTerm, setSearchTerm] = useState("");
     // Default to first warehouse if available, else empty or generic
     const [warehouseFilter, setWarehouseFilter] = useState<string>(data.warehouses[0]?.name || "NSTC");
+    const [selectedLocalRegion, setSelectedLocalRegion] = useState<string>("All");
 
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -162,10 +163,28 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         { header: "Last Updated", render: (item: LocalInventoryItem) => item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : "-" },
     ];
 
-    // Filter local inventory for supervisor
-    const myLocalStock = userRole === "supervisor"
-        ? data.localInventory.filter(i => i.region === userRegion)
-        : data.localInventory;
+    // Parse allowed regions for supervisor
+    const allowedRegions = userRegion
+        ? userRegion.split(",").map(r => r.trim())
+        : [];
+
+    // Filter local inventory based on role and selection
+    const myLocalStock = data.localInventory.filter(item => {
+        // 1. Role-based filtering
+        if (userRole === "supervisor") {
+            if (!allowedRegions.includes(item.region)) return false;
+        }
+
+        // 2. Tab-based filtering
+        if (selectedLocalRegion !== "All" && item.region !== selectedLocalRegion) return false;
+
+        return true;
+    });
+
+    // Determine regions to show in tabs
+    const regionTabs = userRole === "supervisor"
+        ? allowedRegions
+        : data.regions.map(r => r.name);
 
 
     return (
@@ -378,12 +397,40 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
                 {activeTab === "local_stock" && (
                     <div>
-                        <div className="mb-6 flex justify-between items-center">
-                            <div>
-                                <h2 className="text-lg font-bold text-slate-900">Local Stock - {userRegion}</h2>
-                                <p className="text-sm text-slate-500">Current inventory in your region</p>
+                        <div className="mb-6">
+                            <div className="flex justify-between items-center mb-4">
+                                <div>
+                                    <h2 className="text-lg font-bold text-slate-900">
+                                        Local Stock - {selectedLocalRegion === "All" ? "All Regions" : selectedLocalRegion}
+                                    </h2>
+                                    <p className="text-sm text-slate-500">Current inventory in your region</p>
+                                </div>
                             </div>
-                            {/* Potential spot for "Manual Stocktake" button */}
+
+                            {/* Region Tabs */}
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() => setSelectedLocalRegion("All")}
+                                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${selectedLocalRegion === "All"
+                                        ? "bg-slate-800 text-white border-slate-800"
+                                        : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                                        }`}
+                                >
+                                    All
+                                </button>
+                                {regionTabs.map(region => (
+                                    <button
+                                        key={region}
+                                        onClick={() => setSelectedLocalRegion(region)}
+                                        className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${selectedLocalRegion === region
+                                            ? "bg-slate-800 text-white border-slate-800"
+                                            : "bg-white text-slate-600 border-slate-200 hover:border-slate-300"
+                                            }`}
+                                    >
+                                        {region}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                         <PremiumTable
                             columns={localInventoryColumns}
