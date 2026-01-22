@@ -2,8 +2,15 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function createInventoryItem(formData: FormData) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     const nameEn = formData.get("nameEn") as string;
     const category = formData.get("category") as string;
     const unit = formData.get("unit") as string;
@@ -47,6 +54,11 @@ export async function addInventoryItem(
     qty: number,
     location: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         // Check if item exists
         const existing = await prisma.inventory.findFirst({
@@ -87,6 +99,11 @@ export async function updateInventoryItem(
     },
     userName: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const item = await prisma.inventory.findUnique({ where: { id } });
         if (!item) {
@@ -126,6 +143,11 @@ export async function updateInventoryItem(
 
 // Delete inventory item
 export async function deleteInventoryItem(id: number) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized: Managers only" };
+    }
+
     try {
         const item = await prisma.inventory.findUnique({ where: { id } });
         if (!item) {
@@ -150,6 +172,11 @@ export async function updateStock(
     actionType: string,
     unit: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const item = await prisma.inventory.findFirst({
             where: { nameEn: itemName, location },
@@ -193,6 +220,11 @@ export async function transferStock(
     user: string,
     unit: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         // Get SNC item
         const sncItem = await prisma.inventory.findFirst({
@@ -277,6 +309,11 @@ export async function createRequest(
     qty: number,
     unit: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.request.create({
             data: {
@@ -304,6 +341,11 @@ export async function createBulkRequest(
     region: string,
     items: { itemName: string; category: string; qty: number; unit: string }[]
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const validItems = items.filter((item) => item.qty > 0);
 
@@ -341,6 +383,11 @@ export async function updateRequestStatus(
     qty?: number,
     notes?: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.request.update({
             where: { reqId },
@@ -361,6 +408,11 @@ export async function updateRequestStatus(
 
 // Confirm receipt by supervisor - also updates local inventory
 export async function confirmReceipt(reqId: number) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         // Get request details first
         const request = await prisma.request.findUnique({
@@ -436,6 +488,11 @@ export async function issueRequest(
     region: string,
     notes?: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.$transaction(async (tx) => {
             // Deduct from NSTC inventory
@@ -487,6 +544,11 @@ export async function issueRequest(
 }
 
 export async function deleteRequest(reqId: number) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized: Managers only" };
+    }
+
     try {
         await prisma.request.delete({ where: { reqId } });
         revalidatePath("/warehouse");
@@ -502,6 +564,11 @@ export async function updateBulkStock(
     items: { name: string; oldQty: number; newQty: number; unit: string }[],
     user: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const operations = items
             .filter((item) => item.oldQty !== item.newQty)
@@ -545,6 +612,11 @@ export async function updateLocalInventory(
     qty: number,
     updatedBy: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.localInventory.upsert({
             where: {
@@ -581,6 +653,11 @@ export async function bulkUpdateLocalInventory(
     items: { itemName: string; qty: number }[],
     updatedBy: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const operations = items.map((item) =>
             prisma.localInventory.upsert({
@@ -619,6 +696,11 @@ export async function bulkIssueRequests(
     user: string,
     items: { reqId: number; qty: number; itemName: string; region: string; unit: string }[]
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const operations = [];
 
@@ -694,6 +776,11 @@ export async function bulkIssueRequests(
 
 // Bulk confirm receipt (Supervisor)
 export async function bulkConfirmReceipt(reqIds: number[]) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.$transaction(async (tx) => {
             // Get all requests
@@ -760,6 +847,11 @@ export async function bulkConfirmReceipt(reqIds: number[]) {
 
 // Bulk Approve Requests (Manager)
 export async function bulkApproveRequests(reqIds: number[]) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.request.updateMany({
             where: { reqId: { in: reqIds }, status: "Pending" },
@@ -776,6 +868,11 @@ export async function bulkApproveRequests(reqIds: number[]) {
 
 // Bulk Reject Requests (Manager)
 export async function bulkRejectRequests(reqIds: number[]) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.request.updateMany({
             where: { reqId: { in: reqIds }, status: "Pending" },
@@ -801,22 +898,15 @@ export async function updateRequest(
         notes?: string;
     }
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) { // Only manager for now or supervisor pending? Let's say manager.
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
-        // Verify request is still pending
-        const request = await prisma.request.findUnique({
-            where: { reqId },
-        });
-
-        if (!request || request.status !== "Pending") {
-            return { success: false, message: "Cannot edit request. It may have been processed already." };
-        }
-
         await prisma.request.update({
             where: { reqId },
-            data: {
-                ...data,
-                // Ensure status remains Pending slightly redundant but safe
-            },
+            data,
         });
 
         revalidatePath("/warehouse");

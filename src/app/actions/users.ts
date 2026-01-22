@@ -2,8 +2,9 @@
 
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { hashPassword } from "@/lib/auth";
+import { hashPassword, authOptions } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
 
 export async function getUsers() {
     try {
@@ -41,6 +42,11 @@ interface UpdateUserParams {
 }
 
 export async function createUser(data: CreateUserParams) {
+    const session = await getServerSession(authOptions);
+    if (session?.user.role !== 'manager') {
+        return { success: false, message: "Unauthorized: Only managers can create users" };
+    }
+
     try {
         // Check existing
         const existing = await prisma.user.findUnique({
@@ -73,6 +79,11 @@ export async function createUser(data: CreateUserParams) {
 }
 
 export async function updateUser(username: string, data: UpdateUserParams) {
+    const session = await getServerSession(authOptions);
+    if (session?.user.role !== 'manager') {
+        return { success: false, message: "Unauthorized: Only managers can update users" };
+    }
+
     try {
         const updateData: Prisma.UserUncheckedUpdateInput = {};
         if (data.name) updateData.name = data.name;
@@ -99,6 +110,11 @@ export async function updateUser(username: string, data: UpdateUserParams) {
 }
 
 export async function deleteUser(username: string) {
+    const session = await getServerSession(authOptions);
+    if (session?.user.role !== 'manager') {
+        return { success: false, message: "Unauthorized: Only managers can delete users" };
+    }
+
     try {
         await prisma.user.delete({
             where: { username },

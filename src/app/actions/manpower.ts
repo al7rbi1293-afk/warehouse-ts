@@ -2,8 +2,15 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function createWorker(formData: FormData) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     const name = formData.get("name") as string;
     const empId = formData.get("empId") as string;
     const role = formData.get("role") as string;
@@ -41,6 +48,11 @@ export async function updateWorker(
         shiftId?: number | null;
     }
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         await prisma.worker.update({
             where: { id },
@@ -56,6 +68,11 @@ export async function updateWorker(
 }
 
 export async function deleteWorker(id: number) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized: Managers only" };
+    }
+
     try {
         // Delete related attendance records first
         await prisma.attendance.deleteMany({
@@ -76,6 +93,11 @@ export async function deleteWorker(id: number) {
 }
 
 export async function createShift(formData: FormData) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized: Managers only" };
+    }
+
     const name = formData.get("name") as string;
     const startTime = formData.get("startTime") as string;
     const endTime = formData.get("endTime") as string;
@@ -105,6 +127,11 @@ export async function submitAttendance(
     shiftId: number,
     supervisor: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         // Delete existing attendance for this worker on this date and shift
         await prisma.attendance.deleteMany({
@@ -145,6 +172,11 @@ export async function submitBulkAttendance(
     shiftId: number,
     supervisor: string
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     try {
         const dateObj = new Date(date);
         const workerIds = attendanceData.map(r => r.workerId);
@@ -184,6 +216,11 @@ export async function updateSupervisorProfile(
     role: string,
     shiftId: number | null
 ) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized: Managers only" };
+    }
+
     try {
         await prisma.user.update({
             where: { username },

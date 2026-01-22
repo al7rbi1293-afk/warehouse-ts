@@ -7,8 +7,9 @@ import { WorkerModal } from "@/components/WorkerModal";
 import { deleteWorker, submitBulkAttendance } from "@/app/actions/manpower";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-
 import { UserManagement } from "@/components/UserManagement";
+import { AttendanceActionControls } from "@/components/AttendanceActionControls";
+import { AttendanceTable } from "@/components/AttendanceTable";
 
 interface Props {
     data: ManpowerData & { allUsers?: User[] };
@@ -152,9 +153,6 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         try {
             const targetShiftId = parseInt(selectedShift);
 
-            // Allow submission even if "All" is selected, defaulting to 0 or handling on backend?
-            // If "All" is selected (NaN), we can't delete previous by shift effectively without looping.
-            // For now, warn if specific shift not selected to avoid data loss issues or complexity.
             if (isNaN(targetShiftId)) {
                 toast.error("Please select a specific shift to submit attendance safely.");
                 return;
@@ -183,12 +181,6 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
     const dailyReports = useMemo(() => {
         if (!data.allAttendance) return [];
 
-        // Group by date, region, shift
-        // This is a simplified mock aggregation for visual purposes based on the passed data
-        // In a real scenario, this aggregation might happen on the server or be more complex
-
-        // Mocking aggregated rows for display if raw data isn't pre-aggregated
-        // Using the raw attendance to create summary rows
         const grouped = new Map<string, DailyReport>();
 
         data.allAttendance.forEach((record: Attendance) => {
@@ -277,10 +269,6 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
     const handleDeleteWorker = async (id: number) => {
         if (confirm("Are you sure you want to delete this worker? This will also delete their attendance records.")) {
             try {
-                // Determine if we need to call a server action. 
-                // Since deleteWorker is a server action, we need to import it.
-                // Dynamic import or passed prop would be better but let's assume we can import it.
-                // We'll need to import deleteWorker at top of file.
                 await deleteWorker(id);
                 toast.success("Worker deleted successfully");
             } catch {
@@ -295,11 +283,6 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         (w.empId && w.empId.includes(searchTerm))
     );
 
-    // Determine available tabs
-    // Supervisor: Reports, Mark Attendance
-    // Manager: Reports, Mark Attendance, Workers, Users
-
-    // Rename 'attendance' to 'reports' for clarity in UI
     const tabs = ["reports", "mark_attendance"];
     const isManager = userRole === "manager";
 
@@ -335,64 +318,20 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                 </div>
 
                 <div className="flex justify-end">
-                    {activeTab === "workers" && (
-                        <button
-                            onClick={handleAddWorker}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm font-medium text-sm w-full md:w-auto justify-center"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>
-                            Add Worker
-                        </button>
-                    )}
-
-                    {activeTab === "mark_attendance" && (
-                        <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
-                            {/* Filters for Attendance Marking */}
-                            <div className="relative">
-                                <input
-                                    type="date"
-                                    value={attendanceDate}
-                                    onChange={(e) => setAttendanceDate(e.target.value)}
-                                    className="w-full md:w-auto px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                                />
-                            </div>
-
-                            <select
-                                value={selectedRegion}
-                                onChange={(e) => setSelectedRegion(e.target.value)}
-                                className="w-full md:w-auto px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                                <option value="All">All Regions</option>
-                                {availableRegions.map(r => (
-                                    <option key={r.id} value={r.name}>{r.name}</option>
-                                ))}
-                            </select>
-
-                            {userRole === "supervisor" ? (
-                                <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 text-center">
-                                    Shift: {data.shifts.find(s => s.id.toString() === selectedShift)?.name || "Assigned Shift"}
-                                </div>
-                            ) : (
-                                <select
-                                    value={selectedShift}
-                                    onChange={(e) => setSelectedShift(e.target.value)}
-                                    className="w-full md:w-auto px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                    <option value="All">Select Shift</option>
-                                    {data.shifts.map(s => (
-                                        <option key={s.id} value={s.id}>{s.name}</option>
-                                    ))}
-                                </select>
-                            )}
-
-                            <button
-                                onClick={handleSubmitAttendance}
-                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm font-medium text-sm w-full md:w-auto"
-                            >
-                                Submit Attendance
-                            </button>
-                        </div>
-                    )}
+                    <AttendanceActionControls
+                        activeTab={activeTab}
+                        userRole={userRole}
+                        attendanceDate={attendanceDate}
+                        setAttendanceDate={setAttendanceDate}
+                        selectedRegion={selectedRegion}
+                        setSelectedRegion={setSelectedRegion}
+                        availableRegions={availableRegions}
+                        selectedShift={selectedShift}
+                        setSelectedShift={setSelectedShift}
+                        shifts={data.shifts}
+                        onSubmit={handleSubmitAttendance}
+                        onAddWorker={handleAddWorker}
+                    />
                 </div>
             </div>
 
@@ -495,66 +434,13 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                 )}
 
                 {activeTab === "mark_attendance" && (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm text-left">
-                            <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
-                                <tr key="header-row">
-                                    <th className="px-4 py-3">Worker</th>
-                                    <th className="px-4 py-3">Region / Shift</th>
-                                    <th className="px-4 py-3">Status</th>
-                                    <th className="px-4 py-3">Notes</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                                {attendanceWorkers.map(worker => (
-                                    <tr key={worker.id} className="hover:bg-slate-50 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <div className="font-medium text-slate-900">{worker.name}</div>
-                                            <div className="text-xs text-slate-400">{worker.empId}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="text-slate-700">{worker.region}</div>
-                                            <div className="text-xs text-slate-500">{worker.shiftName}</div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex gap-2">
-                                                {["Present", "Absent", "Vacation", "Day Off", "Sick Leave"].map(status => (
-                                                    <button
-                                                        key={status}
-                                                        onClick={() => handleStatusChange(worker.id, status)}
-                                                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${getWorkerStatus(worker.id) === status
-                                                            ? status === "Present"
-                                                                ? "bg-green-100 text-green-700 border-green-200"
-                                                                : status === "Absent"
-                                                                    ? "bg-red-100 text-red-700 border-red-200"
-                                                                    : "bg-blue-100 text-blue-700 border-blue-200"
-                                                            : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                                                            }`}
-                                                    >
-                                                        {status}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <input
-                                                type="text"
-                                                placeholder="Add notes..."
-                                                value={getWorkerNotes(worker.id)}
-                                                onChange={(e) => handleNotesChange(worker.id, e.target.value)}
-                                                className="w-full px-3 py-1 text-xs border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
-                                            />
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                        {attendanceWorkers.length === 0 && (
-                            <div className="text-center py-8 text-slate-500">
-                                No workers found matching filters. Please select a Region and Shift.
-                            </div>
-                        )}
-                    </div>
+                    <AttendanceTable
+                        workers={attendanceWorkers}
+                        getWorkerStatus={getWorkerStatus}
+                        getWorkerNotes={getWorkerNotes}
+                        onStatusChange={handleStatusChange}
+                        onNotesChange={handleNotesChange}
+                    />
                 )}
 
                 {activeTab === "workers" && (
