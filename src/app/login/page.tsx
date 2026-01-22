@@ -58,15 +58,15 @@ export default function LoginPage() {
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                     </div>
                     <div>
-                        <h1 className="font-bold text-lg leading-tight">WAREFLOW</h1>
-                        <p className="text-[10px] opacity-80 tracking-widest font-medium">SOLUTIONS</p>
+                        <h1 className="font-bold text-lg leading-tight">NSTC</h1>
+                        <p className="text-[10px] opacity-80 tracking-widest font-medium">Project Managment System</p>
                     </div>
                 </div>
 
                 <div className="relative z-10 max-w-lg mb-20">
                     <h2 className="text-4xl font-bold mb-6 leading-tight">
-                        Enterprise Grade <br />
-                        Inventory Management.
+                        NSTC Project <br />
+                        Managment System
                     </h2>
                     <p className="text-blue-100 text-lg leading-relaxed opacity-90">
                         Streamline your warehouse operations with real-time tracking, intelligent reporting, and seamless manpower coordination.
@@ -74,7 +74,7 @@ export default function LoginPage() {
                 </div>
 
                 <div className="relative z-10 text-sm opacity-60">
-                    © 2026 Wareflow Solutions Inc.
+                    made by Assistant Project Manager Abdulaziz Alhazmi
                 </div>
             </div>
 
@@ -87,7 +87,7 @@ export default function LoginPage() {
                         <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /></svg>
                         </div>
-                        <h1 className="font-bold text-xl">WAREFLOW</h1>
+                        <h1 className="font-bold text-xl">NSTC</h1>
                     </div>
 
                     <div className="text-center lg:text-left">
