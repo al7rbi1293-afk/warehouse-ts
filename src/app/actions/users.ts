@@ -21,7 +21,25 @@ export async function getUsers() {
     }
 }
 
-export async function createUser(data: any) {
+// Define types for user actions
+interface CreateUserParams {
+    username: string;
+    password: string;
+    name: string | null;
+    role: string | null;
+    region: string | null;
+    shiftId?: string | number | null;
+}
+
+interface UpdateUserParams {
+    name?: string | null;
+    role?: string | null;
+    region?: string | null;
+    shiftId?: string | number | null;
+    password?: string | null;
+}
+
+export async function createUser(data: CreateUserParams) {
     try {
         // Check existing
         const existing = await prisma.user.findUnique({
@@ -41,7 +59,7 @@ export async function createUser(data: any) {
                 name: data.name,
                 role: data.role,
                 region: data.region,
-                shiftId: data.shiftId ? parseInt(data.shiftId) : null,
+                shiftId: data.shiftId ? Number(data.shiftId) : null,
             },
         });
 
@@ -53,13 +71,19 @@ export async function createUser(data: any) {
     }
 }
 
-export async function updateUser(username: string, data: any) {
+export async function updateUser(username: string, data: UpdateUserParams) {
     try {
-        const updateData: any = {
+        const updateData: {
+            name?: string | null;
+            role?: string | null;
+            region?: string | null;
+            shiftId?: number | null;
+            password?: string;
+        } = {
             name: data.name,
             role: data.role,
             region: data.region,
-            shiftId: data.shiftId ? parseInt(data.shiftId) : null,
+            shiftId: data.shiftId ? Number(data.shiftId) : null,
         };
 
         if (data.password && data.password.trim() !== "") {

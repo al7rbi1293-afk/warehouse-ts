@@ -13,14 +13,24 @@ interface User {
     shift?: { name: string } | null;
 }
 
+interface Shift {
+    id: number;
+    name: string;
+}
+
+interface Region {
+    id: number;
+    name: string;
+}
+
 interface UserManagementProps {
     users: User[];
-    shifts: any[];
-    regions: any[];
+    shifts: Shift[];
+    regions: Region[];
 }
 
 export function UserManagement({ users: initialUsers, shifts, regions }: UserManagementProps) {
-    const [users, setUsers] = useState<User[]>(initialUsers);
+    const [users] = useState<User[]>(initialUsers);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
     const [isLoading, setIsLoading] = useState(false);
@@ -86,7 +96,7 @@ export function UserManagement({ users: initialUsers, shifts, regions }: UserMan
                     setError(res.message || "Failed to create user");
                 }
             }
-        } catch (err) {
+        } catch {
             setError("An error occurred");
         } finally {
             setIsLoading(false);

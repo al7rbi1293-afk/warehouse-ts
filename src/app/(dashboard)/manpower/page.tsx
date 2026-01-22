@@ -53,7 +53,12 @@ async function getManpowerData() {
             })),
             allAttendance,
             regions,
-            allUsers,
+            // Cast roles for allUsers to match interface
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            allUsers: allUsers.map((u: any) => ({
+                ...u,
+                role: u.role as UserRole | null
+            })),
         };
     } catch (error) {
         console.error("Manpower data error:", error);

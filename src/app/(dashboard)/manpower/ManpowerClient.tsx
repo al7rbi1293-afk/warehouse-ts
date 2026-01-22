@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
-import { ManpowerData, Attendance, DailyReport, Worker } from "@/types";
+import { ManpowerData, Attendance, DailyReport, Worker, User } from "@/types";
 import { WorkerModal } from "@/components/WorkerModal";
 import { deleteWorker } from "@/app/actions/manpower";
 import { toast } from "sonner";
@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import { UserManagement } from "@/components/UserManagement";
 
 interface Props {
-    data: ManpowerData & { allUsers?: any[] };
+    data: ManpowerData & { allUsers?: User[] };
     userRole?: string;
     userName?: string;
     userRegion?: string | null;
@@ -136,8 +136,6 @@ export function ManpowerClient({ data }: Props) {
     );
 
     // Determine available tabs
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userRole = (data as any).userRole || "supervisor"; // Simplified
     const tabs = ["attendance", "workers"];
     // Check if we have users data, which implies manager access from the server side logic
     const isManager = !!data.allUsers && data.allUsers.length > 0;
