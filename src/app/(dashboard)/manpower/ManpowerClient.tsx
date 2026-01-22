@@ -7,8 +7,10 @@ import { WorkerModal } from "@/components/WorkerModal";
 import { deleteWorker } from "@/app/actions/manpower";
 import { toast } from "sonner";
 
+import { UserManagement } from "@/components/UserManagement";
+
 interface Props {
-    data: ManpowerData;
+    data: ManpowerData & { allUsers?: any[] };
     userRole?: string;
     userName?: string;
     userRegion?: string | null;
@@ -133,6 +135,17 @@ export function ManpowerClient({ data }: Props) {
         (w.empId && w.empId.includes(searchTerm))
     );
 
+    // Determine available tabs
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userRole = (data as any).userRole || "supervisor"; // Simplified
+    const tabs = ["attendance", "workers"];
+    // Check if we have users data, which implies manager access from the server side logic
+    const isManager = !!data.allUsers && data.allUsers.length > 0;
+
+    if (isManager) {
+        tabs.push("users");
+    }
+
     return (
         <div className="space-y-6 animate-fade-in pb-12">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -144,7 +157,7 @@ export function ManpowerClient({ data }: Props) {
 
             <div className="flex justify-between items-center">
                 <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex shadow-sm">
-                    {["attendance", "workers"].map((tab) => (
+                    {tabs.map((tab) => (
                         <button
                             key={tab}
                             onClick={() => setActiveTab(tab)}
@@ -208,6 +221,14 @@ export function ManpowerClient({ data }: Props) {
                                 </button>
                             </div>
                         )}
+                    />
+                )}
+
+                {activeTab === "users" && data.allUsers && (
+                    <UserManagement
+                        users={data.allUsers}
+                        shifts={data.shifts}
+                        regions={data.regions}
                     />
                 )}
             </div>

@@ -16,6 +16,9 @@ async function getDashboardData() {
             lowStockItems,
             workersByRegion,
             topStockItems,
+            absentCount,
+            vacationCount,
+            dayOffCount,
         ] = await Promise.all([
             // Active workers count
             prisma.worker.count({ where: { status: "Active" } }),
@@ -51,6 +54,30 @@ async function getDashboardData() {
                 where: { location: "NSTC" },
                 orderBy: { qty: "desc" },
                 take: 10,
+            }),
+
+            // Absent Count (Today)
+            prisma.attendance.count({
+                where: {
+                    date: { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) },
+                    status: "Absent"
+                }
+            }),
+
+            // Vacation Count (Today)
+            prisma.attendance.count({
+                where: {
+                    date: { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) },
+                    status: "Vacation"
+                }
+            }),
+
+            // Day Off Count (Today)
+            prisma.attendance.count({
+                where: {
+                    date: { gte: today, lt: new Date(today.getTime() + 24 * 60 * 60 * 1000) },
+                    status: "Day Off"
+                }
             }),
         ]);
 
@@ -91,6 +118,9 @@ async function getDashboardData() {
                 presentCount,
                 pendingRequests,
                 lowStockCount: lowStockItems.length,
+                absentCount,
+                vacationCount,
+                dayOffCount,
             },
             lowStockItems: lowStockItems.map((item) => ({
                 nameEn: item.nameEn,
@@ -117,6 +147,9 @@ async function getDashboardData() {
                 presentCount: 0,
                 pendingRequests: 0,
                 lowStockCount: 0,
+                absentCount: 0,
+                vacationCount: 0,
+                dayOffCount: 0,
             },
             lowStockItems: [],
             workersByRegion: [],

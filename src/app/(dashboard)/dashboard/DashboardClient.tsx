@@ -16,6 +16,9 @@ interface DashboardData {
         presentCount: number;
         pendingRequests: number;
         lowStockCount: number;
+        absentCount: number;
+        vacationCount: number;
+        dayOffCount: number;
     };
     lowStockItems: { nameEn: string; qty: number; location: string }[];
     workersByRegion: { name: string; value: number }[];
@@ -28,7 +31,10 @@ const Icons = {
     Workers: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>,
     Time: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>,
     Present: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>,
-    Requests: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg> // Reuse clock or similar for pending
+    Requests: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>, // Reuse clock or similar for pending
+    Absent: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>,
+    Vacation: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12h5" /><path d="M22 12h-5" /><path d="M12 2a5 5 0 0 0-5 5v2a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5Z" /><path d="M12 14v8" /><path d="M8 22h8" /></svg>,
+    DayOff: <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4.5 9.5 2 12l2.5 2.5" /><path d="M19.5 9.5 22 12l-2.5 2.5" /><path d="M9 4v16" /><path d="M15 4v16" /></svg>
 };
 
 export function DashboardClient({ data }: { data: DashboardData }) {
@@ -51,8 +57,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                 <h1 className="text-2xl font-bold text-slate-900">KPI Stats</h1>
             </div>
 
-            {/* Top Row: 4 Metric Cards - REAL DATA ONLY */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+            {/* Top Row: Metric Cards - Real Data */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard
                     title="Active Workers"
                     value={data.metrics.activeWorkers}
@@ -61,31 +67,52 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     href="/manpower"
                 />
                 <StatCard
-                    title="Attendance Rate"
-                    value={`${data.metrics.attendanceRate}%`}
-                    icon={Icons.Time}
+                    title="Present Today"
+                    value={data.metrics.presentCount}
+                    icon={Icons.Present}
                     delay={0.1}
                     href="/manpower"
                 />
                 <StatCard
-                    title="Present Today"
-                    value={data.metrics.presentCount}
-                    icon={Icons.Present}
+                    title="Absent Today"
+                    value={data.metrics.absentCount}
+                    icon={Icons.Absent}
                     delay={0.2}
+                    href="/manpower"
+                />
+                <StatCard
+                    title="On Vacation"
+                    value={data.metrics.vacationCount}
+                    icon={Icons.Vacation}
+                    delay={0.3}
+                    href="/manpower"
+                />
+                <StatCard
+                    title="Day Off"
+                    value={data.metrics.dayOffCount}
+                    icon={Icons.DayOff}
+                    delay={0.4}
+                    href="/manpower"
+                />
+                <StatCard
+                    title="Attendance Rate"
+                    value={`${data.metrics.attendanceRate}%`}
+                    icon={Icons.Time}
+                    delay={0.5}
                     href="/manpower"
                 />
                 <StatCard
                     title="Pending Requests"
                     value={data.metrics.pendingRequests}
                     icon={Icons.Requests}
-                    delay={0.3}
+                    delay={0.6}
                     href="/warehouse"
                 />
                 <StatCard
                     title="Low Stock Items"
                     value={data.metrics.lowStockCount}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3.3 7 8.7 5 8.7-5" /><path d="M12 22V12" /><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" /></svg>}
-                    delay={0.4}
+                    delay={0.7}
                     href="/warehouse"
                 />
             </div>

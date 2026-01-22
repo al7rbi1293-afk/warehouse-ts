@@ -7,7 +7,7 @@ import { UserRole } from "@/types";
 
 async function getManpowerData() {
     try {
-        const [workers, shifts, supervisors, allAttendance, regions] = await Promise.all([
+        const [workers, shifts, supervisors, allAttendance, regions, allUsers] = await Promise.all([
             prisma.worker.findMany({
                 include: { shift: true },
                 orderBy: { id: "desc" },
@@ -31,6 +31,11 @@ async function getManpowerData() {
             prisma.region.findMany({
                 orderBy: { name: "asc" },
             }),
+            // Fetch all users for management tab (managers only)
+            prisma.user.findMany({
+                include: { shift: true },
+                orderBy: { name: "asc" },
+            }),
         ]);
 
         return {
@@ -48,6 +53,7 @@ async function getManpowerData() {
             })),
             allAttendance,
             regions,
+            allUsers,
         };
     } catch (error) {
         console.error("Manpower data error:", error);
@@ -57,6 +63,7 @@ async function getManpowerData() {
             supervisors: [],
             allAttendance: [],
             regions: [],
+            allUsers: [],
         };
     }
 }
