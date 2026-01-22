@@ -48,7 +48,7 @@ export function WarehouseClient({ data }: Props) {
                 </div>
             )
         },
-        { header: "SKU / Code", accessorKey: "materialCode" as const }, // Note: materialCode not in interface? Check InventoryItem
+        { header: "Category", accessorKey: "category" as const },
         {
             header: "Quantity", accessorKey: "qty" as const, render: (item: InventoryItem) => (
                 <span className={`font-bold ${item.qty < 10 ? "text-red-500" : "text-slate-700"}`}>
