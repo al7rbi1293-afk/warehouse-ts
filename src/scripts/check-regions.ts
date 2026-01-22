@@ -20,10 +20,7 @@ async function main() {
     });
     console.log("\nUser Regions:", userRegions.map(r => `"${r.region}"`));
 
-    const attendanceRegions = await prisma.attendance.findMany({
-        take: 100, // sample
-        include: { worker: true }
-    });
+
     // Attendance stores region via worker relation mostly, but let's check if we store it directly anywhere or if we rely on worker
     // Attendance doesn't seem to have a region column directly based on previous code usage, it uses worker.region.
     // Let's check LocalInventory
