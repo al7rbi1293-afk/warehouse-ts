@@ -9,7 +9,8 @@ import { BulkRequestForm } from "@/components/BulkRequestForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
 import { ReviewRequestModal } from "@/components/ReviewRequestModal";
 import { IssueRequestModal } from "@/components/IssueRequestModal";
-import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkIssueRequests, bulkConfirmReceipt } from "@/app/actions/inventory";
+import { EditRequestModal } from "@/components/EditRequestModal";
+import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkIssueRequests, bulkConfirmReceipt, bulkApproveRequests, bulkRejectRequests } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -64,6 +65,9 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
     const [issueRequest, setIssueRequest] = useState<Request | null>(null);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+
+    const [editingRequest, setEditingRequest] = useState<Request | null>(null);
+    const [isEditRequestModalOpen, setIsEditRequestModalOpen] = useState(false);
 
     const handleConfirmReceipt = async (reqId: number) => {
         try {
@@ -415,6 +419,36 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 }
                             };
 
+                            const handleBulkApprove = async (region: string, reqs: Request[]) => {
+                                if (!confirm(`Approve all ${reqs.length} requests for ${region}?`)) return;
+                                try {
+                                    const res = await bulkApproveRequests(reqs.map(r => r.reqId));
+                                    if (res.success) {
+                                        toast.success(res.message);
+                                        router.refresh();
+                                    } else {
+                                        toast.error(res.message);
+                                    }
+                                } catch {
+                                    toast.error("Failed to approve requests");
+                                }
+                            };
+
+                            const handleBulkReject = async (region: string, reqs: Request[]) => {
+                                if (!confirm(`Reject all ${reqs.length} requests for ${region}?`)) return;
+                                try {
+                                    const res = await bulkRejectRequests(reqs.map(r => r.reqId));
+                                    if (res.success) {
+                                        toast.success(res.message);
+                                        router.refresh();
+                                    } else {
+                                        toast.error(res.message);
+                                    }
+                                } catch {
+                                    toast.error("Failed to reject requests");
+                                }
+                            };
+
                             // Determine which requests to show
                             // Manager -> Pending Requests
                             // Storekeeper -> Approved Requests (Ready to Issue)
@@ -455,6 +489,22 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                                 >
                                                     Issue All
                                                 </button>
+                                            )}
+                                            {userRole === "manager" && (
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => handleBulkApprove(region, requests)}
+                                                        className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-green-700 transition-colors shadow-sm"
+                                                    >
+                                                        Approve All
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleBulkReject(region, requests)}
+                                                        className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-red-700 transition-colors shadow-sm"
+                                                    >
+                                                        Reject All
+                                                    </button>
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -732,15 +782,57 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             </div>
                         )}
 
-                        {/* Pending Requests Section */}
                         <div>
                             <div className="mb-4">
                                 <h3 className="text-lg font-bold text-slate-700">Pending Requests</h3>
                             </div>
-                            <PremiumTable
-                                columns={requestColumns}
-                                data={data.myPendingRequests || []}
-                            />
+
+                            {(() => {
+                                if (!data.myPendingRequests || data.myPendingRequests.length === 0) {
+                                    return (
+                                        <div className="text-center py-8 text-slate-500 bg-slate-50 rounded-lg border border-slate-100 italic">
+                                            No pending requests
+                                        </div>
+                                    );
+                                }
+
+                                // Group by Region for Supervisor too (User requested all grouped)
+                                const groupedPending = data.myPendingRequests.reduce((acc, req) => {
+                                    const region = req.region || "Unassigned";
+                                    if (!acc[region]) acc[region] = [];
+                                    acc[region].push(req);
+                                    return acc;
+                                }, {} as Record<string, Request[]>);
+
+                                return Object.entries(groupedPending).sort().map(([region, requests]) => (
+                                    <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-4">
+                                        <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                            <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm">
+                                                <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
+                                                {region}
+                                            </h3>
+                                            <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                                {requests.length} Requests
+                                            </span>
+                                        </div>
+                                        <PremiumTable
+                                            columns={requestColumns}
+                                            data={requests}
+                                            actions={(item) => (
+                                                <button
+                                                    onClick={() => {
+                                                        setEditingRequest(item as Request);
+                                                        setIsEditRequestModalOpen(true);
+                                                    }}
+                                                    className="px-3 py-1 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-md text-xs font-medium transition-colors"
+                                                >
+                                                    Edit
+                                                </button>
+                                            )}
+                                        />
+                                    </div>
+                                ));
+                            })()}
                         </div>
                     </div>
                 )}
@@ -925,6 +1017,18 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                         }}
                         request={issueRequest}
                         userName={userName}
+                    />
+                )}
+
+                {/* Supervisor Edit Request Modal */}
+                {editingRequest && (
+                    <EditRequestModal
+                        isOpen={isEditRequestModalOpen}
+                        onClose={() => {
+                            setIsEditRequestModalOpen(false);
+                            router.refresh();
+                        }}
+                        request={editingRequest}
                     />
                 )}
             </div>

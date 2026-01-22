@@ -757,3 +757,72 @@ export async function bulkConfirmReceipt(reqIds: number[]) {
         return { success: false, message: "Failed to confirm receipts" };
     }
 }
+
+// Bulk Approve Requests (Manager)
+export async function bulkApproveRequests(reqIds: number[]) {
+    try {
+        await prisma.request.updateMany({
+            where: { reqId: { in: reqIds }, status: "Pending" },
+            data: { status: "Approved" },
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `Approved ${reqIds.length} requests` };
+    } catch (error) {
+        console.error("Bulk approve error:", error);
+        return { success: false, message: "Failed to approve requests" };
+    }
+}
+
+// Bulk Reject Requests (Manager)
+export async function bulkRejectRequests(reqIds: number[]) {
+    try {
+        await prisma.request.updateMany({
+            where: { reqId: { in: reqIds }, status: "Pending" },
+            data: { status: "Rejected" },
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `Rejected ${reqIds.length} requests` };
+    } catch (error) {
+        console.error("Bulk reject error:", error);
+        return { success: false, message: "Failed to reject requests" };
+    }
+}
+
+// Update Request (Supervisor Edit)
+export async function updateRequest(
+    reqId: number,
+    data: {
+        itemName?: string;
+        category?: string;
+        qty?: number;
+        unit?: string;
+        notes?: string;
+    }
+) {
+    try {
+        // Verify request is still pending
+        const request = await prisma.request.findUnique({
+            where: { reqId },
+        });
+
+        if (!request || request.status !== "Pending") {
+            return { success: false, message: "Cannot edit request. It may have been processed already." };
+        }
+
+        await prisma.request.update({
+            where: { reqId },
+            data: {
+                ...data,
+                // Ensure status remains Pending slightly redundant but safe
+            },
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "Request updated successfully" };
+    } catch (error) {
+        console.error("Update request error:", error);
+        return { success: false, message: "Failed to update request" };
+    }
+}
