@@ -5,7 +5,7 @@ import { WarehouseClient } from "./WarehouseClient";
 
 async function getWarehouseData(userRole: string, userName: string) {
     try {
-        const [inventory, pendingRequests, approvedRequests, stockLogs, localInventory, warehouses] = await Promise.all([
+        const [inventory, pendingRequests, approvedRequests, stockLogs, localInventory, warehouses, auditRequests] = await Promise.all([
             prisma.inventory.findMany({
                 orderBy: { nameEn: "asc" },
             }),
@@ -26,6 +26,13 @@ async function getWarehouseData(userRole: string, userName: string) {
             }),
             prisma.warehouse.findMany({
                 orderBy: { name: "asc" },
+            }),
+            prisma.request.findMany({
+                where: {
+                    status: { in: ["Issued", "Received"] }
+                },
+                orderBy: { issuedAt: "desc" },
+                take: 1000 // Limit for performance
             }),
         ]);
 
@@ -58,6 +65,7 @@ async function getWarehouseData(userRole: string, userName: string) {
             readyForPickup,
             warehouses,
             regions: await prisma.region.findMany({ orderBy: { name: "asc" } }),
+            auditRequests: auditRequests,
         };
     } catch (error) {
         console.error("Warehouse data error:", error);
@@ -71,6 +79,7 @@ async function getWarehouseData(userRole: string, userName: string) {
             readyForPickup: [],
             warehouses: [],
             regions: [],
+            auditRequests: [],
         };
     }
 }

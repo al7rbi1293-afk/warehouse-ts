@@ -142,6 +142,8 @@ export interface Request {
   status: RequestStatus | null;
   requestDate: Date;
   notes: string | null;
+  issuedBy?: string | null;
+  issuedAt?: Date | null;
 }
 
 export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Issued' | 'Received' | string;

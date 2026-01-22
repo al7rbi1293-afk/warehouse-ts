@@ -121,6 +121,8 @@ model Request {
   status         String?
   requestDate    DateTime @default(now()) @map("request_date")
   notes          String?
+  issuedBy       String?  @map("issued_by")
+  issuedAt       DateTime? @map("issued_at")
 
   @@map("requests")
 }

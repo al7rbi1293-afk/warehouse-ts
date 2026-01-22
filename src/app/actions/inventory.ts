@@ -472,6 +472,8 @@ export async function issueRequest(
                     status: "Issued",
                     qty: issueQty,
                     notes: notes || undefined,
+                    issuedBy: user,
+                    issuedAt: new Date(),
                 },
             });
         });
@@ -687,5 +689,71 @@ export async function bulkIssueRequests(
     } catch (error) {
         console.error("Bulk issue error:", error);
         return { success: false, message: "Failed to issue requests" };
+    }
+}
+
+// Bulk confirm receipt (Supervisor)
+export async function bulkConfirmReceipt(reqIds: number[]) {
+    try {
+        await prisma.$transaction(async (tx) => {
+            // Get all requests
+            const requests = await tx.request.findMany({
+                where: { reqId: { in: reqIds } },
+            });
+
+            for (const request of requests) {
+                // Update request status
+                await tx.request.update({
+                    where: { reqId: request.reqId },
+                    data: { status: "Received" },
+                });
+
+                // Add to local inventory
+                if (request.region && request.itemName && request.qty) {
+                    const existingLocal = await tx.localInventory.findUnique({
+                        where: {
+                            region_itemName: {
+                                region: request.region,
+                                itemName: request.itemName,
+                            },
+                        },
+                    });
+
+                    if (existingLocal) {
+                        // Update existing
+                        await tx.localInventory.update({
+                            where: {
+                                region_itemName: {
+                                    region: request.region,
+                                    itemName: request.itemName,
+                                },
+                            },
+                            data: {
+                                qty: (existingLocal.qty || 0) + request.qty,
+                                lastUpdated: new Date(),
+                                updatedBy: request.supervisorName || "System",
+                            },
+                        });
+                    } else {
+                        // Create new
+                        await tx.localInventory.create({
+                            data: {
+                                region: request.region,
+                                itemName: request.itemName,
+                                qty: request.qty,
+                                lastUpdated: new Date(),
+                                updatedBy: request.supervisorName || "System",
+                            },
+                        });
+                    }
+                }
+            }
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `Successfully confirmed ${reqIds.length} items` };
+    } catch (error) {
+        console.error("Bulk confirm receipt error:", error);
+        return { success: false, message: "Failed to confirm receipts" };
     }
 }

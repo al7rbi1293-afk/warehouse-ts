@@ -9,7 +9,7 @@ import { BulkRequestForm } from "@/components/BulkRequestForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
 import { ReviewRequestModal } from "@/components/ReviewRequestModal";
 import { IssueRequestModal } from "@/components/IssueRequestModal";
-import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkIssueRequests } from "@/app/actions/inventory";
+import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkIssueRequests, bulkConfirmReceipt } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -25,6 +25,7 @@ interface Props {
         readyForPickup: Request[];
         warehouses: Warehouse[];
         regions: { id: number; name: string }[];
+        auditRequests?: Request[];
     };
     userRole?: string;
     userName: string;
@@ -499,6 +500,81 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     />
                 )}
 
+                {activeTab === "audit" && (
+                    <div className="space-y-8">
+                        {/* Group audit requests by region */}
+                        {(() => {
+                            if (!data.auditRequests || data.auditRequests.length === 0) {
+                                return (
+                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
+                                        No audit records found
+                                    </div>
+                                );
+                            }
+
+                            // Group by Region
+                            const groupedAudit: Record<string, Request[]> = {};
+                            data.auditRequests.forEach(req => {
+                                const region = req.region || "Unassigned";
+                                if (!groupedAudit[region]) groupedAudit[region] = [];
+                                groupedAudit[region].push(req);
+                            });
+
+                            return Object.entries(groupedAudit).sort().map(([region, requests]) => (
+                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                            {region}
+                                        </h3>
+                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                            {requests.length} Records
+                                        </span>
+                                    </div>
+                                    <PremiumTable
+                                        columns={[
+                                            { header: "Item", accessorKey: "itemName" as const },
+                                            { header: "Requested By", accessorKey: "supervisorName" as const },
+                                            {
+                                                header: "Req. Date",
+                                                accessorKey: "requestDate" as const,
+                                                render: (req: Request) => <span>{new Date(req.requestDate).toLocaleDateString()}</span>
+                                            },
+                                            {
+                                                header: "Issued By",
+                                                accessorKey: "issuedBy" as const, // This will be dynamic prop likely
+                                                render: (req: Request) => <span className="text-slate-600 font-mono text-xs">{req.issuedBy || "-"}</span>
+                                            },
+                                            {
+                                                header: "Issue Date",
+                                                accessorKey: "issuedAt" as const,
+                                                render: (req: Request) => <span>{req.issuedAt ? new Date(req.issuedAt).toLocaleDateString() : "-"}</span>
+                                            },
+                                            {
+                                                header: "Quantity",
+                                                accessorKey: "qty" as const,
+                                                render: (req: Request) => <span className="font-bold">{req.qty} {req.unit}</span>
+                                            },
+                                            {
+                                                header: "Status",
+                                                accessorKey: "status" as const,
+                                                render: (req: Request) => (
+                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${req.status === "Received" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                                                        }`}>
+                                                        {req.status}
+                                                    </span>
+                                                )
+                                            }
+                                        ]}
+                                        data={requests}
+                                        actions={() => null} // No actions for audit log
+                                    />
+                                </div>
+                            ));
+                        })()}
+                    </div>
+                )}
+
                 {activeTab === "logs" && (
                     <PremiumTable
                         columns={logColumns}
@@ -526,7 +602,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     <div className="space-y-8">
                         {/* Ready for Pickup Section */}
                         {data.readyForPickup.length > 0 && (
-                            <div>
+                            <div className="space-y-6">
                                 <div className="mb-4">
                                     <h3 className="text-lg font-bold text-green-700 flex items-center gap-2">
                                         <span className="w-2 h-2 rounded-full bg-green-500"></span>
@@ -534,18 +610,68 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                     </h3>
                                     <p className="text-sm text-slate-500">Please collect these items and confirm receipt</p>
                                 </div>
-                                <PremiumTable
-                                    columns={requestColumns}
-                                    data={data.readyForPickup}
-                                    actions={(item) => (
-                                        <button
-                                            onClick={() => handleConfirmReceipt((item as Request).reqId)}
-                                            className="px-3 py-1 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 transition-colors shadow-sm"
-                                        >
-                                            Confirm Receipt
-                                        </button>
-                                    )}
-                                />
+
+                                {(() => {
+                                    // Helper for Bulk Confirm
+                                    const handleBulkConfirm = async (region: string, reqs: Request[]) => {
+                                        if (!confirm(`Confirm receipt for all ${reqs.length} items in ${region}?`)) return;
+
+                                        try {
+                                            const reqIds = reqs.map(r => r.reqId);
+                                            const res = await bulkConfirmReceipt(reqIds);
+
+                                            if (res.success) {
+                                                toast.success(res.message);
+                                                router.refresh();
+                                            } else {
+                                                toast.error(res.message);
+                                            }
+                                        } catch {
+                                            toast.error("Failed to confirm receipts");
+                                        }
+                                    };
+
+                                    const groupedReady = data.readyForPickup.reduce((acc, req) => {
+                                        const region = req.region || "Unassigned";
+                                        if (!acc[region]) acc[region] = [];
+                                        acc[region].push(req);
+                                        return acc;
+                                    }, {} as Record<string, Request[]>);
+
+                                    return Object.entries(groupedReady).sort().map(([region, requests]) => (
+                                        <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                                    <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                                    {region}
+                                                </h3>
+                                                <div className="flex gap-2 items-center">
+                                                    <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                                        {requests.length} Items
+                                                    </span>
+                                                    <button
+                                                        onClick={() => handleBulkConfirm(region, requests)}
+                                                        className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-green-700 transition-colors shadow-sm"
+                                                    >
+                                                        Confirm All
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <PremiumTable
+                                                columns={requestColumns}
+                                                data={requests}
+                                                actions={(item) => (
+                                                    <button
+                                                        onClick={() => handleConfirmReceipt((item as Request).reqId)}
+                                                        className="px-3 py-1 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 transition-colors shadow-sm"
+                                                    >
+                                                        Confirm Receipt
+                                                    </button>
+                                                )}
+                                            />
+                                        </div>
+                                    ));
+                                })()}
                             </div>
                         )}
 
