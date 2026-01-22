@@ -184,6 +184,11 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         const grouped = new Map<string, DailyReport>();
 
         data.allAttendance.forEach((record: Attendance) => {
+            // Filter: If supervisor, only show their own reports
+            if (userRole === "supervisor" && record.supervisor !== userName) {
+                return;
+            }
+
             const dateStr = new Date(record.date).toLocaleDateString();
             const region = record.worker?.region || "Unknown";
             const shiftId = (record.shiftId || "General").toString();
@@ -210,7 +215,38 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         // If no data, return empty array
         return Array.from(grouped.values());
 
-    }, [data.allAttendance]);
+    }, [data.allAttendance, userRole, userName]);
+
+    const handleEditReport = (report: DailyReport) => {
+        // Convert date back to YYYY-MM-DD for input
+        // report.date is locale string (e.g. 1/22/2026), need to parse carefully or rely on stored date
+        // Ideally DailyReport should store raw date string too, but let's try to parse
+        const parts = report.date.split('/');
+        if (parts.length === 3) {
+            const date = new Date(report.date);
+            // Adjust for timezone offset to keep the same day
+            const offset = date.getTimezoneOffset();
+            const adjustedDate = new Date(date.getTime() - (offset * 60 * 1000));
+            setAttendanceDate(adjustedDate.toISOString().split('T')[0]);
+        }
+
+        // Better approach: find a sample record from this report to get the raw date
+        const sampleRecord = data.allAttendance.find(a => {
+            const dateStr = new Date(a.date).toLocaleDateString();
+            const region = a.worker?.region || "Unknown";
+            const shiftId = (a.shiftId || "General").toString();
+            return `${dateStr}-${region}-${shiftId}` === report.id;
+        });
+
+        if (sampleRecord) {
+            setAttendanceDate(new Date(sampleRecord.date).toISOString().split('T')[0]);
+        }
+
+        setSelectedRegion(report.region);
+        setSelectedShift(report.shift);
+        setActiveTab("mark_attendance");
+        toast.info("Edit mode: Attendance data loaded.");
+    };
 
     const attendanceColumns = [
         { header: "Date", accessorKey: "date" as const },
@@ -355,12 +391,26 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                                 {
                                     header: "Actions",
                                     render: (row: DailyReport) => (
-                                        <button
-                                            onClick={() => setSelectedReport(row)}
-                                            className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
-                                        >
-                                            View Details
-                                        </button>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                onClick={() => setSelectedReport(row)}
+                                                className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
+                                            >
+                                                View Details
+                                            </button>
+                                            {/* Allow Edit if Supervisor or Manager */}
+                                            {userRole === 'supervisor' || userRole === 'manager' ? (
+                                                <button
+                                                    onClick={() => handleEditReport(row)}
+                                                    className="text-amber-600 hover:text-amber-800 font-medium text-sm flex items-center gap-1"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                                                    </svg>
+                                                    Edit
+                                                </button>
+                                            ) : null}
+                                        </div>
                                     )
                                 }
                             ]}

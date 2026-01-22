@@ -215,10 +215,115 @@ export async function updateStock(
 }
 
 export async function transferStock(
-    itemName: string,
+    itemId: number,
     qty: number,
+    fromLocation: string,
+    toLocation: string,
     user: string,
-    unit: string
+    unit: string,
+    notes?: string
+) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    if (fromLocation === toLocation) {
+        return { success: false, message: "Source and destination must be different" };
+    }
+
+    try {
+        const item = await prisma.inventory.findUnique({ where: { id: itemId } });
+        if (!item) return { success: false, message: "Item not found" };
+
+        // Ensure we are taking from the correct location
+        if (item.location !== fromLocation) {
+            // If the ID passed is for an item in a different location, try to find the item in the fromLocation
+            const correctItem = await prisma.inventory.findFirst({
+                where: { nameEn: item.nameEn, location: fromLocation }
+            });
+
+            if (!correctItem) {
+                return { success: false, message: `Item not found in ${fromLocation}` };
+            }
+            // Use the correct item ID for deduction
+            return transferStock(correctItem.id, qty, fromLocation, toLocation, user, unit, notes);
+        }
+
+        if (item.qty < qty) {
+            return { success: false, message: `Insufficient stock in ${fromLocation}` };
+        }
+
+        await prisma.$transaction(async (tx) => {
+            // Deduct from success
+            await tx.inventory.update({
+                where: { id: item.id },
+                data: { qty: item.qty - qty, lastUpdated: new Date() },
+            });
+
+            await tx.stockLog.create({
+                data: {
+                    itemName: item.nameEn,
+                    location: fromLocation,
+                    changeAmount: -qty,
+                    newQty: item.qty - qty,
+                    actionBy: user,
+                    actionType: `Transfer Out to ${toLocation}${notes ? ` - ${notes}` : ''}`,
+                    unit,
+                },
+            });
+
+            // Add to destination
+            let destItem = await tx.inventory.findFirst({
+                where: { nameEn: item.nameEn, location: toLocation },
+            });
+
+            if (!destItem) {
+                destItem = await tx.inventory.create({
+                    data: {
+                        nameEn: item.nameEn,
+                        category: item.category,
+                        unit: item.unit,
+                        qty: 0,
+                        location: toLocation,
+                        status: "Available",
+                    },
+                });
+            }
+
+            await tx.inventory.update({
+                where: { id: destItem.id },
+                data: { qty: destItem.qty + qty, lastUpdated: new Date() },
+            });
+
+            await tx.stockLog.create({
+                data: {
+                    itemName: item.nameEn,
+                    location: toLocation,
+                    changeAmount: qty,
+                    newQty: destItem.qty + qty,
+                    actionBy: user,
+                    actionType: `Transfer In from ${fromLocation}`,
+                    unit,
+                },
+            });
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: "Transfer completed successfully" };
+    } catch (error) {
+        console.error("Transfer error:", error);
+        return { success: false, message: "Transfer failed" };
+    }
+}
+
+export async function lendStock(
+    itemId: number,
+    qty: number,
+    projectName: string,
+    user: string,
+    unit: string,
+    notes?: string
 ) {
     const session = await getServerSession(authOptions);
     if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
@@ -226,78 +331,115 @@ export async function transferStock(
     }
 
     try {
-        // Get SNC item
-        const sncItem = await prisma.inventory.findFirst({
-            where: { nameEn: itemName, location: "SNC" },
-        });
+        const item = await prisma.inventory.findUnique({ where: { id: itemId } });
+        if (!item) return { success: false, message: "Item not found" };
 
-        if (!sncItem || sncItem.qty < qty) {
-            return { success: false, message: "Insufficient stock in SNC" };
+        if (item.qty < qty) {
+            return { success: false, message: "Insufficient stock" };
         }
 
-        // Check if NSTC item exists
-        let nstcItem = await prisma.inventory.findFirst({
-            where: { nameEn: itemName, location: "NSTC" },
-        });
-
         await prisma.$transaction(async (tx) => {
-            // Decrease SNC
             await tx.inventory.update({
-                where: { id: sncItem.id },
-                data: { qty: sncItem.qty - qty, lastUpdated: new Date() },
+                where: { id: itemId },
+                data: { qty: item.qty - qty, lastUpdated: new Date() },
             });
 
-            // Log SNC decrease
             await tx.stockLog.create({
                 data: {
-                    itemName,
-                    location: "SNC",
+                    itemName: item.nameEn,
+                    location: item.location,
                     changeAmount: -qty,
-                    newQty: sncItem.qty - qty,
+                    newQty: item.qty - qty,
                     actionBy: user,
-                    actionType: "Transfer Out",
-                    unit,
-                },
-            });
-
-            // Create or update NSTC
-            if (!nstcItem) {
-                nstcItem = await tx.inventory.create({
-                    data: {
-                        nameEn: itemName,
-                        category: "Transferred",
-                        unit,
-                        qty: 0,
-                        location: "NSTC",
-                        status: "Available",
-                    },
-                });
-            }
-
-            await tx.inventory.update({
-                where: { id: nstcItem.id },
-                data: { qty: nstcItem.qty + qty, lastUpdated: new Date() },
-            });
-
-            // Log NSTC increase
-            await tx.stockLog.create({
-                data: {
-                    itemName,
-                    location: "NSTC",
-                    changeAmount: qty,
-                    newQty: nstcItem.qty + qty,
-                    actionBy: user,
-                    actionType: "Transfer In",
+                    actionType: `Lent to ${projectName}${notes ? ` - ${notes}` : ''}`,
                     unit,
                 },
             });
         });
 
         revalidatePath("/warehouse");
-        return { success: true, message: "Transfer completed" };
+        return { success: true, message: `Successfully lent to ${projectName}` };
     } catch (error) {
-        console.error("Transfer stock error:", error);
-        return { success: false, message: "Transfer failed" };
+        console.error("Lend error:", error);
+        return { success: false, message: "Lend operation failed" };
+    }
+}
+
+export async function returnStock(
+    itemId: number, // Use the ID of the warehouse item to increase, or find by name
+    qty: number,
+    projectName: string,
+    location: string, // Which warehouse is receiving the return
+    user: string,
+    unit: string,
+    notes?: string
+) {
+    const session = await getServerSession(authOptions);
+    if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    try {
+        // Find item in the specified warehouse
+        // If itemId is passed, check if it matches location. If not, find by name.
+        let item = await prisma.inventory.findUnique({ where: { id: itemId } });
+
+        if (!item || item.location !== location) {
+            // Try to find by name if we have the item object or just fail
+            // Ideally we should pass relevant info. For now, let's assume the UI sends the correct item ID for the location
+            // Or simpler: The UI sends the item ID selected. We check if it matches the location.
+            // If the user selected an item from NSTC but says returning to SNC, we need to find the equivalent item in SNC.
+
+            if (item) {
+                const targetItem = await prisma.inventory.findFirst({
+                    where: { nameEn: item.nameEn, location: location }
+                });
+                if (targetItem) {
+                    item = targetItem;
+                } else {
+                    // Create if not exists? Usually returns imply item exists, but maybe we are creating new stock from return?
+                    // Let's create if not exists
+                    const newItem = await prisma.inventory.create({
+                        data: {
+                            nameEn: item.nameEn,
+                            category: item.category,
+                            unit: item.unit,
+                            qty: 0,
+                            location: location,
+                            status: "Available",
+                        }
+                    });
+                    item = newItem;
+                }
+            } else {
+                return { success: false, message: "Item reference not found" };
+            }
+        }
+
+        await prisma.$transaction(async (tx) => {
+            await tx.inventory.update({
+                where: { id: item.id },
+                data: { qty: item.qty + qty, lastUpdated: new Date() },
+            });
+
+            await tx.stockLog.create({
+                data: {
+                    itemName: item.nameEn,
+                    location: location,
+                    changeAmount: qty,
+                    newQty: item.qty + qty,
+                    actionBy: user,
+                    actionType: `Returned from ${projectName}${notes ? ` - ${notes}` : ''}`,
+                    unit,
+                },
+            });
+        });
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `Successfully returned from ${projectName}` };
+    } catch (error) {
+        console.error("Return error:", error);
+        return { success: false, message: "Return operation failed" };
     }
 }
 
@@ -324,6 +466,8 @@ export async function createRequest(
                 qty,
                 unit,
                 status: "Pending",
+                shiftId: session.user.shiftId ? Number(session.user.shiftId) : null,
+                shiftName: session.user.shiftName,
             },
         });
 
@@ -364,6 +508,8 @@ export async function createBulkRequest(
                         qty: item.qty,
                         unit: item.unit,
                         status: "Pending",
+                        shiftId: session.user.shiftId ? Number(session.user.shiftId) : null,
+                        shiftName: session.user.shiftName,
                     },
                 })
             )

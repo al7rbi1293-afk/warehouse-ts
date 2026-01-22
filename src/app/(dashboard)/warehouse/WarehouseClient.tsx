@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
-import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
 import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { BulkRequestForm } from "@/components/BulkRequestForm";
@@ -10,9 +9,10 @@ import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from 
 import { ReviewRequestModal } from "@/components/ReviewRequestModal";
 import { IssueRequestModal } from "@/components/IssueRequestModal";
 import { EditRequestModal } from "@/components/EditRequestModal";
-import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkIssueRequests, bulkConfirmReceipt, bulkApproveRequests, bulkRejectRequests } from "@/app/actions/inventory";
+import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkConfirmReceipt } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { ExportButton } from "@/components/ExportButton";
 
 // Define simplified props matching what the page actually sends
 interface Props {
@@ -60,10 +60,10 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         setIsEditModalOpen(true);
     };
 
-    const [reviewRequest, setReviewRequest] = useState<Request | null>(null);
+    const [reviewRequest] = useState<Request | null>(null);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
-    const [issueRequest, setIssueRequest] = useState<Request | null>(null);
+    const [issueRequest] = useState<Request | null>(null);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
 
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
@@ -298,7 +298,14 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 })()}
             </div>
 
-            {/* Main Content */}
+            {/* Stock Transfer Tab */}
+            {activeTab === "transfer" && (
+                <StockTransferForm
+                    inventory={allInventory}
+                    userName={userName}
+                    stockLogs={data.stockLogs}
+                />
+            )}
             <div className="card-premium p-6 min-h-[500px]">
 
                 {/* Stock View Controls */}
@@ -346,195 +353,81 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
                 {/* Table Views */}
                 {activeTab === "stock" && (
-                    <PremiumTable
-                        columns={inventoryColumns}
-                        data={filteredInventory}
-                        actions={(item) => (
-                            <div className="flex gap-2">
-                                <button
-                                    onClick={() => handleEdit(item as InventoryItem)}
-                                    className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                                >
-                                    Edit
-                                </button>
-                                <button
-                                    onClick={() => handleDelete((item as InventoryItem).id)}
-                                    className="text-red-600 hover:text-red-800 font-medium text-sm"
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        )}
-                    />
-                )}
-
-                {/* Add Item Form */}
-                {activeTab === "add" && (
-                    <div className="max-w-3xl mx-auto py-4">
-                        <div className="mb-6 border-b border-slate-100 pb-4">
-                            <h2 className="text-lg font-bold text-slate-800">Add New Inventory Item</h2>
-                            <p className="text-sm text-slate-500">Register new stock into the system</p>
-                        </div>
-                        <AddInventoryItemForm warehouses={data.warehouses} />
-                    </div>
-                )}
-
-                {/* Transfer Form */}
-                {activeTab === "transfer" && (
-                    <div className="max-w-3xl mx-auto py-4">
-                        <div className="mb-6 border-b border-slate-100 pb-4">
-                            <h2 className="text-lg font-bold text-slate-800">Transfer Stock</h2>
-                            <p className="text-sm text-slate-500">Move inventory between warehouses or projects</p>
-                        </div>
-                        <StockTransferForm inventory={allInventory} />
-                    </div>
-                )}
-
-                {activeTab === "requests" && (
                     <div className="space-y-8">
-                        {/* Group pending requests by region */}
+                        <div className="flex justify-end">
+                            <ExportButton
+                                data={filteredInventory.map(item => ({
+                                    Name: item.nameEn,
+                                    Category: item.category,
+                                    Quantity: item.qty,
+                                    Unit: item.unit,
+                                    Warehouse: item.location,
+                                    Status: item.status
+                                }))}
+                                fileName={`Inventory_Stock_${new Date().toISOString().split('T')[0]}`}
+                            />
+                        </div>
+
                         {(() => {
-                            // Helper for Bulk Issue
-                            const handleBulkIssue = async (region: string, reqs: Request[]) => {
-                                if (!confirm(`Are you sure you want to issue all ${reqs.length} items for ${region}?`)) return;
-
-                                try {
-                                    const itemsToIssue = reqs.map(r => ({
-                                        reqId: r.reqId,
-                                        qty: r.qty || 0,
-                                        itemName: r.itemName || "",
-                                        region: r.region || "",
-                                        unit: r.unit || ""
-                                    }));
-
-                                    const res = await bulkIssueRequests(userName, itemsToIssue);
-                                    if (res.success) {
-                                        toast.success(res.message);
-                                        router.refresh();
-                                    } else {
-                                        toast.error(res.message);
-                                    }
-                                } catch {
-                                    toast.error("Failed to issue requests");
-                                }
-                            };
-
-                            const handleBulkApprove = async (region: string, reqs: Request[]) => {
-                                if (!confirm(`Approve all ${reqs.length} requests for ${region}?`)) return;
-                                try {
-                                    const res = await bulkApproveRequests(reqs.map(r => r.reqId));
-                                    if (res.success) {
-                                        toast.success(res.message);
-                                        router.refresh();
-                                    } else {
-                                        toast.error(res.message);
-                                    }
-                                } catch {
-                                    toast.error("Failed to approve requests");
-                                }
-                            };
-
-                            const handleBulkReject = async (region: string, reqs: Request[]) => {
-                                if (!confirm(`Reject all ${reqs.length} requests for ${region}?`)) return;
-                                try {
-                                    const res = await bulkRejectRequests(reqs.map(r => r.reqId));
-                                    if (res.success) {
-                                        toast.success(res.message);
-                                        router.refresh();
-                                    } else {
-                                        toast.error(res.message);
-                                    }
-                                } catch {
-                                    toast.error("Failed to reject requests");
-                                }
-                            };
-
-                            // Determine which requests to show
-                            // Manager -> Pending Requests
-                            // Storekeeper -> Approved Requests (Ready to Issue)
-                            const requestsToShow = userRole === "storekeeper" ? data.approvedRequests : data.pendingRequests;
-                            const emptyMessage = userRole === "storekeeper" ? "No approved requests waiting for issue" : "No pending requests found";
-
-                            if (requestsToShow.length === 0) {
+                            if (filteredInventory.length === 0) {
                                 return (
-                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
-                                        {emptyMessage}
+                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                                        No items found
                                     </div>
                                 );
                             }
 
-                            // Group by Region
-                            const groupedRequests: Record<string, Request[]> = {};
-                            requestsToShow.forEach(req => {
-                                const region = req.region || "Unassigned";
-                                if (!groupedRequests[region]) groupedRequests[region] = [];
-                                groupedRequests[region].push(req);
+                            // Group by Category
+                            const groupedInventory: Record<string, InventoryItem[]> = {};
+                            filteredInventory.forEach(item => {
+                                const category = item.category || "Uncategorized";
+                                if (!groupedInventory[category]) groupedInventory[category] = [];
+                                groupedInventory[category].push(item);
                             });
 
-                            return Object.entries(groupedRequests).sort().map(([region, requests]) => (
-                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                            return Object.entries(groupedInventory).sort().map(([category, items]) => (
+                                <div key={category} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                     <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                                         <h3 className="font-bold text-slate-800 flex items-center gap-2">
                                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                            {region}
+                                            {category}
                                         </h3>
-                                        <div className="flex gap-2 items-center">
-                                            <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
-                                                {requests.length} Requests
+                                        <div className="flex gap-2">
+                                            <ExportButton
+                                                data={items.map(i => ({
+                                                    Name: i.nameEn,
+                                                    Category: i.category,
+                                                    Quantity: i.qty,
+                                                    Unit: i.unit,
+                                                    Location: i.location
+                                                }))}
+                                                fileName={`${category}_Inventory`}
+                                                label="Export"
+                                                className="bg-slate-600 hover:bg-slate-700"
+                                            />
+                                            <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200 flex items-center">
+                                                {items.length} Items
                                             </span>
-                                            {userRole === "storekeeper" && (
-                                                <button
-                                                    onClick={() => handleBulkIssue(region, requests)}
-                                                    className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-blue-700 transition-colors shadow-sm"
-                                                >
-                                                    Issue All
-                                                </button>
-                                            )}
-                                            {userRole === "manager" && (
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => handleBulkApprove(region, requests)}
-                                                        className="text-xs bg-green-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-green-700 transition-colors shadow-sm"
-                                                    >
-                                                        Approve All
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleBulkReject(region, requests)}
-                                                        className="text-xs bg-red-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-red-700 transition-colors shadow-sm"
-                                                    >
-                                                        Reject All
-                                                    </button>
-                                                </div>
-                                            )}
                                         </div>
                                     </div>
                                     <PremiumTable
-                                        columns={[
-                                            { header: "Item", accessorKey: "itemName" as const },
-                                            { header: "Category", accessorKey: "category" as const },
-                                            { header: "Requester", accessorKey: "supervisorName" as const },
-                                            {
-                                                header: "Quantity",
-                                                accessorKey: "qty" as const,
-                                                render: (req: Request) => <span className="font-bold">{req.qty} {req.unit}</span>
-                                            },
-                                        ]}
-                                        data={requests}
-                                        actions={(req) => (
-                                            <button
-                                                onClick={() => {
-                                                    if (userRole === "storekeeper") {
-                                                        setIssueRequest(req as Request);
-                                                        setIsIssueModalOpen(true);
-                                                    } else {
-                                                        setReviewRequest(req as Request);
-                                                        setIsReviewModalOpen(true);
-                                                    }
-                                                }}
-                                                className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                                            >
-                                                {userRole === "storekeeper" ? "Issue" : "Review"}
-                                            </button>
+                                        columns={inventoryColumns}
+                                        data={items}
+                                        actions={(item) => (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => handleEdit(item as InventoryItem)}
+                                                    className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                                                >
+                                                    Edit
+                                                </button>
+                                                <button
+                                                    onClick={() => handleDelete((item as InventoryItem).id)}
+                                                    className="text-red-600 hover:text-red-800 font-medium text-sm"
+                                                >
+                                                    Delete
+                                                </button>
+                                            </div>
                                         )}
                                     />
                                 </div>
@@ -543,150 +436,27 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     </div>
                 )}
 
-                {activeTab === "approved" && (
-                    <PremiumTable
-                        columns={requestColumns}
-                        data={data.approvedRequests}
-                    />
-                )}
-
-                {activeTab === "audit" && (
-                    <div className="space-y-8">
-                        {/* Group audit requests by region */}
-                        {(() => {
-                            if (!data.auditRequests || data.auditRequests.length === 0) {
-                                return (
-                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
-                                        No audit records found
-                                    </div>
-                                );
-                            }
-
-                            // Group by Region
-                            const groupedAudit: Record<string, Request[]> = {};
-                            data.auditRequests.forEach(req => {
-                                const region = req.region || "Unassigned";
-                                if (!groupedAudit[region]) groupedAudit[region] = [];
-                                groupedAudit[region].push(req);
-                            });
-
-                            return Object.entries(groupedAudit).sort().map(([region, requests]) => (
-                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                                            {region}
-                                        </h3>
-                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
-                                            {requests.length} Records
-                                        </span>
-                                    </div>
-                                    <PremiumTable
-                                        columns={[
-                                            { header: "Item", accessorKey: "itemName" as const },
-                                            { header: "Requested By", accessorKey: "supervisorName" as const },
-                                            {
-                                                header: "Req. Date",
-                                                accessorKey: "requestDate" as const,
-                                                render: (req: Request) => <span>{req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-"}</span>
-                                            },
-                                            {
-                                                header: "Issued By",
-                                                accessorKey: "issuedBy" as const, // This will be dynamic prop likely
-                                                render: (req: Request) => <span className="text-slate-600 font-mono text-xs">{req.issuedBy || "-"}</span>
-                                            },
-                                            {
-                                                header: "Issue Date",
-                                                accessorKey: "issuedAt" as const,
-                                                render: (req: Request) => <span>{req.issuedAt ? new Date(req.issuedAt).toLocaleDateString() : "-"}</span>
-                                            },
-                                            {
-                                                header: "Quantity",
-                                                accessorKey: "qty" as const,
-                                                render: (req: Request) => <span className="font-bold">{req.qty} {req.unit}</span>
-                                            },
-                                            {
-                                                header: "Status",
-                                                accessorKey: "status" as const,
-                                                render: (req: Request) => (
-                                                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${req.status === "Received" ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
-                                                        }`}>
-                                                        {req.status}
-                                                    </span>
-                                                )
-                                            }
-                                        ]}
-                                        data={requests}
-                                        actions={() => null} // No actions for audit log
-                                    />
-                                </div>
-                            ));
-                        })()}
-                    </div>
-                )}
-
-                {/* Regional Stock Content (Live Inventory) */}
-                {activeTab === "regional_stock" && (
-                    <div className="space-y-8">
-                        {(() => {
-                            // Filter by search term
-                            const filteredLocal = data.localInventory.filter(item =>
-                                item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                item.region.toLowerCase().includes(searchTerm.toLowerCase())
-                            );
-
-                            if (filteredLocal.length === 0) {
-                                return (
-                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
-                                        No regional stock found
-                                    </div>
-                                );
-                            }
-
-                            // Group by Region
-                            const groupedStock: Record<string, LocalInventoryItem[]> = {};
-                            filteredLocal.forEach(item => {
-                                const region = item.region || "Unassigned";
-                                if (!groupedStock[region]) groupedStock[region] = [];
-                                groupedStock[region].push(item);
-                            });
-
-                            return Object.entries(groupedStock).sort().map(([region, items]) => (
-                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
-                                            {region}
-                                        </h3>
-                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
-                                            {items.length} Items
-                                        </span>
-                                    </div>
-                                    <PremiumTable
-                                        columns={[
-                                            { header: "Item Name", accessorKey: "itemName" as const },
-                                            { header: "Quantity", accessorKey: "qty" as const, render: (item: LocalInventoryItem) => <span className="font-bold">{item.qty}</span> },
-                                            {
-                                                header: "Last Updated",
-                                                accessorKey: "lastUpdated" as const,
-                                                render: (item: LocalInventoryItem) => <span className="text-xs text-slate-500">{item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : "-"}</span>
-                                            },
-                                            { header: "Updated By", accessorKey: "updatedBy" as const, render: (item: LocalInventoryItem) => <span className="text-xs text-slate-500">{item.updatedBy || "-"}</span> }
-                                        ]}
-                                        data={items}
-                                        actions={() => null}
-                                    />
-                                </div>
-                            ));
-                        })()}
-                    </div>
-                )}
-
                 {activeTab === "logs" && (
-                    <PremiumTable
-                        columns={logColumns}
-                        data={data.stockLogs}
-                    />
+                    <>
+                        <div className="flex justify-end mb-4">
+                            <ExportButton
+                                data={data.stockLogs.map(log => ({
+                                    Date: log.logDate ? new Date(log.logDate).toLocaleString() : '-',
+                                    Item: log.itemName,
+                                    Change: log.changeAmount,
+                                    NewQty: log.newQty,
+                                    Action: log.actionType,
+                                    User: log.actionBy,
+                                    Location: log.location
+                                }))}
+                                fileName={`Stock_Logs_${new Date().toISOString().split('T')[0]}`}
+                            />
+                        </div>
+                        <PremiumTable
+                            columns={logColumns}
+                            data={data.stockLogs}
+                        />
+                    </>
                 )}
 
                 {/* Supervisor Views */}

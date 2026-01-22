@@ -100,6 +100,8 @@ model Request {
   notes          String?
   issuedBy       String?   @map("issued_by")
   issuedAt       DateTime? @map("issued_at")
+  shiftId        Int?      @map("shift_id")
+  shiftName      String?   @map("shift_name")
 
   @@map("requests")
 }
