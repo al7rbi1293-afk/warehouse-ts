@@ -3,12 +3,11 @@
 import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
-
 import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
-import { RequestItemForm } from "@/components/RequestItemForm";
+import { BulkRequestForm } from "@/components/BulkRequestForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
-import { deleteInventoryItem } from "@/app/actions/inventory";
+import { deleteInventoryItem, confirmReceipt } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -48,6 +47,20 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     const handleEdit = (item: InventoryItem) => {
         setEditingItem(item);
         setIsEditModalOpen(true);
+    };
+
+    const handleConfirmReceipt = async (reqId: number) => {
+        try {
+            const res = await confirmReceipt(reqId);
+            if (res.success) {
+                toast.success(res.message);
+                router.refresh();
+            } else {
+                toast.error(res.message);
+            }
+        } catch {
+            toast.error("Failed to confirm receipt");
+        }
     };
 
     const handleDelete = async (id: number) => {
@@ -131,6 +144,29 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         { header: "Action", accessorKey: "actionType" as const },
         { header: "User", accessorKey: "actionBy" as const },
     ];
+
+    const localInventoryColumns = [
+        { header: "Item Name", accessorKey: "itemName" as const },
+        {
+            header: "Quantity", accessorKey: "qty" as const, render: (item: LocalInventoryItem) => (
+                <span className="font-bold text-slate-700">{item.qty}</span>
+            )
+        },
+        {
+            header: "Region", accessorKey: "region" as const, render: (item: LocalInventoryItem) => (
+                <span className="px-2 py-1 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">
+                    {item.region}
+                </span>
+            )
+        },
+        { header: "Last Updated", render: (item: LocalInventoryItem) => item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : "-" },
+    ];
+
+    // Filter local inventory for supervisor
+    const myLocalStock = userRole === "supervisor"
+        ? data.localInventory.filter(i => i.region === userRegion)
+        : data.localInventory;
+
 
     return (
         <div className="space-y-6 animate-fade-in pb-12">
@@ -291,24 +327,68 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             <h2 className="text-lg font-bold text-slate-800">New Supply Request</h2>
                             <p className="text-sm text-slate-500">Request items for your region</p>
                         </div>
-                        <RequestItemForm
+                        <BulkRequestForm
                             inventory={data.inventory}
                             supervisorName={userName}
-                            region={userRegion || "Unknown"}
+                            defaultRegion={userRegion || ""}
+                            regions={data.regions}
                         />
                     </div>
                 )}
 
                 {activeTab === "my_requests" && (
-                    <PremiumTable
-                        columns={requestColumns}
-                        data={data.myPendingRequests || []}
-                    />
+                    <div className="space-y-8">
+                        {/* Ready for Pickup Section */}
+                        {data.readyForPickup.length > 0 && (
+                            <div>
+                                <div className="mb-4">
+                                    <h3 className="text-lg font-bold text-green-700 flex items-center gap-2">
+                                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                                        Ready for Pickup
+                                    </h3>
+                                    <p className="text-sm text-slate-500">Please collect these items and confirm receipt</p>
+                                </div>
+                                <PremiumTable
+                                    columns={requestColumns}
+                                    data={data.readyForPickup}
+                                    actions={(item) => (
+                                        <button
+                                            onClick={() => handleConfirmReceipt((item as Request).reqId)}
+                                            className="px-3 py-1 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-700 transition-colors shadow-sm"
+                                        >
+                                            Confirm Receipt
+                                        </button>
+                                    )}
+                                />
+                            </div>
+                        )}
+
+                        {/* Pending Requests Section */}
+                        <div>
+                            <div className="mb-4">
+                                <h3 className="text-lg font-bold text-slate-700">Pending Requests</h3>
+                            </div>
+                            <PremiumTable
+                                columns={requestColumns}
+                                data={data.myPendingRequests || []}
+                            />
+                        </div>
+                    </div>
                 )}
 
                 {activeTab === "local_stock" && (
-                    <div className="text-center py-8 text-slate-500">
-                        Local stock view for {userRegion} (Coming Soon)
+                    <div>
+                        <div className="mb-6 flex justify-between items-center">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-900">Local Stock - {userRegion}</h2>
+                                <p className="text-sm text-slate-500">Current inventory in your region</p>
+                            </div>
+                            {/* Potential spot for "Manual Stocktake" button */}
+                        </div>
+                        <PremiumTable
+                            columns={localInventoryColumns}
+                            data={myLocalStock}
+                        />
                     </div>
                 )}
             </div>
