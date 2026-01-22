@@ -4,8 +4,9 @@ import { useState, useMemo } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { ManpowerData, Attendance, DailyReport, Worker, User } from "@/types";
 import { WorkerModal } from "@/components/WorkerModal";
-import { deleteWorker } from "@/app/actions/manpower";
+import { deleteWorker, submitBulkAttendance } from "@/app/actions/manpower";
 import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import { UserManagement } from "@/components/UserManagement";
 
@@ -18,9 +19,130 @@ interface Props {
     userShiftName?: string | null;
 }
 
-export function ManpowerClient({ data }: Props) {
-    const [activeTab, setActiveTab] = useState("attendance");
+export function ManpowerClient({ data, userRole = "manager", userName = "Admin", userRegion, userShiftId }: Props) {
+    const router = useRouter();
+    // Default tab based on role? Or just default to Reports
+    const [activeTab, setActiveTab] = useState("reports");
     const [searchTerm, setSearchTerm] = useState("");
+
+    // Attendance Marking State
+    const [attendanceDate, setAttendanceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+    const [selectedRegion, setSelectedRegion] = useState<string>(userRegion || "All");
+    const [selectedShift, setSelectedShift] = useState<string>(userShiftId ? userShiftId.toString() : "All");
+
+    // Track attendance overrides: { [date]: { [workerId]: { status?: string; notes?: string } } }
+    const [attendanceBuffer, setAttendanceBuffer] = useState<Record<string, Record<number, { status?: string; notes?: string }>>>({});
+
+    // Helper to get effective status
+    const getWorkerStatus = (workerId: number) => {
+        // 1. Check local override
+        if (attendanceBuffer[attendanceDate]?.[workerId]?.status) return attendanceBuffer[attendanceDate][workerId].status!;
+
+        // 2. Check existing DB record
+        const existing = data.allAttendance?.find(a =>
+            a.workerId === workerId &&
+            new Date(a.date).toISOString().split('T')[0] === attendanceDate
+        );
+        if (existing) return existing.status || "Present";
+
+        // 3. Default
+        return "Present";
+    };
+
+    const getWorkerNotes = (workerId: number) => {
+        if (attendanceBuffer[attendanceDate]?.[workerId]?.notes !== undefined) return attendanceBuffer[attendanceDate][workerId].notes!;
+
+        const existing = data.allAttendance?.find(a =>
+            a.workerId === workerId &&
+            new Date(a.date).toISOString().split('T')[0] === attendanceDate
+        );
+        return existing?.notes || "";
+    };
+
+    // Handle single worker status change
+    const handleStatusChange = (workerId: number, status: string) => {
+        setAttendanceBuffer(prev => ({
+            ...prev,
+            [attendanceDate]: {
+                ...(prev[attendanceDate] || {}),
+                [workerId]: { ...(prev[attendanceDate]?.[workerId] || {}), status }
+            }
+        }));
+    };
+
+    const handleNotesChange = (workerId: number, notes: string) => {
+        setAttendanceBuffer(prev => ({
+            ...prev,
+            [attendanceDate]: {
+                ...(prev[attendanceDate] || {}),
+                [workerId]: { ...(prev[attendanceDate]?.[workerId] || {}), notes }
+            }
+        }));
+    };
+
+    const handleSubmitAttendance = async () => {
+        if (!confirm(`Submit attendance for ${attendanceDate}? Previous records for this date/shift/region will be overwritten.`)) return;
+
+        // Filter workers included in current view
+        const currentWorkers = data.workers.filter(w => {
+            if (activeTab !== "mark_attendance") return false;
+            // Apply current filters
+            // 1. Region
+            if (userRole === "supervisor") {
+                // Supervisor restricted to their region usually, but userRegion might be comma separated
+                // Assuming single region for simplicity or checking split
+                // But simply: utilize selectedRegion state which should be controlled
+            }
+            if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
+            if (selectedShift !== "All" && w.shiftId?.toString() !== selectedShift) return false;
+            if (searchTerm && !w.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+            return true;
+        });
+
+        const attendanceData = currentWorkers.map(w => ({
+            workerId: w.id,
+            status: getWorkerStatus(w.id) || "Present", // Ensure string logic
+            notes: getWorkerNotes(w.id)
+        }));
+
+        try {
+            // We need a shift ID for the record. If "All" is selected, we might be submitting mixed shifts?
+            // The functionality usually implies "Attendance Sheet" is per shift.
+            // If "All" is selected, we might want to group by shift or just submit.
+            // Let's assume user must select a shift OR we submit individually per worker's assigned shift?
+            // Existing action takes a single `shiftId`. This implies we should enforce Shift Selection or modify action.
+            // For now, let's pass the worker's own shift ID if selectedShift is All, 
+            // BUT the action `submitBulkAttendance` takes a SINGLE shiftID for the whole batch. 
+            // This is a limitation. Let's enforce Shift Selection or default to userShiftId.
+
+            const targetShiftId = parseInt(selectedShift);
+            if (isNaN(targetShiftId)) {
+                // If "All" shifts, we can't efficiently use submitBulkAttendance as currently designed if it enforces one shiftId for deletion logic.
+                // However, let's look at updating the action or iterating.
+                // Simpler: Just use 0 or handle in loop?
+                // Let's iterate for safety if "All" is selected, grouping by shift.
+                toast.error("Please select a specific shift to submit attendance.");
+                return;
+            }
+
+            const res = await submitBulkAttendance(
+                attendanceData,
+                attendanceDate,
+                targetShiftId,
+                userName
+            );
+
+            if (res.success) {
+                toast.success(res.message);
+                router.refresh();
+            } else {
+                toast.error(res.message);
+            }
+        } catch {
+            toast.error("Failed to submit attendance");
+        }
+    };
+
 
     // Aggregate attendance data for the table
     const dailyReports = useMemo(() => {
@@ -136,12 +258,15 @@ export function ManpowerClient({ data }: Props) {
     );
 
     // Determine available tabs
-    const tabs = ["attendance", "workers"];
-    // Check if we have users data, which implies manager access from the server side logic
-    const isManager = !!data.allUsers && data.allUsers.length > 0;
+    // Supervisor: Reports, Mark Attendance
+    // Manager: Reports, Mark Attendance, Workers, Users
+
+    // Rename 'attendance' to 'reports' for clarity in UI
+    const tabs = ["reports", "mark_attendance"];
+    const isManager = userRole === "manager";
 
     if (isManager) {
-        tabs.push("users");
+        tabs.push("workers", "users");
     }
 
     return (
@@ -178,6 +303,50 @@ export function ManpowerClient({ data }: Props) {
                         Add Worker
                     </button>
                 )}
+
+                {activeTab === "mark_attendance" && (
+                    <div className="flex gap-2">
+                        {/* Filters for Attendance Marking */}
+                        <div className="relative">
+                            <input
+                                type="date"
+                                value={attendanceDate}
+                                onChange={(e) => setAttendanceDate(e.target.value)}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                        </div>
+
+                        <select
+                            value={selectedRegion}
+                            onChange={(e) => setSelectedRegion(e.target.value)}
+                            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                            disabled={userRole === "supervisor" && !!userRegion && !userRegion.includes(",")}
+                        >
+                            <option value="All">All Regions</option>
+                            {data.regions.map(r => (
+                                <option key={r.id} value={r.name}>{r.name}</option>
+                            ))}
+                        </select>
+
+                        <select
+                            value={selectedShift}
+                            onChange={(e) => setSelectedShift(e.target.value)}
+                            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                            <option value="All">Select Shift</option>
+                            {data.shifts.map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                        </select>
+
+                        <button
+                            onClick={handleSubmitAttendance}
+                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm font-medium text-sm"
+                        >
+                            Submit Attendance
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="card-premium p-6">
@@ -185,18 +354,93 @@ export function ManpowerClient({ data }: Props) {
                 <div className="mb-6">
                     <input
                         type="text"
-                        placeholder={activeTab === "attendance" ? "Search reports..." : "Search workers..."}
+                        placeholder={activeTab === "reports" ? "Search reports..." : "Search workers..."}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full max-w-md px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                     />
                 </div>
 
-                {activeTab === "attendance" && (
+                {activeTab === "reports" && (
                     <PremiumTable
                         columns={attendanceColumns}
                         data={dailyReports}
                     />
+                )}
+
+                {activeTab === "mark_attendance" && (
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                            <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                                <tr>
+                                    <th className="px-4 py-3">Worker</th>
+                                    <th className="px-4 py-3">Region / Shift</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3">Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {data.workers
+                                    .filter(w => {
+                                        if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
+                                        if (selectedShift !== "All" && w.shiftId?.toString() !== selectedShift) return false;
+                                        if (searchTerm && !w.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+                                        return true;
+                                    })
+                                    .map(worker => (
+                                        <tr key={worker.id} className="hover:bg-slate-50 transition-colors">
+                                            <td className="px-4 py-3">
+                                                <div className="font-medium text-slate-900">{worker.name}</div>
+                                                <div className="text-xs text-slate-400">{worker.empId}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="text-slate-700">{worker.region}</div>
+                                                <div className="text-xs text-slate-500">{worker.shiftName}</div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex gap-2">
+                                                    {["Present", "Absent", "Vacation", "Day Off", "Sick Leave"].map(status => (
+                                                        <button
+                                                            key={status}
+                                                            onClick={() => handleStatusChange(worker.id, status)}
+                                                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${getWorkerStatus(worker.id) === status
+                                                                ? status === "Present"
+                                                                    ? "bg-green-100 text-green-700 border-green-200"
+                                                                    : status === "Absent"
+                                                                        ? "bg-red-100 text-red-700 border-red-200"
+                                                                        : "bg-blue-100 text-blue-700 border-blue-200"
+                                                                : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                                                                }`}
+                                                        >
+                                                            {status}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Add notes..."
+                                                    value={getWorkerNotes(worker.id)}
+                                                    onChange={(e) => handleNotesChange(worker.id, e.target.value)}
+                                                    className="w-full px-3 py-1 text-xs border border-slate-200 rounded focus:ring-1 focus:ring-blue-500 outline-none"
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                            </tbody>
+                        </table>
+                        {data.workers.filter(w => {
+                            if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
+                            if (selectedShift !== "All" && w.shiftId?.toString() !== selectedShift) return false;
+                            if (searchTerm && !w.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+                            return true;
+                        }).length === 0 && (
+                                <div className="text-center py-8 text-slate-500">
+                                    No workers found matching filters. Please select a Region and Shift.
+                                </div>
+                            )}
+                    </div>
                 )}
 
                 {activeTab === "workers" && (
