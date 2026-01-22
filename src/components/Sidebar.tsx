@@ -123,7 +123,7 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
                             >
                                 <item.icon className={`w-5 h-5 shrink-0 ${isActive ? "opacity-100" : "opacity-70 group-hover:opacity-100"}`} />
                                 {isSidebarOpen && (
-                                    <span className={`text-sm font-medium whitespace-nowrap ${isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"}`}>
+                                    <span className={`text-sm font-medium leading-tight ${isActive ? "opacity-100" : "opacity-80 group-hover:opacity-100"}`}>
                                         {item.name}
                                     </span>
                                 )}
