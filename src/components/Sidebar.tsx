@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useSession } from "next-auth/react";
+import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useUI } from "./UIProvider";
 import { useEffect } from "react";
@@ -31,6 +31,9 @@ const Icons = {
     ),
     ChevronRight: (props: React.SVGProps<SVGSVGElement>) => (
         <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+    ),
+    LogOut: (props: React.SVGProps<SVGSVGElement>) => (
+        <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></svg>
     )
 };
 
@@ -64,10 +67,12 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     if (!session?.user) return null;
 
     const navItems = [
-        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard },
-        { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory },
-        { name: "Manpower", href: "/manpower", icon: Icons.Reports },
+        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard, roles: ["manager"] },
+        { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory, roles: ["manager", "supervisor", "storekeeper"] },
+        { name: "Manpower", href: "/manpower", icon: Icons.Reports, roles: ["manager", "supervisor"] },
     ];
+
+    const filteredNavItems = navItems.filter(item => item.roles.includes(session.user.role as string));
 
     const bottomItems = [
         { name: "Settings", href: "/settings", icon: Icons.Settings },
@@ -107,7 +112,7 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
 
                 {/* Main Navigation */}
                 <nav className="flex-1 px-4 py-4 space-y-1">
-                    {navItems.map((item) => {
+                    {filteredNavItems.map((item) => {
                         const isActive = item.name === "Overview"
                             ? pathname === "/dashboard"
                             : pathname.startsWith(item.href);
@@ -156,6 +161,18 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
                             )}
                         </Link>
                     ))}
+
+                    <button
+                        onClick={() => signOut()}
+                        className={`w-full flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-white/5 transition-all duration-200 group text-left ${!isSidebarOpen && "justify-center px-2"}`}
+                    >
+                        <Icons.LogOut className="w-5 h-5 opacity-70 group-hover:opacity-100 shrink-0" />
+                        {isSidebarOpen && (
+                            <span className="text-sm font-medium opacity-80 group-hover:opacity-100 whitespace-nowrap">
+                                Log Out
+                            </span>
+                        )}
+                    </button>
                 </div>
             </aside>
         </>

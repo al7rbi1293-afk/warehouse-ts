@@ -70,9 +70,21 @@ export function MobileNav() {
 
                 <div className="p-4 flex flex-col h-[calc(100%-89px)]">
                     <nav className="space-y-1">
-                        <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Dashboard</Link>
+                        {/* Manager Only */}
+                        {session.user.role === "manager" && (
+                            <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Dashboard</Link>
+                        )}
+
                         <Link href="/warehouse" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Inventory and Supply Request</Link>
-                        <Link href="/manpower" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Manpower</Link>
+
+                        {/* Manager & Supervisor Only */}
+                        {["manager", "supervisor"].includes(session.user.role) && (
+                            <Link href="/manpower" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Manpower</Link>
+                        )}
+
+                        <div className="border-t border-white/10 my-2 pt-2">
+                            <Link href="/settings" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Settings</Link>
+                        </div>
                     </nav>
 
                     <div className="mt-auto pt-4 border-t border-white/10">

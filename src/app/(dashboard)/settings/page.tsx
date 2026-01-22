@@ -1,10 +1,33 @@
-export default function SettingsPage() {
-    return (
-        <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
-            <h1 className="text-2xl font-bold text-slate-900">Settings</h1>
-            <div className="card-premium p-6">
-                <p className="text-slate-500">Global application settings will appear here.</p>
-            </div>
-        </div>
-    );
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { SettingsClient } from "./SettingsClient";
+import { UserRole } from "@/types";
+
+export default async function SettingsPage() {
+    const session = await getServerSession(authOptions);
+
+    if (!session) {
+        redirect("/login");
+    }
+
+    // Fetch fresh user data
+    const user = await prisma.user.findUnique({
+        where: { username: session.user.username },
+        include: { shift: true }
+    });
+
+    if (!user) {
+        redirect("/login");
+    }
+
+    // Transform to match User type interface
+    const userProps = {
+        ...user,
+        role: user.role as UserRole,
+        shiftName: user.shift?.name || null
+    };
+
+    return <SettingsClient user={userProps} />;
 }

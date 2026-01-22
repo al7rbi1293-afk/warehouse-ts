@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
+
 import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
+import { RequestItemForm } from "@/components/RequestItemForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
 import { deleteInventoryItem } from "@/app/actions/inventory";
 import { toast } from "sonner";
@@ -28,9 +30,14 @@ interface Props {
     userRegion?: string | null;
 }
 
-export function WarehouseClient({ data, userName }: Props) {
+export function WarehouseClient({ data, userName, userRole = "manager", userRegion = "Riyadh" }: Props) {
     const router = useRouter();
-    const [activeTab, setActiveTab] = useState("stock");
+
+    // Determine default tab based on role
+    const defaultTab = userRole === "supervisor" ? "my_requests" :
+        userRole === "storekeeper" ? "requests" : "stock";
+
+    const [activeTab, setActiveTab] = useState(defaultTab);
     const [searchTerm, setSearchTerm] = useState("");
     // Default to first warehouse if available, else empty or generic
     const [warehouseFilter, setWarehouseFilter] = useState<string>(data.warehouses[0]?.name || "NSTC");
@@ -136,18 +143,29 @@ export function WarehouseClient({ data, userName }: Props) {
 
             {/* Navigation Tabs */}
             <div className="bg-white p-1 rounded-xl border border-slate-200 inline-flex shadow-sm overflow-x-auto max-w-full">
-                {["stock", "add", "transfer", "requests", "approved", "logs"].map((tab) => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab
-                            ? "bg-blue-600 text-white shadow-sm"
-                            : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-                            }`}
-                    >
-                        {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                    </button>
-                ))}
+                {(() => {
+                    let tabs: string[] = [];
+                    if (userRole === "manager") {
+                        tabs = ["stock", "add", "transfer", "requests", "approved", "logs"];
+                    } else if (userRole === "storekeeper") {
+                        tabs = ["requests", "approved", "stock"];
+                    } else if (userRole === "supervisor") {
+                        tabs = ["my_requests", "new_request", "local_stock"];
+                    }
+
+                    return tabs.map((tab) => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${activeTab === tab
+                                ? "bg-blue-600 text-white shadow-sm"
+                                : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                                }`}
+                        >
+                            {tab.split("_").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}
+                        </button>
+                    ));
+                })()}
             </div>
 
             {/* Main Content */}
@@ -264,6 +282,34 @@ export function WarehouseClient({ data, userName }: Props) {
                         columns={logColumns}
                         data={data.stockLogs}
                     />
+                )}
+
+                {/* Supervisor Views */}
+                {activeTab === "new_request" && (
+                    <div className="max-w-3xl mx-auto py-4">
+                        <div className="mb-6 border-b border-slate-100 pb-4">
+                            <h2 className="text-lg font-bold text-slate-800">New Supply Request</h2>
+                            <p className="text-sm text-slate-500">Request items for your region</p>
+                        </div>
+                        <RequestItemForm
+                            inventory={data.inventory}
+                            supervisorName={userName}
+                            region={userRegion || "Unknown"}
+                        />
+                    </div>
+                )}
+
+                {activeTab === "my_requests" && (
+                    <PremiumTable
+                        columns={requestColumns}
+                        data={data.myPendingRequests || []}
+                    />
+                )}
+
+                {activeTab === "local_stock" && (
+                    <div className="text-center py-8 text-slate-500">
+                        Local stock view for {userRegion} (Coming Soon)
+                    </div>
                 )}
             </div>
             {/* Edit Modal */}
