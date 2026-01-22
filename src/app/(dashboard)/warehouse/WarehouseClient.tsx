@@ -7,7 +7,7 @@ import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { BulkRequestForm } from "@/components/BulkRequestForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
-import { deleteInventoryItem, confirmReceipt } from "@/app/actions/inventory";
+import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -42,6 +42,10 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     const [warehouseFilter, setWarehouseFilter] = useState<string>(data.warehouses[0]?.name || "NSTC");
     const [selectedLocalRegion, setSelectedLocalRegion] = useState<string>("All");
 
+    // Stocktake State
+    const [isStocktakeMode, setIsStocktakeMode] = useState(false);
+    const [stocktakeBuffer, setStocktakeBuffer] = useState<Record<string, number>>({});
+
     const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
@@ -62,6 +66,58 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         } catch {
             toast.error("Failed to confirm receipt");
         }
+    };
+
+    const handleStocktakeSubmit = async () => {
+        if (selectedLocalRegion === "All") {
+            toast.error("Please select a specific region for stocktake");
+            return;
+        }
+
+        if (!confirm(`Submit stocktake for ${selectedLocalRegion}?`)) return;
+
+        const itemsToUpdate = Object.entries(stocktakeBuffer).map(([itemName, qty]) => ({
+            itemName,
+            qty
+        }));
+
+        if (itemsToUpdate.length === 0) {
+            toast.info("No changes to submit");
+            return;
+        }
+
+        try {
+            const res = await bulkUpdateLocalInventory(selectedLocalRegion, itemsToUpdate, userName);
+            if (res.success) {
+                toast.success(res.message);
+                setIsStocktakeMode(false);
+                setStocktakeBuffer({});
+                router.refresh();
+            } else {
+                toast.error(res.message);
+            }
+        } catch {
+            toast.error("Failed to submit stocktake");
+        }
+    };
+
+    // Initialize stocktake buffer with current values
+    const startStocktake = () => {
+        if (selectedLocalRegion === "All") {
+            toast.error("Please select a specific region to start stocktake");
+            return;
+        }
+
+        const buffer: Record<string, number> = {};
+        // Pre-fill with existing local inventory
+        data.localInventory
+            .filter(i => i.region === selectedLocalRegion)
+            .forEach(i => {
+                buffer[i.itemName] = i.qty ?? 0;
+            });
+
+        setStocktakeBuffer(buffer);
+        setIsStocktakeMode(true);
     };
 
     const handleDelete = async (id: number) => {
@@ -432,22 +488,90 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 ))}
                             </div>
                         </div>
-                        <PremiumTable
-                            columns={localInventoryColumns}
-                            data={myLocalStock}
-                        />
+
+
+                        {!isStocktakeMode ? (
+                            <>
+                                <div className="flex justify-end mb-4">
+                                    <button
+                                        onClick={startStocktake}
+                                        disabled={selectedLocalRegion === "All"}
+                                        className={`px-4 py-2 rounded-lg font-medium text-sm shadow-sm transition-all flex items-center gap-2 ${selectedLocalRegion === "All"
+                                            ? "bg-slate-100 text-slate-400 cursor-not-allowed"
+                                            : "bg-blue-600 text-white hover:bg-blue-700"
+                                            }`}
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                                        Manual Stocktake
+                                    </button>
+                                </div>
+                                <PremiumTable
+                                    columns={localInventoryColumns}
+                                    data={myLocalStock}
+                                />
+                            </>
+                        ) : (
+                            <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                <div className="flex justify-between items-center mb-6">
+                                    <div>
+                                        <h3 className="text-lg font-bold text-slate-800">Stocktake: {selectedLocalRegion}</h3>
+                                        <p className="text-sm text-slate-500">Enter current counts for all items.</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setIsStocktakeMode(false)}
+                                            className="px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm"
+                                        >
+                                            Cancel
+                                        </button>
+                                        <button
+                                            onClick={handleStocktakeSubmit}
+                                            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium text-sm shadow-sm"
+                                        >
+                                            Submit Stocktake
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {/* Get unique items from global inventory as catalog */}
+                                    {Array.from(new Set(data.inventory.map(i => i.nameEn))).sort().map(itemName => {
+                                        const currentVal = stocktakeBuffer[itemName] ?? 0;
+                                        return (
+                                            <div key={itemName} className="bg-white p-4 rounded-lg border border-slate-200 shadow-sm flex justify-between items-center">
+                                                <span className="font-medium text-slate-700 truncate mr-2" title={itemName}>{itemName}</span>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={currentVal}
+                                                    onChange={(e) => {
+                                                        const val = parseInt(e.target.value) || 0;
+                                                        setStocktakeBuffer(prev => ({
+                                                            ...prev,
+                                                            [itemName]: val
+                                                        }));
+                                                    }}
+                                                    className="w-24 px-3 py-1 border border-slate-200 rounded focus:ring-2 focus:ring-blue-500 outline-none text-right font-mono"
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
+
+                {/* Edit Modal */}
+                {editingItem && (
+                    <EditInventoryModal
+                        isOpen={isEditModalOpen}
+                        onClose={() => setIsEditModalOpen(false)}
+                        item={editingItem}
+                        userName={userName}
+                    />
+                )}
             </div>
-            {/* Edit Modal */}
-            {editingItem && (
-                <EditInventoryModal
-                    isOpen={isEditModalOpen}
-                    onClose={() => setIsEditModalOpen(false)}
-                    item={editingItem}
-                    userName={userName}
-                />
-            )}
         </div>
     );
 }
