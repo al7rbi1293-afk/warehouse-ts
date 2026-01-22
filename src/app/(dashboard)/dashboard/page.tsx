@@ -31,6 +31,9 @@ async function getDashboardData() {
                         lt: new Date(today.getTime() + 24 * 60 * 60 * 1000),
                     },
                 },
+                include: {
+                    worker: true,
+                },
             }),
 
             // Pending requests count
@@ -136,6 +139,7 @@ async function getDashboardData() {
                 value: item.qty,
             })),
             attendanceTrend,
+            todayAttendance, // Pass the full detailed list
         };
     } catch (error) {
         console.error("Dashboard data error:", error);
@@ -155,6 +159,7 @@ async function getDashboardData() {
             workersByRegion: [],
             topStockItems: [],
             attendanceTrend: [],
+            todayAttendance: [],
         };
     }
 }

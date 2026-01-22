@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-
-
 import { StatCard } from "@/components/StatCard";
+import { PremiumTable } from "@/components/PremiumTable";
+import { Attendance } from "@/types";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     BarChart, Bar
@@ -24,6 +25,7 @@ interface DashboardData {
     workersByRegion: { name: string; value: number }[];
     topStockItems: { name: string; value: number }[];
     attendanceTrend: { date: string; count: number }[];
+    todayAttendance: Attendance[];
 }
 
 // Icons matching the mockup style
@@ -49,6 +51,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         value: t.count
     })).reverse(); // Assuming API returns desc
 
+    // State for modal
+    const [selectedStat, setSelectedStat] = useState<{ title: string; data: Attendance[] } | null>(null);
+
+    const handleStatClick = (title: string, statusFilter: string) => {
+        const filtered = data.todayAttendance.filter((a: Attendance) => a.status === statusFilter);
+        setSelectedStat({ title, data: filtered });
+    };
+
     return (
         <div className="space-y-8 animate-fade-in pb-12">
 
@@ -64,35 +74,35 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     value={data.metrics.activeWorkers}
                     icon={Icons.Workers}
                     delay={0}
-                    href="/manpower"
+                    href="/manpower?tab=workers"
                 />
                 <StatCard
                     title="Present Today"
                     value={data.metrics.presentCount}
                     icon={Icons.Present}
                     delay={0.1}
-                    href="/manpower"
+                    onClick={() => handleStatClick("Present Workers", "Present")}
                 />
                 <StatCard
                     title="Absent Today"
                     value={data.metrics.absentCount}
                     icon={Icons.Absent}
                     delay={0.2}
-                    href="/manpower"
+                    onClick={() => handleStatClick("Absent Workers", "Absent")}
                 />
                 <StatCard
                     title="On Vacation"
                     value={data.metrics.vacationCount}
                     icon={Icons.Vacation}
                     delay={0.3}
-                    href="/manpower"
+                    onClick={() => handleStatClick("Workers on Vacation", "Vacation")}
                 />
                 <StatCard
                     title="Day Off"
                     value={data.metrics.dayOffCount}
                     icon={Icons.DayOff}
                     delay={0.4}
-                    href="/manpower"
+                    onClick={() => handleStatClick("Workers on Day Off", "Day Off")}
                 />
                 <StatCard
                     title="Attendance Rate"
@@ -116,6 +126,63 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     href="/warehouse"
                 />
             </div>
+
+            {/* Drill Down Modal */}
+            {selectedStat && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
+                        <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="text-lg font-bold text-slate-900">{selectedStat.title}</h3>
+                            <button
+                                onClick={() => setSelectedStat(null)}
+                                className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded-full transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div className="p-0 overflow-y-auto flex-1">
+                            {selectedStat.data.length > 0 ? (
+                                <PremiumTable
+                                    columns={[
+                                        {
+                                            header: "Name",
+                                            render: (row: Attendance) => <span className="font-medium text-slate-900">{row.worker?.name || "Unknown"}</span>
+                                        },
+                                        {
+                                            header: "Role",
+                                            render: (row: Attendance) => <span className="text-slate-600">{row.worker?.role || "-"}</span>
+                                        },
+                                        {
+                                            header: "Region",
+                                            render: (row: Attendance) => <span className="text-slate-600">{row.worker?.region || "-"}</span>
+                                        },
+                                        {
+                                            header: "Shift",
+                                            render: (row: Attendance) => <span className="text-slate-500 text-xs uppercase bg-slate-100 px-2 py-1 rounded">{row.worker?.shiftName || "-"}</span>
+                                        },
+                                        { header: "Notes", accessorKey: "notes" as const }
+                                    ]}
+                                    data={selectedStat.data}
+                                />
+                            ) : (
+                                <div className="p-8 text-center text-slate-500">
+                                    No workers found in this category for today.
+                                </div>
+                            )}
+                        </div>
+                        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                            <button
+                                onClick={() => setSelectedStat(null)}
+                                className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Middle Row: Charts */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
