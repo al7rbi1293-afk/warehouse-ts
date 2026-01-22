@@ -8,7 +8,8 @@ import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { BulkRequestForm } from "@/components/BulkRequestForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
 import { ReviewRequestModal } from "@/components/ReviewRequestModal";
-import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory } from "@/app/actions/inventory";
+import { IssueRequestModal } from "@/components/IssueRequestModal";
+import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkIssueRequests } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
@@ -59,6 +60,9 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
     const [reviewRequest, setReviewRequest] = useState<Request | null>(null);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+
+    const [issueRequest, setIssueRequest] = useState<Request | null>(null);
+    const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
 
     const handleConfirmReceipt = async (reqId: number) => {
         try {
@@ -385,17 +389,48 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     <div className="space-y-8">
                         {/* Group pending requests by region */}
                         {(() => {
-                            if (data.pendingRequests.length === 0) {
+                            // Helper for Bulk Issue
+                            const handleBulkIssue = async (region: string, reqs: Request[]) => {
+                                if (!confirm(`Are you sure you want to issue all ${reqs.length} items for ${region}?`)) return;
+
+                                try {
+                                    const itemsToIssue = reqs.map(r => ({
+                                        reqId: r.reqId,
+                                        qty: r.qty || 0,
+                                        itemName: r.itemName || "",
+                                        region: r.region || "",
+                                        unit: r.unit || ""
+                                    }));
+
+                                    const res = await bulkIssueRequests(userName, itemsToIssue);
+                                    if (res.success) {
+                                        toast.success(res.message);
+                                        router.refresh();
+                                    } else {
+                                        toast.error(res.message);
+                                    }
+                                } catch {
+                                    toast.error("Failed to issue requests");
+                                }
+                            };
+
+                            // Determine which requests to show
+                            // Manager -> Pending Requests
+                            // Storekeeper -> Approved Requests (Ready to Issue)
+                            const requestsToShow = userRole === "storekeeper" ? data.approvedRequests : data.pendingRequests;
+                            const emptyMessage = userRole === "storekeeper" ? "No approved requests waiting for issue" : "No pending requests found";
+
+                            if (requestsToShow.length === 0) {
                                 return (
                                     <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
-                                        No pending requests found
+                                        {emptyMessage}
                                     </div>
                                 );
                             }
 
                             // Group by Region
                             const groupedRequests: Record<string, Request[]> = {};
-                            data.pendingRequests.forEach(req => {
+                            requestsToShow.forEach(req => {
                                 const region = req.region || "Unassigned";
                                 if (!groupedRequests[region]) groupedRequests[region] = [];
                                 groupedRequests[region].push(req);
@@ -408,9 +443,19 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                             <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                                             {region}
                                         </h3>
-                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
-                                            {requests.length} Requests
-                                        </span>
+                                        <div className="flex gap-2 items-center">
+                                            <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                                {requests.length} Requests
+                                            </span>
+                                            {userRole === "storekeeper" && (
+                                                <button
+                                                    onClick={() => handleBulkIssue(region, requests)}
+                                                    className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-md font-medium hover:bg-blue-700 transition-colors shadow-sm"
+                                                >
+                                                    Issue All
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
                                     <PremiumTable
                                         columns={[
@@ -427,12 +472,17 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                         actions={(req) => (
                                             <button
                                                 onClick={() => {
-                                                    setReviewRequest(req as Request);
-                                                    setIsReviewModalOpen(true);
+                                                    if (userRole === "storekeeper") {
+                                                        setIssueRequest(req as Request);
+                                                        setIsIssueModalOpen(true);
+                                                    } else {
+                                                        setReviewRequest(req as Request);
+                                                        setIsReviewModalOpen(true);
+                                                    }
                                                 }}
                                                 className="text-blue-600 hover:text-blue-800 font-medium text-sm"
                                             >
-                                                Review
+                                                {userRole === "storekeeper" ? "Issue" : "Review"}
                                             </button>
                                         )}
                                     />
@@ -676,14 +726,22 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                         isOpen={isReviewModalOpen}
                         onClose={() => {
                             setIsReviewModalOpen(false);
-                            router.refresh(); // Refresh data on close if needed, but handled inside modal success too usually. 
-                            // Actually modal calls toast and onClose. We should refresh here or pass refresh callback.
-                            // The modal onClose logic in my impl didn't call refresh. Let's rely on router.refresh() here or add it to onClose if we want strictness.
-                            // Wait, the modal impl calls `router.refresh()` inside itself? No, it calls `onClose`.
-                            // Let's modify the onclose to refresh if action was taken. Or simpler: just router.refresh() when modal closes.
                             router.refresh();
                         }}
                         request={reviewRequest}
+                    />
+                )}
+
+                {/* Issue Request Modal */}
+                {issueRequest && (
+                    <IssueRequestModal
+                        isOpen={isIssueModalOpen}
+                        onClose={() => {
+                            setIsIssueModalOpen(false);
+                            router.refresh();
+                        }}
+                        request={issueRequest}
+                        userName={userName}
                     />
                 )}
             </div>

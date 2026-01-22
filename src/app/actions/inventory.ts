@@ -612,3 +612,80 @@ export async function bulkUpdateLocalInventory(
         return { success: false, message: "Failed to update inventory" };
     }
 }
+// Bulk issue requests (Storekeeper)
+export async function bulkIssueRequests(
+    user: string,
+    items: { reqId: number; qty: number; itemName: string; region: string; unit: string }[]
+) {
+    try {
+        const operations = [];
+
+        // Check stock for all items first
+        for (const item of items) {
+            const inventoryItem = await prisma.inventory.findFirst({
+                where: { nameEn: item.itemName, location: "NSTC" },
+            });
+
+            if (!inventoryItem || inventoryItem.qty < item.qty) {
+                return {
+                    success: false,
+                    message: `Insufficient stock for ${item.itemName}. Available: ${inventoryItem?.qty || 0}`,
+                };
+            }
+        }
+
+        // Prepare operations
+        for (const item of items) {
+            const inventoryItem = await prisma.inventory.findFirst({
+                where: { nameEn: item.itemName, location: "NSTC" },
+            });
+
+            if (inventoryItem) {
+                // Deduct from inventory
+                operations.push(
+                    prisma.inventory.update({
+                        where: { id: inventoryItem.id },
+                        data: {
+                            qty: inventoryItem.qty - item.qty,
+                            lastUpdated: new Date(),
+                        },
+                    })
+                );
+
+                // Log the issue
+                operations.push(
+                    prisma.stockLog.create({
+                        data: {
+                            itemName: item.itemName,
+                            location: "NSTC",
+                            changeAmount: -item.qty,
+                            newQty: inventoryItem.qty - item.qty,
+                            actionBy: user,
+                            actionType: `Issued ${item.region}`,
+                            unit: item.unit,
+                        },
+                    })
+                );
+
+                // Update Request Status
+                operations.push(
+                    prisma.request.update({
+                        where: { reqId: item.reqId },
+                        data: {
+                            status: "Issued",
+                            qty: item.qty, // Ensure qty reflects what was actually issued
+                        },
+                    })
+                );
+            }
+        }
+
+        await prisma.$transaction(operations);
+
+        revalidatePath("/warehouse");
+        return { success: true, message: `Successfully issued ${items.length} requests` };
+    } catch (error) {
+        console.error("Bulk issue error:", error);
+        return { success: false, message: "Failed to issue requests" };
+    }
+}
