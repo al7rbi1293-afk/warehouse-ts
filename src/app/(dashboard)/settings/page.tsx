@@ -26,7 +26,8 @@ export default async function SettingsPage() {
     const userProps = {
         ...user,
         role: user.role as UserRole,
-        shiftName: user.shift?.name || null
+        shiftName: user.shift?.name || null,
+        createdAt: user.createdAt
     };
 
     return <SettingsClient user={userProps} />;

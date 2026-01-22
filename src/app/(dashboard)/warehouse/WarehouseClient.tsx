@@ -185,7 +185,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     const requestColumns = [
         { header: "Region", accessorKey: "region" as const },
         { header: "Requester", accessorKey: "supervisorName" as const },
-        { header: "Date", render: (item: Request) => new Date(item.requestDate).toLocaleDateString() },
+        { header: "Date", render: (item: Request) => item.requestDate ? new Date(item.requestDate).toLocaleDateString() : "-" },
         {
             header: "Status", render: (item: Request) => (
                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === "Pending" ? "bg-yellow-100 text-yellow-800" :
@@ -199,7 +199,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     ];
 
     const logColumns = [
-        { header: "Date", render: (log: StockLog) => new Date(log.logDate).toLocaleString() },
+        { header: "Date", render: (log: StockLog) => log.logDate ? new Date(log.logDate).toLocaleString() : "-" },
         { header: "Item", accessorKey: "itemName" as const },
         {
             header: "Change", accessorKey: "changeAmount" as const, render: (log: StockLog) => (
@@ -272,7 +272,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 {(() => {
                     let tabs: string[] = [];
                     if (userRole === "manager") {
-                        tabs = ["stock", "add", "transfer", "requests", "approved", "logs"];
+                        tabs = ["stock", "add", "transfer", "requests", "approved", "audit", "regional_stock", "logs"];
                     } else if (userRole === "storekeeper") {
                         tabs = ["requests", "approved", "stock"];
                     } else if (userRole === "supervisor") {
@@ -538,7 +538,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                             {
                                                 header: "Req. Date",
                                                 accessorKey: "requestDate" as const,
-                                                render: (req: Request) => <span>{new Date(req.requestDate).toLocaleDateString()}</span>
+                                                render: (req: Request) => <span>{req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-"}</span>
                                             },
                                             {
                                                 header: "Issued By",
@@ -568,6 +568,63 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                         ]}
                                         data={requests}
                                         actions={() => null} // No actions for audit log
+                                    />
+                                </div>
+                            ));
+                        })()}
+                    </div>
+                )}
+
+                {/* Regional Stock Content (Live Inventory) */}
+                {activeTab === "regional_stock" && (
+                    <div className="space-y-8">
+                        {(() => {
+                            // Filter by search term
+                            const filteredLocal = data.localInventory.filter(item =>
+                                item.itemName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                                item.region.toLowerCase().includes(searchTerm.toLowerCase())
+                            );
+
+                            if (filteredLocal.length === 0) {
+                                return (
+                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
+                                        No regional stock found
+                                    </div>
+                                );
+                            }
+
+                            // Group by Region
+                            const groupedStock: Record<string, LocalInventoryItem[]> = {};
+                            filteredLocal.forEach(item => {
+                                const region = item.region || "Unassigned";
+                                if (!groupedStock[region]) groupedStock[region] = [];
+                                groupedStock[region].push(item);
+                            });
+
+                            return Object.entries(groupedStock).sort().map(([region, items]) => (
+                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                                            {region}
+                                        </h3>
+                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                            {items.length} Items
+                                        </span>
+                                    </div>
+                                    <PremiumTable
+                                        columns={[
+                                            { header: "Item Name", accessorKey: "itemName" as const },
+                                            { header: "Quantity", accessorKey: "qty" as const, render: (item: LocalInventoryItem) => <span className="font-bold">{item.qty}</span> },
+                                            {
+                                                header: "Last Updated",
+                                                accessorKey: "lastUpdated" as const,
+                                                render: (item: LocalInventoryItem) => <span className="text-xs text-slate-500">{item.lastUpdated ? new Date(item.lastUpdated).toLocaleDateString() : "-"}</span>
+                                            },
+                                            { header: "Updated By", accessorKey: "updatedBy" as const, render: (item: LocalInventoryItem) => <span className="text-xs text-slate-500">{item.updatedBy || "-"}</span> }
+                                        ]}
+                                        data={items}
+                                        actions={() => null}
                                     />
                                 </div>
                             ));

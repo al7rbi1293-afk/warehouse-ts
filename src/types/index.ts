@@ -44,9 +44,9 @@ export interface Worker {
   empId: string | null;
   role: string | null;
   region: string | null;
-  status: string;
+  status: string | null;
   shiftId: number | null;
-  createdAt: Date;
+  createdAt: Date | null;
   shiftName?: string | null;
 }
 
@@ -140,7 +140,7 @@ export interface Request {
   qty: number | null;
   unit: string | null;
   status: RequestStatus | null;
-  requestDate: Date;
+  requestDate: Date | null;
   notes: string | null;
   issuedBy?: string | null;
   issuedAt?: Date | null;
@@ -161,7 +161,7 @@ export interface RequestFormData {
 // =====================
 export interface StockLog {
   id: number;
-  logDate: Date;
+  logDate: Date | null;
   itemName: string | null;
   changeAmount: number | null;
   location: string | null;

@@ -56,7 +56,7 @@ async function main() {
         await prisma.project.upsert({
             where: { name: project },
             update: {},
-            create: { name: project },
+            create: { name: project, type: 'Construction' },
         })
     }
     console.log('Projects seeded.')

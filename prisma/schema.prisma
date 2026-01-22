@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,25 +7,20 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// =====================
-// USERS & AUTHENTICATION
-// =====================
 model User {
-  username  String   @id
+  id        Int      @id(map: "User_pkey") @default(autoincrement())
+  username  String   @unique
   password  String
-  name      String?
-  role      String?
+  name      String
+  role      String
   region    String?
   shiftId   Int?     @map("shift_id")
-  createdAt DateTime @default(now()) @map("created_at")
   shift     Shift?   @relation(fields: [shiftId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
 
   @@map("users")
 }
 
-// =====================
-// SHIFTS
-// =====================
 model Shift {
   id        Int      @id @default(autoincrement())
   name      String
@@ -40,27 +32,21 @@ model Shift {
   @@map("shifts")
 }
 
-// =====================
-// WORKERS
-// =====================
 model Worker {
-  id         Int          @id @default(autoincrement())
-  name       String
-  empId      String?      @map("emp_id")
-  role       String?
-  region     String?
-  status     String       @default("Active")
-  shiftId    Int?         @map("shift_id")
-  createdAt  DateTime     @default(now()) @map("created_at")
-  shift      Shift?       @relation(fields: [shiftId], references: [id])
+  id        Int       @id @default(autoincrement())
+  name      String
+  role      String?
+  region    String?
+  status    String?   @default("Active")
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  shiftId   Int?      @map("shift_id")
+  empId     String?   @map("emp_id")
+  shift     Shift?    @relation(fields: [shiftId], references: [id])
   attendance Attendance[]
 
   @@map("workers")
 }
 
-// =====================
-// ATTENDANCE
-// =====================
 model Attendance {
   id         Int       @id @default(autoincrement())
   workerId   Int       @map("worker_id")
@@ -76,78 +62,63 @@ model Attendance {
   @@map("attendance")
 }
 
-// =====================
-// INVENTORY
-// =====================
 model Inventory {
-  id          Int       @id @default(autoincrement())
+  id          Int       @id(map: "Inventory_pkey") @default(autoincrement())
   nameEn      String    @map("name_en")
-  category    String?
-  unit        String?
-  qty         Int       @default(0)
+  category    String
   location    String
-  status      String?
-  lastUpdated DateTime? @map("last_updated")
+  qty         Int       @default(0)
+  unit        String
+  status      String    @default("Available")
+  lastUpdated DateTime? @map("last_updated") @db.Timestamp(6)
 
-  @@unique([nameEn, location])
   @@map("inventory")
 }
 
-// =====================
-// LOCAL INVENTORY (Branch)
-// =====================
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
 model LocalInventory {
   region      String
   itemName    String    @map("item_name")
   qty         Int?
-  lastUpdated DateTime? @map("last_updated")
+  lastUpdated DateTime? @map("last_updated") @db.Timestamp(6)
   updatedBy   String?   @map("updated_by")
 
-  @@unique([region, itemName])
+  @@id([region, itemName])
   @@map("local_inventory")
 }
 
-// =====================
-// REQUESTS
-// =====================
 model Request {
-  reqId          Int      @id @default(autoincrement()) @map("req_id")
-  supervisorName String?  @map("supervisor_name")
+  reqId          Int       @id @default(autoincrement()) @map("req_id")
+  supervisorName String?   @map("supervisor_name")
   region         String?
-  itemName       String?  @map("item_name")
+  itemName       String?   @map("item_name")
   category       String?
   qty            Int?
   unit           String?
   status         String?
-  requestDate    DateTime @default(now()) @map("request_date")
+  requestDate    DateTime? @default(now()) @map("request_date") @db.Timestamp(6)
   notes          String?
-  issuedBy       String?  @map("issued_by")
+  issuedBy       String?   @map("issued_by")
   issuedAt       DateTime? @map("issued_at")
 
   @@map("requests")
 }
 
-// =====================
-// STOCK LOGS
-// =====================
 model StockLog {
-  id           Int      @id @default(autoincrement())
-  logDate      DateTime @default(now()) @map("log_date")
-  itemName     String?  @map("item_name")
-  changeAmount Int?     @map("change_amount")
+  id           Int       @id @default(autoincrement())
+  logDate      DateTime? @default(now()) @map("log_date") @db.Timestamp(6)
+  itemName     String?   @map("item_name")
+  changeAmount Int?      @map("change_amount")
   location     String?
-  actionBy     String?  @map("action_by")
-  actionType   String?  @map("action_type")
+  actionBy     String?   @map("action_by")
+  actionType   String?   @map("action_type")
   unit         String?
-  newQty       Int?     @map("new_qty")
-  userName     String?  @map("user_name")
+  newQty       Int?      @map("new_qty")
+  userName     String?   @map("user_name")
 
   @@map("stock_logs")
 }
 
-// =====================
-// AUDIT LOGS
-// =====================
 model AuditLog {
   id        Int      @id @default(autoincrement())
   timestamp DateTime @default(now())
@@ -159,32 +130,40 @@ model AuditLog {
   @@map("audit_logs")
 }
 
-// =====================
-// LOOKUP TABLES
-// =====================
-
 model Project {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  status    String   @default("Active")
-  createdAt DateTime @default(now()) @map("created_at")
+  id        Int       @id @default(autoincrement())
+  name      String    @unique @db.VarChar(255)
+  type      String    @db.VarChar(50)
+  createdAt DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  status    String    @default("Active")
 
   @@map("projects")
 }
 
 model Warehouse {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
   location  String?
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime? @default(now()) @map("created_at")
 
   @@map("warehouses")
 }
 
 model Region {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  createdAt DateTime? @default(now()) @map("created_at")
 
   @@map("regions")
+}
+
+model loan {
+  id       Int    @id(map: "Loan_pkey") @default(autoincrement())
+  itemId   Int
+  itemName String
+  project  String
+  quantity Int
+  type     String
+  date     String
+  status   String @default("Active")
 }

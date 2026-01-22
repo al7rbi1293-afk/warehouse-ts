@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import { hashPassword } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
@@ -56,8 +57,8 @@ export async function createUser(data: CreateUserParams) {
             data: {
                 username: data.username,
                 password: hashedPassword,
-                name: data.name,
-                role: data.role,
+                name: data.name || "",
+                role: data.role || "staff",
                 region: data.region,
                 shiftId: data.shiftId ? Number(data.shiftId) : null,
             },
@@ -73,18 +74,12 @@ export async function createUser(data: CreateUserParams) {
 
 export async function updateUser(username: string, data: UpdateUserParams) {
     try {
-        const updateData: {
-            name?: string | null;
-            role?: string | null;
-            region?: string | null;
-            shiftId?: number | null;
-            password?: string;
-        } = {
-            name: data.name,
-            role: data.role,
-            region: data.region,
-            shiftId: data.shiftId ? Number(data.shiftId) : null,
-        };
+        const updateData: Prisma.UserUncheckedUpdateInput = {};
+        if (data.name) updateData.name = data.name;
+        if (data.role) updateData.role = data.role;
+        // Region and shiftId can be null
+        if (data.region !== undefined) updateData.region = data.region;
+        if (data.shiftId !== undefined) updateData.shiftId = data.shiftId ? Number(data.shiftId) : null;
 
         if (data.password && data.password.trim() !== "") {
             updateData.password = await hashPassword(data.password);

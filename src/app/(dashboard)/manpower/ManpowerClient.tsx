@@ -240,6 +240,9 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         },
     ];
 
+    // Detail View State
+    const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
+
     const workerColumns = [
         {
             header: "Name", accessorKey: "name" as const, render: (row: Worker) => (
@@ -402,10 +405,89 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                 </div>
 
                 {activeTab === "reports" && (
-                    <PremiumTable
-                        columns={attendanceColumns}
-                        data={dailyReports}
-                    />
+                    <>
+                        <PremiumTable
+                            columns={[
+                                ...attendanceColumns,
+                                {
+                                    header: "Actions",
+                                    render: (row: DailyReport) => (
+                                        <button
+                                            onClick={() => setSelectedReport(row)}
+                                            className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
+                                        >
+                                            View Details
+                                        </button>
+                                    )
+                                }
+                            ]}
+                            data={dailyReports}
+                        />
+
+                        {selectedReport && (
+                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                                <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                                    <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                                        <div>
+                                            <h3 className="text-lg font-bold text-slate-900">
+                                                Attendance Details
+                                            </h3>
+                                            <p className="text-sm text-slate-500">
+                                                {selectedReport.date} - {selectedReport.region} ({selectedReport.shift})
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => setSelectedReport(null)}
+                                            className="text-slate-400 hover:text-slate-600 p-1"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                            </svg>
+                                        </button>
+                                    </div>
+
+                                    <div className="p-6 overflow-y-auto">
+                                        <PremiumTable
+                                            columns={[
+                                                { header: "Worker Name", render: (att: Attendance) => <span className="font-medium">{att.worker?.name || att.workerName || "Unknown"}</span> },
+                                                {
+                                                    header: "Status",
+                                                    accessorKey: "status" as const,
+                                                    render: (att: Attendance) => (
+                                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${att.status === 'Present' ? 'bg-green-100 text-green-700' :
+                                                                att.status === 'Absent' ? 'bg-red-100 text-red-700' :
+                                                                    'bg-yellow-100 text-yellow-700'
+                                                            }`}>
+                                                            {att.status}
+                                                        </span>
+                                                    )
+                                                },
+                                                { header: "Notes", accessorKey: "notes" as const },
+                                                { header: "Supervisor", accessorKey: "supervisor" as const }
+                                            ]}
+                                            data={data.allAttendance.filter(att => {
+                                                const attDate = new Date(att.date).toLocaleDateString();
+                                                const attRegion = att.worker?.region || "Unknown";
+                                                const attShift = (att.shiftId || "General").toString();
+
+                                                // Robust matching key
+                                                const reportId = `${attDate}-${attRegion}-${attShift}`;
+                                                return reportId === selectedReport.id;
+                                            })}
+                                        />
+                                    </div>
+                                    <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+                                        <button
+                                            onClick={() => setSelectedReport(null)}
+                                            className="px-4 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 font-medium"
+                                        >
+                                            Close
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
 
                 {activeTab === "mark_attendance" && (
