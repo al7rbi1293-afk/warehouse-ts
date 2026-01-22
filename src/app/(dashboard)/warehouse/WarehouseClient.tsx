@@ -226,6 +226,10 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         ? userRegion.split(",").map(r => r.trim())
         : [];
 
+    const filteredRegionsForRequest = userRole === "supervisor" && allowedRegions.length > 0
+        ? data.regions.filter(r => allowedRegions.includes(r.name))
+        : data.regions;
+
     // Filter local inventory based on role and selection
     const myLocalStock = data.localInventory.filter(item => {
         // 1. Role-based filtering
@@ -408,7 +412,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             inventory={data.inventory}
                             supervisorName={userName}
                             defaultRegion={userRegion || ""}
-                            regions={data.regions}
+                            regions={filteredRegionsForRequest}
                         />
                     </div>
                 )}
