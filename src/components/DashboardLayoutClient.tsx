@@ -8,9 +8,9 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
     const { isSidebarOpen } = useUI();
 
     return (
-        <div className="min-h-screen bg-[#F8FAFC] flex">
-            {/* Mobile Navigation */}
-            <div className="md:hidden fixed top-0 left-0 right-0 z-50">
+        <div className="min-h-screen bg-[#F8FAFC] flex flex-col md:flex-row">
+            {/* Mobile Navigation - Now part of the flow */}
+            <div className="md:hidden">
                 <MobileNav />
             </div>
 
@@ -25,7 +25,7 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             </div>
 
             {/* Main Content - Takes remaining space */}
-            <main className="flex-1 min-w-0 pt-16 md:pt-0">
+            <main className="flex-1 min-w-0 md:pt-0">
                 <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
                     {children}
                 </div>
