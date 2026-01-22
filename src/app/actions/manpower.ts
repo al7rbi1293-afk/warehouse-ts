@@ -167,6 +167,7 @@ export async function submitBulkAttendance(
         workerId: number;
         status: string;
         notes: string;
+        shiftId?: number | null;
     }[],
     date: string,
     shiftId: number,
@@ -181,12 +182,13 @@ export async function submitBulkAttendance(
         const dateObj = new Date(date);
         const workerIds = attendanceData.map(r => r.workerId);
 
-        // Delete all existing attendance records for these workers on this date/shift
+        // Delete all existing attendance records for these workers on this date
+        // We do NOT filter by shiftId here, to avoid duplicates if a worker checks in different shifts on same day (unless that is desired, but usually it's one record per day)
+        // OR if they changed shift. We want to overwrite the daily record.
         await prisma.attendance.deleteMany({
             where: {
                 workerId: { in: workerIds },
                 date: dateObj,
-                shiftId,
             },
         });
 
@@ -197,7 +199,7 @@ export async function submitBulkAttendance(
                 date: dateObj,
                 status: record.status,
                 notes: record.notes || null,
-                shiftId,
+                shiftId: record.shiftId ?? (shiftId || null),
                 supervisor,
             })),
         });

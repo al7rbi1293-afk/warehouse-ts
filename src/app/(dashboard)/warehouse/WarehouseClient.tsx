@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
+import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
 import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { BulkRequestForm } from "@/components/BulkRequestForm";
-import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
+import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse, AuditLog } from "@/types";
 import { ReviewRequestModal } from "@/components/ReviewRequestModal";
 import { IssueRequestModal } from "@/components/IssueRequestModal";
 import { EditRequestModal } from "@/components/EditRequestModal";
@@ -26,7 +27,7 @@ interface Props {
         readyForPickup: Request[];
         warehouses: Warehouse[];
         regions: { id: number; name: string }[];
-        auditRequests?: Request[];
+        auditLogs: AuditLog[];
     };
     userRole?: string;
     userName: string;
@@ -60,7 +61,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         setIsEditModalOpen(true);
     };
 
-    const [reviewRequest] = useState<Request | null>(null);
+    const [reviewRequest, setReviewRequest] = useState<Request | null>(null);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
     const [issueRequest] = useState<Request | null>(null);
@@ -297,6 +298,106 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     ));
                 })()}
             </div>
+
+            {/* Add Item Tab */}
+            {activeTab === "add" && (
+                <div className="max-w-2xl mx-auto">
+                    <div className="mb-6">
+                        <h2 className="text-lg font-bold text-slate-800">Add New Inventory Item</h2>
+                        <p className="text-sm text-slate-500">Create a new item in the warehouse</p>
+                    </div>
+                    <div className="card-premium p-6">
+                        <AddInventoryItemForm warehouses={data.warehouses} />
+                    </div>
+                </div>
+            )}
+
+            {/* Requests Tab (Manager View) */}
+            {activeTab === "requests" && (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800">Pending Requests</h2>
+                            <p className="text-sm text-slate-500">Requests requiring approval</p>
+                        </div>
+                    </div>
+                    {data.pendingRequests.length === 0 ? (
+                        <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                            No pending requests
+                        </div>
+                    ) : (
+                        <PremiumTable
+                            columns={requestColumns}
+                            data={data.pendingRequests}
+                            actions={(item) => (
+                                <button
+                                    onClick={() => {
+                                        setReviewRequest(item as Request);
+                                        setIsReviewModalOpen(true);
+                                    }}
+                                    className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm"
+                                >
+                                    Review
+                                </button>
+                            )}
+                        />
+                    )}
+                </div>
+            )}
+
+            {/* Approved Tab */}
+            {activeTab === "approved" && (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800">Approved Requests</h2>
+                            <p className="text-sm text-slate-500">History of approved supply requests</p>
+                        </div>
+                    </div>
+                    {data.approvedRequests.length === 0 ? (
+                        <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                            No approved requests found
+                        </div>
+                    ) : (
+                        <PremiumTable
+                            columns={requestColumns}
+                            data={data.approvedRequests}
+                        />
+                    )}
+                </div>
+            )}
+
+            {/* Audit Tab */}
+            {activeTab === "audit" && (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800">Audit Logs</h2>
+                            <p className="text-sm text-slate-500">System activities and tracked actions</p>
+                        </div>
+                        <ExportButton
+                            data={data.auditLogs.map(log => ({
+                                Date: new Date(log.timestamp).toLocaleString(),
+                                User: log.userName,
+                                Action: log.action,
+                                Module: log.module,
+                                Details: log.details
+                            }))}
+                            fileName={`Audit_Logs_${new Date().toISOString().split('T')[0]}`}
+                        />
+                    </div>
+                    <PremiumTable
+                        columns={[
+                            { header: "Timestamp", render: (log: AuditLog) => new Date(log.timestamp).toLocaleString() },
+                            { header: "User", accessorKey: "userName" },
+                            { header: "Action", accessorKey: "action" },
+                            { header: "Module", accessorKey: "module" },
+                            { header: "Details", accessorKey: "details" },
+                        ]}
+                        data={data.auditLogs}
+                    />
+                </div>
+            )}
 
             {/* Stock Transfer Tab */}
             {activeTab === "transfer" && (
@@ -604,6 +705,29 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 ));
                             })()}
                         </div>
+                    </div>
+                )}
+
+                {/* Regional Stock View */}
+                {activeTab === "regional_stock" && (
+                    <div className="space-y-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Regional Stock Overview</h2>
+                                <p className="text-sm text-slate-500">Inventory levels across all project regions</p>
+                            </div>
+                        </div>
+
+                        {data.localInventory.length === 0 ? (
+                            <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                                No regional stock data available
+                            </div>
+                        ) : (
+                            <PremiumTable
+                                columns={localInventoryColumns}
+                                data={data.localInventory}
+                            />
+                        )}
                     </div>
                 )}
 

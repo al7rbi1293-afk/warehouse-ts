@@ -146,22 +146,20 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
 
         const attendanceData = currentWorkers.map(w => ({
             workerId: w.id,
-            status: getWorkerStatus(w.id) || "Present", // Ensure string logic
-            notes: getWorkerNotes(w.id)
+            status: getWorkerStatus(w.id) || "Present",
+            notes: getWorkerNotes(w.id),
+            shiftId: w.shiftId // Pass the worker's assigned shift
         }));
 
         try {
             const targetShiftId = parseInt(selectedShift);
-
-            if (isNaN(targetShiftId)) {
-                toast.error("Please select a specific shift to submit attendance safely.");
-                return;
-            }
+            // If All shifts selected (isNaN), we pass 0/null to action, but relying on worker's shiftId in payload
+            const globalShiftId = isNaN(targetShiftId) ? 0 : targetShiftId;
 
             const res = await submitBulkAttendance(
                 attendanceData,
                 attendanceDate,
-                targetShiftId,
+                globalShiftId,
                 userName
             );
 
@@ -494,26 +492,70 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                 )}
 
                 {activeTab === "workers" && (
-                    <PremiumTable
-                        columns={workerColumns}
-                        data={filteredWorkers}
-                        actions={(item) => (
-                            <div className="flex items-center gap-3">
-                                <button
-                                    onClick={() => handleEditWorker(item as Worker)}
-                                    className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1"
-                                >
-                                    Edit
-                                </button>
-                                <button
-                                    onClick={() => handleDeleteWorker((item as Worker).id)}
-                                    className="text-red-600 text-sm font-medium hover:underline flex items-center gap-1"
-                                >
-                                    Delete
-                                </button>
-                            </div>
-                        )}
-                    />
+                    <div className="space-y-8">
+                        {(() => {
+                            // Group workers by Region -> Shift
+                            const groupedWorkers: Record<string, Record<string, Worker[]>> = {};
+
+                            filteredWorkers.forEach(w => {
+                                const region = w.region || "Unassigned";
+                                const shift = w.shiftName || "No Shift";
+
+                                if (!groupedWorkers[region]) groupedWorkers[region] = {};
+                                if (!groupedWorkers[region][shift]) groupedWorkers[region][shift] = [];
+
+                                groupedWorkers[region][shift].push(w);
+                            });
+
+                            // render
+                            return Object.entries(groupedWorkers).sort().map(([region, shifts]) => (
+                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+                                        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                                            {region} Region
+                                        </h2>
+                                        <span className="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-medium text-slate-500">
+                                            {Object.values(shifts).reduce((acc, curr) => acc + curr.length, 0)} Workers
+                                        </span>
+                                    </div>
+
+                                    <div className="p-6 space-y-8">
+                                        {Object.entries(shifts).sort().map(([shift, workers]) => (
+                                            <div key={shift}>
+                                                <div className="flex items-center gap-2 mb-4">
+                                                    <h3 className="font-bold text-slate-700">{shift} Shift</h3>
+                                                    <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                                        {workers.length}
+                                                    </span>
+                                                </div>
+                                                <PremiumTable
+                                                    columns={workerColumns}
+                                                    data={workers}
+                                                    actions={(item) => (
+                                                        <div className="flex items-center gap-3">
+                                                            <button
+                                                                onClick={() => handleEditWorker(item as Worker)}
+                                                                className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1"
+                                                            >
+                                                                Edit
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteWorker((item as Worker).id)}
+                                                                className="text-red-600 text-sm font-medium hover:underline flex items-center gap-1"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ));
+                        })()}
+                    </div>
                 )}
 
                 {activeTab === "users" && data.allUsers && (
