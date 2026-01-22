@@ -9,10 +9,9 @@ interface Props {
     isOpen: boolean;
     onClose: () => void;
     request: Request;
-    userName: string;
 }
 
-export function ReviewRequestModal({ isOpen, onClose, request, userName }: Props) {
+export function ReviewRequestModal({ isOpen, onClose, request }: Props) {
     const [approvedQty, setApprovedQty] = useState(request.qty || 0);
     const [notes, setNotes] = useState(request.notes || "");
     const [isSubmitting, setIsSubmitting] = useState(false);

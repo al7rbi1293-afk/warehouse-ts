@@ -684,7 +684,6 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             router.refresh();
                         }}
                         request={reviewRequest}
-                        userName={userName}
                     />
                 )}
             </div>
