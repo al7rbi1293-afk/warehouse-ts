@@ -7,6 +7,7 @@ import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { BulkRequestForm } from "@/components/BulkRequestForm";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
+import { ReviewRequestModal } from "@/components/ReviewRequestModal";
 import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -55,6 +56,9 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
         setEditingItem(item);
         setIsEditModalOpen(true);
     };
+
+    const [reviewRequest, setReviewRequest] = useState<Request | null>(null);
+    const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
     const handleConfirmReceipt = async (reqId: number) => {
         try {
@@ -378,13 +382,64 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 )}
 
                 {activeTab === "requests" && (
-                    <PremiumTable
-                        columns={requestColumns}
-                        data={data.pendingRequests}
-                        actions={() => (
-                            <button className="text-blue-600 hover:text-blue-800 font-medium">Review</button>
-                        )}
-                    />
+                    <div className="space-y-8">
+                        {/* Group pending requests by region */}
+                        {(() => {
+                            if (data.pendingRequests.length === 0) {
+                                return (
+                                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
+                                        No pending requests found
+                                    </div>
+                                );
+                            }
+
+                            // Group by Region
+                            const groupedRequests: Record<string, Request[]> = {};
+                            data.pendingRequests.forEach(req => {
+                                const region = req.region || "Unassigned";
+                                if (!groupedRequests[region]) groupedRequests[region] = [];
+                                groupedRequests[region].push(req);
+                            });
+
+                            return Object.entries(groupedRequests).sort().map(([region, requests]) => (
+                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                            {region}
+                                        </h3>
+                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                            {requests.length} Requests
+                                        </span>
+                                    </div>
+                                    <PremiumTable
+                                        columns={[
+                                            { header: "Item", accessorKey: "itemName" as const },
+                                            { header: "Category", accessorKey: "category" as const },
+                                            { header: "Requester", accessorKey: "supervisorName" as const },
+                                            {
+                                                header: "Quantity",
+                                                accessorKey: "qty" as const,
+                                                render: (req: Request) => <span className="font-bold">{req.qty} {req.unit}</span>
+                                            },
+                                        ]}
+                                        data={requests}
+                                        actions={(req) => (
+                                            <button
+                                                onClick={() => {
+                                                    setReviewRequest(req as Request);
+                                                    setIsReviewModalOpen(true);
+                                                }}
+                                                className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                                            >
+                                                Review
+                                            </button>
+                                        )}
+                                    />
+                                </div>
+                            ));
+                        })()}
+                    </div>
                 )}
 
                 {activeTab === "approved" && (
@@ -611,6 +666,24 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                         isOpen={isEditModalOpen}
                         onClose={() => setIsEditModalOpen(false)}
                         item={editingItem}
+                        userName={userName}
+                    />
+                )}
+
+                {/* Review Request Modal */}
+                {reviewRequest && (
+                    <ReviewRequestModal
+                        isOpen={isReviewModalOpen}
+                        onClose={() => {
+                            setIsReviewModalOpen(false);
+                            router.refresh(); // Refresh data on close if needed, but handled inside modal success too usually. 
+                            // Actually modal calls toast and onClose. We should refresh here or pass refresh callback.
+                            // The modal onClose logic in my impl didn't call refresh. Let's rely on router.refresh() here or add it to onClose if we want strictness.
+                            // Wait, the modal impl calls `router.refresh()` inside itself? No, it calls `onClose`.
+                            // Let's modify the onclose to refresh if action was taken. Or simpler: just router.refresh() when modal closes.
+                            router.refresh();
+                        }}
+                        request={reviewRequest}
                         userName={userName}
                     />
                 )}
