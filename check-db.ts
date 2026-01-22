@@ -22,8 +22,10 @@ async function main() {
     `;
         console.log("📌 Projects Columns:", columns);
 
-    } catch (e: any) {
-        console.error("❌ Failed to alter projects table:", e.meta?.message || e.message);
+    } catch (e) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const message = (e as any).meta?.message || (e as any).message;
+        console.error("❌ Failed to alter projects table:", message);
     }
 
     await prisma.$disconnect();

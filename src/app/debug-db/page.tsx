@@ -18,7 +18,7 @@ export default async function DebugDbPage() {
                 <h3 className="font-bold mb-2">Environment Check</h3>
                 <p><strong>Database URL:</strong> {maskedUrl}</p>
                 <p className="text-xs text-slate-500 mt-1">
-                    (Check if this looks like the Direct Connection 'db.cofqikmt...' or the old one)
+                    (Check if this looks like the Direct Connection &apos;db.cofqikmt...&apos; or the old one)
                 </p>
             </div>
 
