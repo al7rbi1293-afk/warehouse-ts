@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { logAudit } from "@/app/actions/audit";
 
 export async function createWorker(formData: FormData) {
     const session = await getServerSession(authOptions);
@@ -28,6 +29,10 @@ export async function createWorker(formData: FormData) {
                 status: "Active",
             },
         });
+
+
+
+        await logAudit(session.user.name, "Create Worker", `Created worker ${name} (${role})`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Worker added successfully" };
@@ -59,6 +64,10 @@ export async function updateWorker(
             data,
         });
 
+
+
+        await logAudit(session.user.name, "Update Worker", `Updated worker ID ${id}`, "Manpower");
+
         revalidatePath("/manpower");
         return { success: true, message: "Worker updated successfully" };
     } catch (error) {
@@ -83,6 +92,10 @@ export async function deleteWorker(id: number) {
         await prisma.worker.delete({
             where: { id },
         });
+
+
+
+        await logAudit(session.user.name, "Delete Worker", `Deleted worker ID ${id}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Worker deleted successfully" };
@@ -110,6 +123,10 @@ export async function createShift(formData: FormData) {
                 endTime,
             },
         });
+
+
+
+        await logAudit(session.user.name, "Create Shift", `Created shift ${name}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Shift added successfully" };
@@ -153,6 +170,10 @@ export async function submitAttendance(
                 supervisor,
             },
         });
+
+
+
+        await logAudit(session.user.name, "Submit Attendance", `Recorded attendance for worker ID ${workerId} (${status})`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Attendance recorded" };
@@ -204,6 +225,10 @@ export async function submitBulkAttendance(
             })),
         });
 
+
+
+        await logAudit(session.user.name, "Bulk Attendance", `Submitted attendance for ${attendanceData.length} workers`, "Manpower");
+
         revalidatePath("/manpower");
         return { success: true, message: `Recorded attendance for ${attendanceData.length} workers` };
     } catch (error) {
@@ -232,6 +257,10 @@ export async function updateSupervisorProfile(
                 shiftId,
             },
         });
+
+
+
+        await logAudit(session.user.name, "Update Profile", `Updated profile for ${username}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Profile updated successfully" };

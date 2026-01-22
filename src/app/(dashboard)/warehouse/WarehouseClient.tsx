@@ -723,10 +723,33 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 No regional stock data available
                             </div>
                         ) : (
-                            <PremiumTable
-                                columns={localInventoryColumns}
-                                data={data.localInventory}
-                            />
+                            (() => {
+                                // Group by Region
+                                const groupedStock: Record<string, LocalInventoryItem[]> = {};
+                                data.localInventory.forEach(item => {
+                                    const region = item.region || "Unassigned";
+                                    if (!groupedStock[region]) groupedStock[region] = [];
+                                    groupedStock[region].push(item);
+                                });
+
+                                return Object.entries(groupedStock).sort().map(([region, items]) => (
+                                    <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden mb-6">
+                                        <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                            <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                                                {region} Region
+                                            </h3>
+                                            <span className="px-3 py-1 bg-white border border-slate-200 rounded-full text-xs font-medium text-slate-500">
+                                                {items.reduce((acc, curr) => acc + (curr.qty || 0), 0)} Total Items
+                                            </span>
+                                        </div>
+                                        <PremiumTable
+                                            columns={localInventoryColumns}
+                                            data={items}
+                                        />
+                                    </div>
+                                ));
+                            })()
                         )}
                     </div>
                 )}
