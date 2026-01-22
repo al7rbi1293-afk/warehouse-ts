@@ -107,22 +107,13 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                 if (selectedRegion === "All" && (!w.region || !supervisorRegions.includes(w.region))) return false;
             } else {
                 // Manager/Admin
-                if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
+                if (selectedRegion !== "All" && w.region?.toLowerCase().trim() !== selectedRegion.toLowerCase().trim()) return false;
             }
 
-            // 2. Shift Filter with Mapping
+            // 2. Shift Filter (ID based)
             if (selectedShift !== "All") {
-                const selectedShiftObj = data.shifts.find(s => s.id.toString() === selectedShift);
-                if (selectedShiftObj) {
-                    const name = selectedShiftObj.name;
-                    let targetNames = [name];
-
-                    // Specific logic: A/A2 -> A1, B -> B1
-                    if (name === "A" || name === "A2") targetNames = ["A1"];
-                    else if (name === "B") targetNames = ["B1"];
-
-                    if (!w.shiftName || !targetNames.includes(w.shiftName)) return false;
-                }
+                // strict ID match is safer than name matching
+                if (!w.shiftId || w.shiftId.toString() !== selectedShift) return false;
             }
 
             // 3. Search
@@ -131,7 +122,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
 
             return true;
         });
-    }, [data.workers, selectedRegion, selectedShift, searchTerm, userRole, supervisorRegions, data.shifts]);
+    }, [data.workers, selectedRegion, selectedShift, searchTerm, userRole, supervisorRegions]);
 
 
     const handleSubmitAttendance = async () => {

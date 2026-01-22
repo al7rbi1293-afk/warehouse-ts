@@ -423,7 +423,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                         </div>
                         <div className="flex rounded-lg bg-slate-100 p-1">
                             {data.warehouses.length > 0 ? (
-                                data.warehouses.map(wh => (
+                                data.warehouses.filter(w => w.name !== "CWW").map(wh => (
                                     <button
                                         key={wh.id}
                                         onClick={() => setWarehouseFilter(wh.name)}
@@ -446,10 +446,6 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                         onClick={() => setWarehouseFilter("SNC")}
                                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === "SNC" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
                                     >SNC Warehouse</button>
-                                    <button
-                                        onClick={() => setWarehouseFilter("CWW")}
-                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === "CWW" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
-                                    >CWW Warehouse</button>
                                 </>
                             )}
                         </div>
