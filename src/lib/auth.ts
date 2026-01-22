@@ -170,7 +170,7 @@ export const authOptions: NextAuthOptions = {
                     const startOfDay = new Date(today.setHours(0, 0, 0, 0));
                     const endOfDay = new Date(today.setHours(23, 59, 59, 999));
 
-                    // @ts-expect-error - Prisma client type update lag
+
                     const coverages = await prisma.staffAttendance.findMany({
                         where: {
                             coveredBy: token.dbId,
