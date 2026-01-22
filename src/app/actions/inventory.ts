@@ -240,8 +240,11 @@ export async function transferStock(
         const item = await prisma.inventory.findUnique({ where: { id: itemId } });
         if (!item) return { success: false, message: "Item not found" };
 
-        // Ensure we are taking from the correct location
-        if (item.location !== fromLocation) {
+        // Special handling for CWW: Treat as infinite source
+        const isCWW = fromLocation === "CWW";
+
+        // Ensure we are taking from the correct location (skip for CWW as we use any item as template)
+        if (!isCWW && item.location !== fromLocation) {
             // If the ID passed is for an item in a different location, try to find the item in the fromLocation
             const correctItem = await prisma.inventory.findFirst({
                 where: { nameEn: item.nameEn, location: fromLocation }
@@ -254,28 +257,30 @@ export async function transferStock(
             return transferStock(correctItem.id, qty, fromLocation, toLocation, user, unit, notes);
         }
 
-        if (item.qty < qty) {
+        if (!isCWW && item.qty < qty) {
             return { success: false, message: `Insufficient stock in ${fromLocation}` };
         }
 
         await prisma.$transaction(async (tx) => {
-            // Deduct from success
-            await tx.inventory.update({
-                where: { id: item.id },
-                data: { qty: item.qty - qty, lastUpdated: new Date() },
-            });
+            // Deduct from source (Only if NOT CWW)
+            if (!isCWW) {
+                await tx.inventory.update({
+                    where: { id: item.id },
+                    data: { qty: item.qty - qty, lastUpdated: new Date() },
+                });
 
-            await tx.stockLog.create({
-                data: {
-                    itemName: item.nameEn,
-                    location: fromLocation,
-                    changeAmount: -qty,
-                    newQty: item.qty - qty,
-                    actionBy: user,
-                    actionType: `Transfer Out to ${toLocation}${notes ? ` - ${notes}` : ''}`,
-                    unit,
-                },
-            });
+                await tx.stockLog.create({
+                    data: {
+                        itemName: item.nameEn,
+                        location: fromLocation,
+                        changeAmount: -qty,
+                        newQty: item.qty - qty,
+                        actionBy: user,
+                        actionType: `Transfer Out to ${toLocation}${notes ? ` - ${notes}` : ''}`,
+                        unit,
+                    },
+                });
+            }
 
             // Add to destination
             let destItem = await tx.inventory.findFirst({
