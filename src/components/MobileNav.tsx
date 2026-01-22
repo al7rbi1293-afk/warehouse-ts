@@ -84,6 +84,7 @@ export function MobileNav() {
 
                         <div className="border-t border-white/10 my-2 pt-2">
                             <Link href="/settings" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Settings</Link>
+                            <Link href="/profile" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Profile</Link>
                         </div>
                     </nav>
 

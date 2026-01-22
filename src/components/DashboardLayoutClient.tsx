@@ -25,10 +25,13 @@ export function DashboardLayoutClient({ children }: { children: React.ReactNode 
             </div>
 
             {/* Main Content - Takes remaining space */}
-            <main className="flex-1 min-w-0 md:pt-0">
-                <div className="p-6 md:p-8 max-w-[1600px] mx-auto">
+            <main className="flex-1 min-w-0 md:pt-0 flex flex-col">
+                <div className="p-6 md:p-8 max-w-[1600px] mx-auto w-full flex-1">
                     {children}
                 </div>
+                <footer className="px-6 py-4 text-center text-xs text-slate-400 border-t border-slate-100 mt-auto">
+                    made by Assistant Project Manager Abdulaziz Alhazmi
+                </footer>
             </main>
         </div>
     );
