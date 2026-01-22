@@ -189,6 +189,7 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
                                     <>
                                         <option value="NSTC">NSTC Warehouse</option>
                                         <option value="SNC">SNC Warehouse</option>
+                                        <option value="CWW">CWW Warehouse</option>
                                     </>
                                 )}
                             </select>
@@ -222,6 +223,7 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
                                     <>
                                         <option value="SNC">SNC Warehouse</option>
                                         <option value="NSTC">NSTC Warehouse</option>
+                                        <option value="CWW">CWW Warehouse</option>
                                     </>
                                 )}
                             </select>
@@ -244,6 +246,7 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
                                     <>
                                         <option value="NSTC">NSTC Warehouse</option>
                                         <option value="SNC">SNC Warehouse</option>
+                                        <option value="CWW">CWW Warehouse</option>
                                     </>
                                 )}
                             </select>

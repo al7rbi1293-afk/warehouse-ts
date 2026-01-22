@@ -446,6 +446,10 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                         onClick={() => setWarehouseFilter("SNC")}
                                         className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === "SNC" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
                                     >SNC Warehouse</button>
+                                    <button
+                                        onClick={() => setWarehouseFilter("CWW")}
+                                        className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${warehouseFilter === "CWW" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+                                    >CWW Warehouse</button>
                                 </>
                             )}
                         </div>
