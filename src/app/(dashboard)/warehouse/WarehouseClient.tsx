@@ -4,7 +4,11 @@ import { useState } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
 import { StockTransferForm } from "@/components/StockTransferForm";
+import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse } from "@/types";
+import { deleteInventoryItem } from "@/app/actions/inventory";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 // Define simplified props matching what the page actually sends
 interface Props {
@@ -24,11 +28,36 @@ interface Props {
     userRegion?: string | null;
 }
 
-export function WarehouseClient({ data }: Props) {
+export function WarehouseClient({ data, userName }: Props) {
+    const router = useRouter();
     const [activeTab, setActiveTab] = useState("stock");
     const [searchTerm, setSearchTerm] = useState("");
     // Default to first warehouse if available, else empty or generic
     const [warehouseFilter, setWarehouseFilter] = useState<string>(data.warehouses[0]?.name || "NSTC");
+
+    const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+    const handleEdit = (item: InventoryItem) => {
+        setEditingItem(item);
+        setIsEditModalOpen(true);
+    };
+
+    const handleDelete = async (id: number) => {
+        if (!confirm("Are you sure you want to delete this item?")) return;
+
+        try {
+            const res = await deleteInventoryItem(id);
+            if (res.success) {
+                toast.success(res.message);
+                router.refresh();
+            } else {
+                toast.error(res.message);
+            }
+        } catch {
+            toast.error("Failed to delete item");
+        }
+    };
 
     // Filter Logic
     const currentInventory = data.inventory.filter(item => item.location === warehouseFilter);
@@ -79,6 +108,21 @@ export function WarehouseClient({ data }: Props) {
                 </span>
             )
         },
+    ];
+
+    const logColumns = [
+        { header: "Date", render: (log: StockLog) => new Date(log.logDate).toLocaleString() },
+        { header: "Item", accessorKey: "itemName" as const },
+        {
+            header: "Change", accessorKey: "changeAmount" as const, render: (log: StockLog) => (
+                <span className={`font-semibold ${log.changeAmount && log.changeAmount > 0 ? "text-green-600" : "text-red-600"}`}>
+                    {log.changeAmount && log.changeAmount > 0 ? "+" : ""}{log.changeAmount} {log.unit}
+                </span>
+            )
+        },
+        { header: "New Qty", accessorKey: "newQty" as const },
+        { header: "Action", accessorKey: "actionType" as const },
+        { header: "User", accessorKey: "actionBy" as const },
     ];
 
     return (
@@ -157,8 +201,21 @@ export function WarehouseClient({ data }: Props) {
                     <PremiumTable
                         columns={inventoryColumns}
                         data={filteredInventory}
-                        actions={() => (
-                            <button className="text-blue-600 hover:text-blue-800 font-medium">Edit</button>
+                        actions={(item) => (
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => handleEdit(item as InventoryItem)}
+                                    className="text-blue-600 hover:text-blue-800 font-medium text-sm"
+                                >
+                                    Edit
+                                </button>
+                                <button
+                                    onClick={() => handleDelete((item as InventoryItem).id)}
+                                    className="text-red-600 hover:text-red-800 font-medium text-sm"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         )}
                     />
                 )}
@@ -203,11 +260,21 @@ export function WarehouseClient({ data }: Props) {
                 )}
 
                 {activeTab === "logs" && (
-                    <div className="text-center py-8 text-slate-500">
-                        Stock logs view (Coming Soon)
-                    </div>
+                    <PremiumTable
+                        columns={logColumns}
+                        data={data.stockLogs}
+                    />
                 )}
             </div>
+            {/* Edit Modal */}
+            {editingItem && (
+                <EditInventoryModal
+                    isOpen={isEditModalOpen}
+                    onClose={() => setIsEditModalOpen(false)}
+                    item={editingItem}
+                    userName={userName}
+                />
+            )}
         </div>
     );
 }
