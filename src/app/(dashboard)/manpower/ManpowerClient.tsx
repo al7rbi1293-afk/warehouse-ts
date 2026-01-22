@@ -362,16 +362,22 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                             ))}
                         </select>
 
-                        <select
-                            value={selectedShift}
-                            onChange={(e) => setSelectedShift(e.target.value)}
-                            className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                            <option value="All">Select Shift</option>
-                            {data.shifts.map(s => (
-                                <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                        </select>
+                        {userRole === "supervisor" ? (
+                            <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm font-medium text-slate-600">
+                                Shift: {data.shifts.find(s => s.id.toString() === selectedShift)?.name || "Assigned Shift"}
+                            </div>
+                        ) : (
+                            <select
+                                value={selectedShift}
+                                onChange={(e) => setSelectedShift(e.target.value)}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                                <option value="All">Select Shift</option>
+                                {data.shifts.map(s => (
+                                    <option key={s.id} value={s.id}>{s.name}</option>
+                                ))}
+                            </select>
+                        )}
 
                         <button
                             onClick={handleSubmitAttendance}
