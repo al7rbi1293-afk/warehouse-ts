@@ -19,7 +19,7 @@ async function getWarehouseData(userRole: string, userName: string) {
             }),
             prisma.stockLog.findMany({
                 orderBy: { logDate: "desc" },
-                take: 500,
+                take: 100, // Reduced from 500
             }),
             prisma.localInventory.findMany({
                 orderBy: [{ region: "asc" }, { itemName: "asc" }],
@@ -36,7 +36,7 @@ async function getWarehouseData(userRole: string, userName: string) {
         const allRequests = userRole === "manager"
             ? await prisma.request.findMany({
                 orderBy: { requestDate: "desc" },
-                take: 500,
+                take: 200, // Reduced for performance
             })
             : [];
 
@@ -79,7 +79,7 @@ async function getWarehouseData(userRole: string, userName: string) {
 
             auditLogs: await prisma.auditLog.findMany({
                 orderBy: { timestamp: "desc" },
-                take: 100
+                take: 50
             }),
         };
     } catch (error) {

@@ -78,6 +78,8 @@ model Attendance {
   createdAt  DateTime  @default(now()) @map("created_at")
   worker     Worker    @relation(fields: [workerId], references: [id])
 
+  @@index([date])
+  @@index([workerId])
   @@map("attendance")
 }
 
@@ -124,6 +126,10 @@ model Request {
   approvedBy     String?   @map("approved_by")
   approvedAt     DateTime? @map("approved_at")
 
+  @@index([status])
+  @@index([region])
+  @@index([supervisorName])
+  @@index([requestDate])
   @@map("requests")
 }
 
@@ -139,6 +145,7 @@ model StockLog {
   newQty       Int?      @map("new_qty")
   userName     String?   @map("user_name")
 
+  @@index([logDate])
   @@map("stock_logs")
 }
 
