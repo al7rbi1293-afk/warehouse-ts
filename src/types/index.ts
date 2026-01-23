@@ -146,6 +146,8 @@ export interface Request {
   issuedAt?: Date | null;
   shiftId?: number | null;
   shiftName?: string | null;
+  approvedBy?: string | null;
+  approvedAt?: Date | null;
 }
 
 export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Issued' | 'Received' | string;

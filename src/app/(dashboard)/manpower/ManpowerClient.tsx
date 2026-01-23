@@ -11,6 +11,7 @@ import { UserManagement } from "@/components/UserManagement";
 import { AttendanceActionControls } from "@/components/AttendanceActionControls";
 import { AttendanceTable } from "@/components/AttendanceTable";
 import { StaffManagement } from "@/components/StaffManagement";
+import { ExportButton } from "@/components/ExportButton";
 
 interface Props {
     data: ManpowerData & { allUsers?: User[] };
@@ -325,6 +326,31 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         tabs.push("workers", "users", "staff");
     }
 
+    // Helper data for specific lists to export
+    const flatAttendanceList = useMemo(() => {
+        return data.allAttendance?.map(a => ({
+            Date: new Date(a.date).toLocaleDateString(),
+            Worker: a.worker?.name || a.workerName || "Unknown",
+            Role: a.worker?.role || "-",
+            Region: a.worker?.region || "-",
+            Shift: data.shifts.find(s => s.id === a.shiftId)?.name || a.shiftId || "-",
+            Status: a.status,
+            Notes: a.notes || "-",
+            Supervisor: a.supervisor || "-"
+        })) || [];
+    }, [data.allAttendance, data.shifts]);
+
+    const flatWorkersList = useMemo(() => {
+        return filteredWorkers.map(w => ({
+            Name: w.name,
+            ID: w.empId || "-",
+            Role: w.role || "-",
+            Region: w.region || "-",
+            Shift: w.shiftName || "-",
+            Status: w.status
+        }));
+    }, [filteredWorkers]);
+
     return (
         <div className="space-y-6 animate-fade-in pb-12">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -403,6 +429,26 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                                         <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full border border-slate-200">
                                             {reports.length} Regions
                                         </span>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mb-2">
+                                        <ExportButton
+                                            data={reports.map(r => ({
+                                                Date: r.date,
+                                                Region: r.region,
+                                                Shift: r.shift,
+                                                Total_Workers: r.totalWorkers,
+                                                Present: r.presentCount,
+                                                Absent: r.absentCount
+                                            }))}
+                                            fileName={`Daily_Reports_${date.replace(/\//g, '-')}`}
+                                            label="Export Summary"
+                                        />
+                                        <ExportButton
+                                            data={flatAttendanceList.filter(a => a.Date === date)}
+                                            fileName={`Detailed_Attendance_${date.replace(/\//g, '-')}`}
+                                            label="Export Detailed"
+                                            className="bg-slate-800 hover:bg-slate-900"
+                                        />
                                     </div>
                                     <PremiumTable
                                         columns={[
@@ -532,6 +578,13 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
 
                 {activeTab === "workers" && (
                     <div className="space-y-8">
+                        <div className="flex justify-end">
+                            <ExportButton
+                                data={flatWorkersList}
+                                fileName={`Workers_List_${new Date().toISOString().split('T')[0]}`}
+                                label="Export All Workers"
+                            />
+                        </div>
                         {(() => {
                             // Group workers by Region -> Shift
                             const groupedWorkers: Record<string, Record<string, Worker[]>> = {};

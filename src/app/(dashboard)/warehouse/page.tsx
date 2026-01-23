@@ -32,10 +32,26 @@ async function getWarehouseData(userRole: string, userName: string) {
         // If no warehouses found (e.g. migration issue), return empty or default?
         // Let's return what we found. Client will handle fallback.
 
+        // For managers, get all requests for tracking
+        const allRequests = userRole === "manager"
+            ? await prisma.request.findMany({
+                orderBy: { requestDate: "desc" },
+                take: 500,
+            })
+            : [];
+
         // For supervisors, get their own pending requests
         const myPendingRequests = userRole === "supervisor"
             ? await prisma.request.findMany({
                 where: { supervisorName: userName, status: "Pending" },
+                orderBy: { requestDate: "desc" },
+            })
+            : [];
+
+        // For supervisors, get their own rejected requests
+        const myRejectedRequests = userRole === "supervisor"
+            ? await prisma.request.findMany({
+                where: { supervisorName: userName, status: "Rejected" },
                 orderBy: { requestDate: "desc" },
             })
             : [];
@@ -52,12 +68,15 @@ async function getWarehouseData(userRole: string, userName: string) {
             inventory,
             pendingRequests,
             approvedRequests,
+            allRequests, // New
             stockLogs,
             localInventory,
             myPendingRequests,
+            myRejectedRequests, // New
             readyForPickup,
             warehouses,
-            regions: await prisma.region.findMany({ orderBy: { name: "asc" } }),
+            regions: await prisma.region.findMany({ orderBy: { name: "asc" } }), // Keeping existing
+
             auditLogs: await prisma.auditLog.findMany({
                 orderBy: { timestamp: "desc" },
                 take: 100

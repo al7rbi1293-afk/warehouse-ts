@@ -28,6 +28,8 @@ interface Props {
         warehouses: Warehouse[];
         regions: { id: number; name: string }[];
         auditLogs: AuditLog[];
+        allRequests?: Request[];
+        myRejectedRequests?: Request[];
     };
     userRole?: string;
     userName: string;
@@ -189,13 +191,44 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
     const requestColumns = [
         { header: "Region", accessorKey: "region" as const },
-        { header: "Requester", accessorKey: "supervisorName" as const },
+        {
+            header: "Item Details",
+            render: (item: Request) => (
+                <div>
+                    <div className="font-bold text-slate-800">{item.itemName}</div>
+                    <div className="text-xs text-slate-500">{item.category}</div>
+                </div>
+            )
+        },
+        {
+            header: "Quantity",
+            render: (item: Request) => (
+                <span className="font-semibold text-slate-700">
+                    {item.qty} {item.unit}
+                </span>
+            )
+        },
+        { header: "Supervisor", accessorKey: "supervisorName" as const },
         { header: "Date", render: (item: Request) => item.requestDate ? new Date(item.requestDate).toLocaleDateString() : "-" },
+        ...(userRole === "storekeeper" ? [{
+            header: "Approved By",
+            render: (item: Request) => (
+                <div className="flex flex-col">
+                    <span className="font-medium text-slate-900">{item.approvedBy || "-"}</span>
+                    {item.approvedAt && (
+                        <span className="text-xs text-slate-500">
+                            {new Date(item.approvedAt).toLocaleDateString()}
+                        </span>
+                    )}
+                </div>
+            )
+        }] : []),
         {
             header: "Status", render: (item: Request) => (
                 <span className={`px-2 py-1 rounded-full text-xs font-semibold ${item.status === "Pending" ? "bg-yellow-100 text-yellow-800" :
                     item.status === "Approved" ? "bg-green-100 text-green-800" :
-                        "bg-slate-100 text-slate-800"
+                        item.status === "Issued" ? "bg-blue-100 text-blue-800" :
+                            "bg-slate-100 text-slate-800"
                     }`}>
                     {item.status}
                 </span>
@@ -277,11 +310,11 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 {(() => {
                     let tabs: string[] = [];
                     if (userRole === "manager") {
-                        tabs = ["stock", "add", "transfer", "requests", "approved", "audit", "regional_stock", "logs"];
+                        tabs = ["stock", "add", "transfer", "requests", "tracking", "approved", "audit", "regional_stock", "logs"];
                     } else if (userRole === "storekeeper") {
                         tabs = ["requests", "approved", "stock"];
                     } else if (userRole === "supervisor") {
-                        tabs = ["my_requests", "new_request", "local_stock"];
+                        tabs = ["my_requests", "rejected", "new_request", "local_stock"];
                     }
 
                     return tabs.map((tab) => (
@@ -312,7 +345,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 </div>
             )}
 
-            {/* Requests Tab (Manager/Storekeeper View) */}
+            {/* Requests Tab */}
             {activeTab === "requests" && (
                 <div className="space-y-8">
                     <div className="flex justify-between items-center mb-4">
@@ -324,6 +357,18 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 {userRole === "storekeeper" ? "Requests waiting for issuance" : "Requests requiring approval"}
                             </p>
                         </div>
+                        <ExportButton
+                            data={(userRole === "storekeeper" ? data.approvedRequests : data.pendingRequests).map(req => ({
+                                Region: req.region,
+                                Item: req.itemName,
+                                Quantity: req.qty,
+                                Unit: req.unit,
+                                Supervisor: req.supervisorName,
+                                Date: req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-",
+                                Status: req.status
+                            }))}
+                            fileName={`${userRole === "storekeeper" ? "Approved" : "Pending"}_Requests_${new Date().toISOString().split('T')[0]}`}
+                        />
                     </div>
                     {(() => {
                         // Select data based on role
@@ -363,11 +408,13 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                         };
 
                         const handleBulkReject = async (region: string, reqs: Request[]) => {
-                            if (!confirm(`Reject all ${reqs.length} requests for ${region}?`)) return;
+                            const reason = prompt(`Reject all ${reqs.length} requests for ${region}? Enter reason:`);
+                            if (reason === null) return; // User cancelled
+
                             try {
                                 const reqIds = reqs.map(r => r.reqId);
                                 const { bulkRejectRequests } = await import("@/app/actions/inventory");
-                                const res = await bulkRejectRequests(reqIds);
+                                const res = await bulkRejectRequests(reqIds, reason || "No reason provided");
                                 if (res.success) {
                                     toast.success(res.message);
                                     router.refresh();
@@ -485,6 +532,19 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             <h2 className="text-lg font-bold text-slate-800">Approved Requests</h2>
                             <p className="text-sm text-slate-500">History of approved supply requests</p>
                         </div>
+                        <ExportButton
+                            data={data.approvedRequests.map(req => ({
+                                Region: req.region,
+                                Item: req.itemName,
+                                Quantity: req.qty,
+                                Unit: req.unit,
+                                Supervisor: req.supervisorName,
+                                Date: req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-",
+                                Approver: req.approvedBy || "-",
+                                Status: req.status
+                            }))}
+                            fileName={`Approved_Requests_${new Date().toISOString().split('T')[0]}`}
+                        />
                     </div>
                     {data.approvedRequests.length === 0 ? (
                         <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
@@ -494,6 +554,108 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                         <PremiumTable
                             columns={requestColumns}
                             data={data.approvedRequests}
+                        />
+                    )}
+                </div>
+            )}
+
+            {/* Tracking Tab (Manager) */}
+            {activeTab === "tracking" && (
+                <div className="space-y-8">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-slate-800">Request Tracking</h2>
+                            <p className="text-sm text-slate-500">Lifecycle view of all requests</p>
+                        </div>
+                        <ExportButton
+                            data={(data.allRequests || []).map(req => ({
+                                Region: req.region,
+                                Item: req.itemName,
+                                Quantity: req.qty,
+                                Unit: req.unit,
+                                Supervisor: req.supervisorName,
+                                Date: req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-",
+                                Status: req.status,
+                                Approver: req.approvedBy || "-",
+                                IssuedBy: req.issuedBy || "-",
+                                Notes: req.notes || "-"
+                            }))}
+                            fileName={`Tracking_Requests_${new Date().toISOString().split('T')[0]}`}
+                        />
+                    </div>
+                    {(!data.allRequests || data.allRequests.length === 0) ? (
+                        <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                            No requests found
+                        </div>
+                    ) : (
+                        (() => {
+                            const groupedAll = (data.allRequests || []).reduce((acc, req) => {
+                                const region = req.region || "Unassigned";
+                                if (!acc[region]) acc[region] = [];
+                                acc[region].push(req);
+                                return acc;
+                            }, {} as Record<string, Request[]>);
+
+                            return Object.entries(groupedAll).sort().map(([region, requests]) => (
+                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                    <div className="px-6 py-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                            {region}
+                                        </h3>
+                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200">
+                                            {requests.length} Requests
+                                        </span>
+                                    </div>
+                                    <PremiumTable
+                                        columns={[
+                                            ...requestColumns,
+                                            { header: "Approver", accessorKey: "approvedBy" as const },
+                                            { header: "Issued By", accessorKey: "issuedBy" as const }
+                                        ]}
+                                        data={requests}
+                                    />
+                                </div>
+                            ));
+                        })()
+                    )}
+                </div>
+            )}
+
+            {/* Rejected Tab (Supervisor) */}
+            {activeTab === "rejected" && (
+                <div className="space-y-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <div>
+                            <h2 className="text-lg font-bold text-red-600">Rejected Requests</h2>
+                            <p className="text-sm text-slate-500">Requests rejected by management</p>
+                        </div>
+                    </div>
+                    {(!data.myRejectedRequests || data.myRejectedRequests.length === 0) ? (
+                        <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                            No rejected requests
+                        </div>
+                    ) : (
+                        <PremiumTable
+                            columns={[
+                                { header: "Item", accessorKey: "itemName" as const },
+                                {
+                                    header: "Quantity",
+                                    render: (item: Request) => (
+                                        <span className="font-semibold text-slate-700">{item.qty} {item.unit}</span>
+                                    )
+                                },
+                                { header: "Date", render: (item: Request) => item.requestDate ? new Date(item.requestDate).toLocaleDateString() : "-" },
+                                {
+                                    header: "Reason",
+                                    render: (item: Request) => (
+                                        <div className="text-red-600 font-medium bg-red-50 p-2 rounded-md border border-red-100 text-sm">
+                                            {item.notes || "No reason provided"}
+                                        </div>
+                                    )
+                                }
+                            ]}
+                            data={data.myRejectedRequests}
                         />
                     )}
                 </div>

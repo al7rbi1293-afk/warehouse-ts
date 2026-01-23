@@ -121,6 +121,8 @@ model Request {
   issuedAt       DateTime? @map("issued_at")
   shiftId        Int?      @map("shift_id")
   shiftName      String?   @map("shift_name")
+  approvedBy     String?   @map("approved_by")
+  approvedAt     DateTime? @map("approved_at")
 
   @@map("requests")
 }

@@ -1015,7 +1015,11 @@ export async function bulkApproveRequests(reqIds: number[]) {
     try {
         await prisma.request.updateMany({
             where: { reqId: { in: reqIds }, status: "Pending" },
-            data: { status: "Approved" },
+            data: {
+                status: "Approved",
+                approvedBy: session.user.name,
+                approvedAt: new Date()
+            },
         });
 
         revalidatePath("/warehouse");
@@ -1027,7 +1031,7 @@ export async function bulkApproveRequests(reqIds: number[]) {
 }
 
 // Bulk Reject Requests (Manager)
-export async function bulkRejectRequests(reqIds: number[]) {
+export async function bulkRejectRequests(reqIds: number[], reason?: string) {
     const session = await getServerSession(authOptions);
     if (!session || !['manager'].includes(session.user.role)) {
         return { success: false, message: "Unauthorized" };
@@ -1036,7 +1040,10 @@ export async function bulkRejectRequests(reqIds: number[]) {
     try {
         await prisma.request.updateMany({
             where: { reqId: { in: reqIds }, status: "Pending" },
-            data: { status: "Rejected" },
+            data: {
+                status: "Rejected",
+                notes: reason || "Rejected by Manager"
+            },
         });
 
         revalidatePath("/warehouse");
