@@ -265,25 +265,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         toast.info("Edit mode: Attendance data loaded.");
     };
 
-    const attendanceColumns = [
-        { header: "Date", accessorKey: "date" as const },
-        { header: "Region", accessorKey: "region" as const },
-        {
-            header: "Total Workers", accessorKey: "totalWorkers" as const, render: (row: DailyReport) => (
-                <span className="font-semibold text-slate-700">{row.totalWorkers}</span>
-            )
-        },
-        {
-            header: "Present", accessorKey: "presentCount" as const, render: (row: DailyReport) => (
-                <span className="text-green-600 font-bold">{row.presentCount}</span>
-            )
-        },
-        {
-            header: "Absent", accessorKey: "absentCount" as const, render: (row: DailyReport) => (
-                <span className="text-red-500">{row.absentCount}</span>
-            )
-        },
-    ];
+
 
     // Detail View State
     const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
@@ -402,37 +384,75 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
 
                 {activeTab === "reports" && (
                     <>
-                        <PremiumTable
-                            columns={[
-                                ...attendanceColumns,
-                                {
-                                    header: "Actions",
-                                    render: (row: DailyReport) => (
-                                        <div className="flex items-center gap-3">
-                                            <button
-                                                onClick={() => setSelectedReport(row)}
-                                                className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
-                                            >
-                                                View Details
-                                            </button>
-                                            {/* Allow Edit if Supervisor or Manager */}
-                                            {userRole === 'supervisor' || userRole === 'manager' ? (
-                                                <button
-                                                    onClick={() => handleEditReport(row)}
-                                                    className="text-amber-600 hover:text-amber-800 font-medium text-sm flex items-center gap-1"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
-                                                    </svg>
-                                                    Edit
-                                                </button>
-                                            ) : null}
-                                        </div>
-                                    )
-                                }
-                            ]}
-                            data={dailyReports}
-                        />
+                        {(() => {
+                            // Group reports by Date
+                            const groupedReports = dailyReports.reduce((acc, report) => {
+                                const dateKey = report.date;
+                                if (!acc[dateKey]) acc[dateKey] = [];
+                                acc[dateKey].push(report);
+                                return acc;
+                            }, {} as Record<string, DailyReport[]>);
+
+                            return Object.entries(groupedReports).map(([date, reports]) => (
+                                <div key={date} className="mb-8">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+                                            {date}
+                                        </h3>
+                                        <span className="text-xs font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded-full border border-slate-200">
+                                            {reports.length} Regions
+                                        </span>
+                                    </div>
+                                    <PremiumTable
+                                        columns={[
+                                            { header: "Region", accessorKey: "region" as const },
+                                            {
+                                                header: "Total Workers", accessorKey: "totalWorkers" as const, render: (row: DailyReport) => (
+                                                    <span className="font-semibold text-slate-700">{row.totalWorkers}</span>
+                                                )
+                                            },
+                                            {
+                                                header: "Present", accessorKey: "presentCount" as const, render: (row: DailyReport) => (
+                                                    <span className="text-green-600 font-bold">{row.presentCount}</span>
+                                                )
+                                            },
+                                            {
+                                                header: "Absent", accessorKey: "absentCount" as const, render: (row: DailyReport) => (
+                                                    <span className="text-red-500">{row.absentCount}</span>
+                                                )
+                                            },
+                                            {
+                                                header: "Actions",
+                                                render: (row: DailyReport) => (
+                                                    <div className="flex items-center gap-3">
+                                                        <button
+                                                            onClick={() => setSelectedReport(row)}
+                                                            className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
+                                                        >
+                                                            View Details
+                                                        </button>
+                                                        {/* Allow Edit if Supervisor or Manager */}
+                                                        {userRole === 'supervisor' || userRole === 'manager' ? (
+                                                            <button
+                                                                onClick={() => handleEditReport(row)}
+                                                                className="text-amber-600 hover:text-amber-800 font-medium text-sm flex items-center gap-1"
+                                                            >
+                                                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                                                    <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10" />
+                                                                </svg>
+                                                                Edit
+                                                            </button>
+                                                        ) : null}
+                                                    </div>
+                                                )
+                                            }
+                                        ]}
+                                        data={reports}
+                                    />
+                                </div>
+                            ));
+                        })()}
 
                         {selectedReport && (
                             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
