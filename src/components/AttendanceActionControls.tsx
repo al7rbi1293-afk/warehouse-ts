@@ -64,7 +64,7 @@ export function AttendanceActionControls({
                     ))}
                 </select>
 
-                {userRole === "supervisor" ? (
+                {userRole === "supervisor" && shifts.length <= 1 ? (
                     <div className="px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm font-medium text-slate-600 text-center">
                         Shift: {shifts.find(s => s.id.toString() === selectedShift)?.name || "Assigned Shift"}
                     </div>

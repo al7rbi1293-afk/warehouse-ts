@@ -21,7 +21,7 @@ interface Props {
     userShiftName?: string | null;
 }
 
-export function ManpowerClient({ data, userRole = "manager", userName = "Admin", userRegion, userShiftId }: Props) {
+export function ManpowerClient({ data, userRole = "manager", userName = "Admin", userRegion, userShiftId, userShiftName }: Props) {
     const router = useRouter();
     // Default tab based on role? Or just default to Reports
     const [activeTab, setActiveTab] = useState("reports");
@@ -46,6 +46,24 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
         if (userRole !== "supervisor" || supervisorRegions.length === 0) return data.regions;
         return data.regions.filter(r => supervisorRegions.includes(r.name));
     }, [data.regions, userRole, supervisorRegions]);
+
+    // Derived available shifts
+    const availableShifts = useMemo(() => {
+        if (userRole === "manager") return data.shifts;
+
+        if (userRole === "supervisor") {
+            // Special case: A2 supervisors can also manage A1
+            if (userShiftName === "A2") {
+                return data.shifts.filter(s => s.name === "A1" || s.name === "A2");
+            }
+            // Default: only their assigned shift
+            if (userShiftId) {
+                return data.shifts.filter(s => s.id === userShiftId);
+            }
+        }
+
+        return [];
+    }, [data.shifts, userRole, userShiftName, userShiftId]);
 
     // Track attendance overrides: { [date]: { [workerId]: { status?: string; notes?: string } } }
     const [attendanceBuffer, setAttendanceBuffer] = useState<Record<string, Record<number, { status?: string; notes?: string }>>>({});
@@ -363,7 +381,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                         availableRegions={availableRegions}
                         selectedShift={selectedShift}
                         setSelectedShift={setSelectedShift}
-                        shifts={data.shifts}
+                        shifts={availableShifts}
                         onSubmit={handleSubmitAttendance}
                         onAddWorker={handleAddWorker}
                     />
