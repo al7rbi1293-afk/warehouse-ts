@@ -64,7 +64,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     const [reviewRequest, setReviewRequest] = useState<Request | null>(null);
     const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
 
-    const [issueRequest] = useState<Request | null>(null);
+    const [issueRequest, setIssueRequest] = useState<Request | null>(null);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
 
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
@@ -312,96 +312,153 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 </div>
             )}
 
-            {/* Requests Tab (Manager View) */}
+            {/* Requests Tab (Manager/Storekeeper View) */}
             {activeTab === "requests" && (
                 <div className="space-y-8">
                     <div className="flex justify-between items-center mb-4">
                         <div>
-                            <h2 className="text-lg font-bold text-slate-800">Pending Requests</h2>
-                            <p className="text-sm text-slate-500">Requests requiring approval</p>
+                            <h2 className="text-lg font-bold text-slate-800">
+                                {userRole === "storekeeper" ? "Approved Requests" : "Pending Requests"}
+                            </h2>
+                            <p className="text-sm text-slate-500">
+                                {userRole === "storekeeper" ? "Requests waiting for issuance" : "Requests requiring approval"}
+                            </p>
                         </div>
                     </div>
-                    {data.pendingRequests.length === 0 ? (
-                        <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
-                            No pending requests
-                        </div>
-                    ) : (
-                        (() => {
-                            // Group requests by region
-                            const groupedRequests = data.pendingRequests.reduce((acc, req) => {
-                                const region = req.region || "Unassigned";
-                                if (!acc[region]) acc[region] = [];
-                                acc[region].push(req);
-                                return acc;
-                            }, {} as Record<string, Request[]>);
+                    {(() => {
+                        // Select data based on role
+                        const requestsToShow = userRole === "storekeeper" ? data.approvedRequests : data.pendingRequests;
 
-                            const handleBulkApprove = async (region: string, reqs: Request[]) => {
-                                if (!confirm(`Approve all ${reqs.length} requests for ${region}?`)) return;
-                                try {
-                                    const reqIds = reqs.map(r => r.reqId);
-                                    // Dynamically import to safely use server action if not already imported
-                                    // Though typically we import at top. Let's assume we add imports or use existing if any.
-                                    // Actually, let's fix imports in a separate step or ensure they are available.
-                                    // We'll use the imported functions.
-                                    const { bulkApproveRequests } = await import("@/app/actions/inventory");
-                                    const res = await bulkApproveRequests(reqIds);
-                                    if (res.success) {
-                                        toast.success(res.message);
-                                        router.refresh();
-                                    } else {
-                                        toast.error(res.message);
-                                    }
-                                } catch {
-                                    toast.error("Failed to approve requests");
+                        if (requestsToShow.length === 0) {
+                            return (
+                                <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
+                                    {userRole === "storekeeper" ? "No approved requests to issue" : "No pending requests"}
+                                </div>
+                            );
+                        }
+
+                        // Group requests by region
+                        const groupedRequests = requestsToShow.reduce((acc, req) => {
+                            const region = req.region || "Unassigned";
+                            if (!acc[region]) acc[region] = [];
+                            acc[region].push(req);
+                            return acc;
+                        }, {} as Record<string, Request[]>);
+
+                        const handleBulkApprove = async (region: string, reqs: Request[]) => {
+                            if (!confirm(`Approve all ${reqs.length} requests for ${region}?`)) return;
+                            try {
+                                const reqIds = reqs.map(r => r.reqId);
+                                const { bulkApproveRequests } = await import("@/app/actions/inventory");
+                                const res = await bulkApproveRequests(reqIds);
+                                if (res.success) {
+                                    toast.success(res.message);
+                                    router.refresh();
+                                } else {
+                                    toast.error(res.message);
                                 }
-                            };
+                            } catch {
+                                toast.error("Failed to approve requests");
+                            }
+                        };
 
-                            const handleBulkReject = async (region: string, reqs: Request[]) => {
-                                if (!confirm(`Reject all ${reqs.length} requests for ${region}?`)) return;
-                                try {
-                                    const reqIds = reqs.map(r => r.reqId);
-                                    const { bulkRejectRequests } = await import("@/app/actions/inventory");
-                                    const res = await bulkRejectRequests(reqIds);
-                                    if (res.success) {
-                                        toast.success(res.message);
-                                        router.refresh();
-                                    } else {
-                                        toast.error(res.message);
-                                    }
-                                } catch {
-                                    toast.error("Failed to reject requests");
+                        const handleBulkReject = async (region: string, reqs: Request[]) => {
+                            if (!confirm(`Reject all ${reqs.length} requests for ${region}?`)) return;
+                            try {
+                                const reqIds = reqs.map(r => r.reqId);
+                                const { bulkRejectRequests } = await import("@/app/actions/inventory");
+                                const res = await bulkRejectRequests(reqIds);
+                                if (res.success) {
+                                    toast.success(res.message);
+                                    router.refresh();
+                                } else {
+                                    toast.error(res.message);
                                 }
-                            };
+                            } catch {
+                                toast.error("Failed to reject requests");
+                            }
+                        };
 
-                            return Object.entries(groupedRequests).sort().map(([region, requests]) => (
-                                <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                                    <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                            <span className="w-2 h-2 rounded-full bg-yellow-400"></span>
-                                            {region}
-                                        </h3>
-                                        <div className="flex gap-2 items-center">
-                                            <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200 mr-2">
-                                                {requests.length} Requests
-                                            </span>
+                        const handleBulkIssue = async (region: string, reqs: Request[]) => {
+                            // Verify stock availability logic should ideally be on server, but we can fast-fail here if needed?
+                            // For now, let server handle it.
+                            if (!confirm(`Issue all ${reqs.length} requests for ${region}? This will deduct stock from NSTC.`)) return;
+
+                            try {
+                                const items = reqs.map(r => ({
+                                    reqId: r.reqId,
+                                    qty: r.qty || 0,
+                                    itemName: r.itemName || "Unknown",
+                                    region: region,
+                                    unit: r.unit || "pcs"
+                                }));
+
+                                const { bulkIssueRequests } = await import("@/app/actions/inventory");
+                                const res = await bulkIssueRequests(userName, items);
+
+                                if (res.success) {
+                                    toast.success(res.message);
+                                    router.refresh();
+                                } else {
+                                    toast.error(res.message);
+                                }
+                            } catch {
+                                toast.error("Failed to issue requests");
+                            }
+                        };
+
+                        return Object.entries(groupedRequests).sort().map(([region, requests]) => (
+                            <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                        <span className={`w-2 h-2 rounded-full ${userRole === "storekeeper" ? "bg-green-500" : "bg-yellow-400"}`}></span>
+                                        {region}
+                                    </h3>
+                                    <div className="flex gap-2 items-center">
+                                        <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200 mr-2">
+                                            {requests.length} Requests
+                                        </span>
+
+                                        {userRole === "storekeeper" ? (
                                             <button
-                                                onClick={() => handleBulkReject(region, requests)}
-                                                className="px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-md text-xs font-medium hover:bg-red-50 transition-colors shadow-sm"
+                                                onClick={() => handleBulkIssue(region, requests)}
+                                                className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors shadow-sm"
                                             >
-                                                Reject All
+                                                Issue All
                                             </button>
-                                            <button
-                                                onClick={() => handleBulkApprove(region, requests)}
-                                                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors shadow-sm"
-                                            >
-                                                Approve All
-                                            </button>
-                                        </div>
+                                        ) : (
+                                            <>
+                                                <button
+                                                    onClick={() => handleBulkReject(region, requests)}
+                                                    className="px-3 py-1.5 bg-white border border-red-200 text-red-600 rounded-md text-xs font-medium hover:bg-red-50 transition-colors shadow-sm"
+                                                >
+                                                    Reject All
+                                                </button>
+                                                <button
+                                                    onClick={() => handleBulkApprove(region, requests)}
+                                                    className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors shadow-sm"
+                                                >
+                                                    Approve All
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
-                                    <PremiumTable
-                                        columns={requestColumns}
-                                        data={requests}
-                                        actions={(item) => (
+                                </div>
+                                <PremiumTable
+                                    columns={requestColumns}
+                                    data={requests}
+                                    actions={(item) => (
+                                        userRole === "storekeeper" ? (
+                                            <button
+                                                onClick={() => {
+                                                    setIssueRequest(item as Request);
+                                                    setIsIssueModalOpen(true);
+                                                }}
+                                                className="px-3 py-1 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 shadow-sm"
+                                            >
+                                                Issue
+                                            </button>
+                                        ) : (
                                             <button
                                                 onClick={() => {
                                                     setReviewRequest(item as Request);
@@ -411,12 +468,12 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                             >
                                                 Review
                                             </button>
-                                        )}
-                                    />
-                                </div>
-                            ));
-                        })()
-                    )}
+                                        )
+                                    )}
+                                />
+                            </div>
+                        ));
+                    })()}
                 </div>
             )}
 
