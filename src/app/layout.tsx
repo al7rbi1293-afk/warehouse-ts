@@ -3,6 +3,7 @@ import { Cairo } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { Toaster } from "sonner";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const cairo = Cairo({
   subsets: ["arabic", "latin"],
@@ -24,6 +25,7 @@ export default function RootLayout({
       <body className={`${cairo.variable} font-sans antialiased`}>
         <Providers>
           {children}
+          <SpeedInsights />
           <Toaster richColors position="top-right" />
         </Providers>
       </body>
