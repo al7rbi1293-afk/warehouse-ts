@@ -25,6 +25,8 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
     const [isLoading, setIsLoading] = useState(false);
     const [transferType, setTransferType] = useState<TransferType>("transfer");
     const [selectedItem, setSelectedItem] = useState<string>("");
+    // Manual From Location State (Default to NSTC or first warehouse)
+    const [fromLocation, setFromLocation] = useState<string>("NSTC");
 
     // Dynamic Data State
     const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -49,7 +51,10 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
 
         const formData = new FormData(e.currentTarget);
         const itemId = parseInt(selectedItem);
-        const fromLocation = formData.get("fromLocation") as string;
+        // Use state for fromLocation if in lend mode to ensure consistency, else use form data
+        const formFromLocation = formData.get("fromLocation") as string;
+        const finalFromLocation = transferType === "lend" ? fromLocation : formFromLocation;
+
         const toLocation = formData.get("toLocation") as string;
         const qty = parseInt(formData.get("qty") as string);
         const notes = formData.get("notes") as string;
@@ -62,12 +67,12 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
             let res;
 
             if (transferType === "transfer") {
-                res = await transferStock(itemId, qty, fromLocation, toLocation, userName, unit, notes);
+                res = await transferStock(itemId, qty, finalFromLocation, toLocation, userName, unit, notes);
             } else if (transferType === "lend") {
                 res = await lendStock(itemId, qty, toLocation, userName, unit, notes);
             } else if (transferType === "borrow") {
                 // Return stock
-                res = await returnStock(itemId, qty, fromLocation, toLocation, userName, unit, notes);
+                res = await returnStock(itemId, qty, finalFromLocation, toLocation, userName, unit, notes);
             }
 
             if (res?.success) {
@@ -169,11 +174,21 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
                             className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                         >
                             <option value="">Select an item...</option>
-                            {inventory.map(item => (
-                                <option key={item.id} value={item.id}>
-                                    {item.nameEn} ({item.qty} {item.unit} available at {item.location})
-                                </option>
-                            ))}
+                            {inventory
+                                .filter(item => {
+                                    // If Lending, filter by selected From Location
+                                    if (transferType === "lend") {
+                                        return item.location === fromLocation;
+                                    }
+                                    // If Transferring, filter by selected From Location (need to read form value? usually we'd bind it to state too)
+                                    // ideally we should bind fromLocation state to Transfer mode too, but for now let's strict check on Lend as requested.
+                                    return true;
+                                })
+                                .map(item => (
+                                    <option key={item.id} value={item.id}>
+                                        {item.nameEn} ({item.qty} {item.unit} available at {item.location})
+                                    </option>
+                                ))}
                         </select>
                     </div>
 
@@ -196,8 +211,18 @@ export function StockTransferForm({ inventory, userName, stockLogs }: Props) {
                         )}
 
                         {transferType === "lend" && (
-                            <select name="fromLocation" disabled className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none text-slate-500 cursor-not-allowed">
-                                <option value="Warehouse">Current Warehouse (Auto)</option>
+                            <select
+                                name="fromLocation"
+                                value={fromLocation}
+                                onChange={(e) => {
+                                    setFromLocation(e.target.value);
+                                    setSelectedItem(""); // Reset item on location change
+                                }}
+                                className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none"
+                            >
+                                <option value="NSTC">NSTC Warehouse</option>
+                                <option value="SNC">SNC Warehouse</option>
+                                <option value="CWW">CWW Warehouse</option>
                             </select>
                         )}
 

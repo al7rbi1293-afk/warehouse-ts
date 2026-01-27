@@ -13,6 +13,7 @@ interface AttendanceActionControlsProps {
     shifts: { id: number; name: string }[];
     onSubmit: () => void;
     onAddWorker: () => void;
+    isLoading?: boolean;
 }
 
 export function AttendanceActionControls({
@@ -27,7 +28,8 @@ export function AttendanceActionControls({
     setSelectedShift,
     shifts,
     onSubmit,
-    onAddWorker
+    onAddWorker,
+    isLoading = false
 }: AttendanceActionControlsProps) {
     if (activeTab === "workers") {
         return (
@@ -83,9 +85,13 @@ export function AttendanceActionControls({
 
                 <button
                     onClick={onSubmit}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors shadow-sm font-medium text-sm w-full md:w-auto"
+                    disabled={isLoading}
+                    className={`px-4 py-2 text-white rounded-lg shadow-sm font-medium text-sm w-full md:w-auto transition-colors ${isLoading
+                            ? "bg-slate-400 cursor-not-allowed"
+                            : "bg-green-600 hover:bg-green-700"
+                        }`}
                 >
-                    Submit Attendance
+                    {isLoading ? "Submitting..." : "Submit Attendance"}
                 </button>
             </div>
         );

@@ -203,29 +203,27 @@ export async function submitBulkAttendance(
         const dateObj = new Date(date);
         const workerIds = attendanceData.map(r => r.workerId);
 
-        // Delete all existing attendance records for these workers on this date
-        // We do NOT filter by shiftId here, to avoid duplicates if a worker checks in different shifts on same day (unless that is desired, but usually it's one record per day)
-        // OR if they changed shift. We want to overwrite the daily record.
-        await prisma.attendance.deleteMany({
-            where: {
-                workerId: { in: workerIds },
-                date: dateObj,
-            },
+        await prisma.$transaction(async (tx) => {
+            // Delete all existing attendance records for these workers on this date
+            await tx.attendance.deleteMany({
+                where: {
+                    workerId: { in: workerIds },
+                    date: dateObj,
+                },
+            });
+
+            // Create all new records in one operation
+            await tx.attendance.createMany({
+                data: attendanceData.map(record => ({
+                    workerId: record.workerId,
+                    date: dateObj,
+                    status: record.status,
+                    notes: record.notes || null,
+                    shiftId: record.shiftId ?? (shiftId || null),
+                    supervisor,
+                })),
+            });
         });
-
-        // Create all new records in one operation
-        await prisma.attendance.createMany({
-            data: attendanceData.map(record => ({
-                workerId: record.workerId,
-                date: dateObj,
-                status: record.status,
-                notes: record.notes || null,
-                shiftId: record.shiftId ?? (shiftId || null),
-                supervisor,
-            })),
-        });
-
-
 
         await logAudit(session.user.name, "Bulk Attendance", `Submitted attendance for ${attendanceData.length} workers`, "Manpower");
 

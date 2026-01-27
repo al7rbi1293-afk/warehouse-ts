@@ -68,6 +68,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
 
     // Track attendance overrides: { [date]: { [workerId]: { status?: string; notes?: string } } }
     const [attendanceBuffer, setAttendanceBuffer] = useState<Record<string, Record<number, { status?: string; notes?: string }>>>({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // Helper to get effective status
     const getWorkerStatus = (workerId: number) => {
@@ -171,9 +172,12 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
             shiftId: w.shiftId // Pass the worker's assigned shift
         }));
 
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+
         try {
             const targetShiftId = parseInt(selectedShift);
-            // If All shifts selected (isNaN), we pass 0/null to action, but relying on worker's shiftId in payload
+            // If All shifts selected (isNaN), we pass 0/null to action, but relying on record per day
             const globalShiftId = isNaN(targetShiftId) ? 0 : targetShiftId;
 
             const res = await submitBulkAttendance(
@@ -186,11 +190,15 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
             if (res.success) {
                 toast.success(res.message);
                 router.refresh();
+                // Clear buffer after success if desired, or keep it.
+                // setAttendanceBuffer({});
             } else {
                 toast.error(res.message);
             }
         } catch {
             toast.error("Failed to submit attendance");
+        } finally {
+            setIsSubmitting(false);
         }
     };
 
@@ -392,6 +400,7 @@ export function ManpowerClient({ data, userRole = "manager", userName = "Admin",
                         shifts={availableShifts}
                         onSubmit={handleSubmitAttendance}
                         onAddWorker={handleAddWorker}
+                        isLoading={isSubmitting}
                     />
                 </div>
             </div>
