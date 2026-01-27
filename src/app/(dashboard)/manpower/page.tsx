@@ -39,23 +39,22 @@ async function getManpowerData() {
         ]);
 
         return {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            workers: workers.map((w: any) => ({
+            workers: workers.map(w => ({
                 ...w,
                 shiftName: w.shift?.name || null,
             })),
             shifts,
             // Cast the role strictly to match the interface
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            supervisors: supervisors.map((s: any) => ({
+            // Cast the role strictly to match the interface
+            supervisors: supervisors.map(s => ({
                 ...s,
                 role: s.role as UserRole | null
             })),
             allAttendance,
             regions,
             // Cast roles for allUsers to match interface
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            allUsers: allUsers.map((u: any) => ({
+            // Cast roles for allUsers to match interface
+            allUsers: allUsers.map(u => ({
                 ...u,
                 role: u.role as UserRole | null
             })),

@@ -42,14 +42,13 @@ export function StaffManagement() {
 
             if (attendanceRes.success && attendanceRes.data) {
                 const attMap: Record<number, StaffAttendanceRecord> = {};
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                attendanceRes.data.forEach((r: any) => {
+                attendanceRes.data.forEach(r => {
                     attMap[r.userId] = {
                         userId: r.userId,
-                        status: r.status,
+                        status: r.status || "Absent",
                         coveredBy: r.coveredBy,
-                        coverUser: r.coverUser,
-                        notes: r.notes
+                        coverUser: r.coverUser || undefined,
+                        notes: r.notes || undefined
                     };
                 });
                 setAttendance(attMap);
@@ -111,8 +110,8 @@ export function StaffManagement() {
                     <button
                         onClick={() => handleStatusChange(row.id, "Present")}
                         className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${attendance[row.id]?.status === "Present"
-                                ? "bg-green-100 text-green-700 border border-green-200"
-                                : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                            ? "bg-green-100 text-green-700 border border-green-200"
+                            : "bg-slate-50 text-slate-500 hover:bg-slate-100"
                             }`}
                     >
                         Present
@@ -120,8 +119,8 @@ export function StaffManagement() {
                     <button
                         onClick={() => handleStatusChange(row.id, "Absent")}
                         className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${attendance[row.id]?.status === "Absent"
-                                ? "bg-red-100 text-red-700 border border-red-200"
-                                : "bg-slate-50 text-slate-500 hover:bg-slate-100"
+                            ? "bg-red-100 text-red-700 border border-red-200"
+                            : "bg-slate-50 text-slate-500 hover:bg-slate-100"
                             }`}
                     >
                         Absent

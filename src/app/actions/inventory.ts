@@ -339,8 +339,7 @@ export async function transferStock(
         return { success: true, message: "Transfer completed successfully" };
     } catch (error) {
         console.error("Transfer error:", error);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const msg = (error as any).message;
+        const msg = error instanceof Error ? error.message : "Unknown error";
         return { success: false, message: msg === `Insufficient stock in ${fromLocation}` ? msg : "Transfer failed" };
     }
 }

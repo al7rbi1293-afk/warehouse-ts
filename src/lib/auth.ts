@@ -185,8 +185,7 @@ export const authOptions: NextAuthOptions = {
 
                     if (coverages.length > 0) {
                         const coveredRegions = coverages
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            .map((c: any) => c.user.region)
+                            .map(c => c.user.region)
                             .filter(Boolean)
                             .join(",");
 
