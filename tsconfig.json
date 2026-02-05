@@ -25,22 +25,7 @@
     ],
     "paths": {
       "@/*": [
-        "src/*"
-      ],
-      "@/lib/*": [
-        "src/lib/*"
-      ],
-      "@/components/*": [
-        "src/components/*"
-      ],
-      "@/app/*": [
-        "src/app/*"
-      ],
-      "@/types": [
-        "src/types/index.ts"
-      ],
-      "@/types/*": [
-        "src/types/*"
+        "./src/*"
       ]
     }
   },
