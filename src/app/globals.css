@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ========================================================================
+   CORPORATE BLUE THEME (Wareflow Solutions)
+   Aesthetic: Trustworthy, Professional, Clean, Bank-like
+   Colors: Royal Blue (#2563EB), White, Slate
+   ======================================================================== */
+
+:root {
+  /* Brand Colors */
+  --primary: 221 83% 53%;
+  /* #2563EB (Royal Blue) */
+  --primary-dark: 224 76% 48%;
+  /* #1d4ed8 */
+  --secondary: 210 40% 96%;
+  /* #F1F5F9 (Slate-100) */
+
+  /* Backgrounds */
+  --background: 210 40% 98%;
+  /* #F8FAFC (Very light cool gray) */
+  --card: 0 0% 100%;
+  /* White */
+
+  /* Text */
+  --foreground: 222 47% 11%;
+  /* #0F172A (Slate-900) */
+  --muted-foreground: 215 16% 47%;
+  /* #64748B (Slate-500) */
+
+  /* Borders */
+  --border: 214 32% 91%;
+  /* #E2E8F0 (Slate-200) */
+
+  /* Mockup Specifics */
+  --radius-card: 16px;
+  --radius-btn: 8px;
+}
+
+@layer base {
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+@layer components {
+
+  /* 
+     CARD STYLE
+     Matches the mockup: White, Rounded, Soft Shadow
+  */
+  .card-premium {
+    background-color: white;
+    border-radius: var(--radius-card);
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+    border: 1px solid white;
+    /* Subtle highlight */
+    transition: box-shadow 0.2s ease-in-out;
+  }
+
+  .card-premium:hover {
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.08);
+  }
+
+  /* 
+     BUTTONS
+     Matches the mockup: Blue, Rounded, No Gradient
+  */
+  .btn-primary {
+    background-color: #2563EB;
+    color: white;
+    font-weight: 500;
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius-btn);
+    transition: background-color 0.2s;
+  }
+
+  .btn-primary:hover {
+    background-color: #1d4ed8;
+  }
+
+  .btn-outline {
+    background-color: white;
+    border: 1px solid #E2E8F0;
+    color: #64748B;
+    font-weight: 500;
+    padding: 0.625rem 1.25rem;
+    border-radius: var(--radius-btn);
+    transition: all 0.2s;
+  }
+
+  .btn-outline:hover {
+    background-color: #F8FAFC;
+    color: #0F172A;
+    border-color: #CBD5E1;
+  }
+}
+
+/* Utilities */
+.text-balance {
+  text-wrap: balance;
+}
+
+/* Custom Scrollbar for Sidebar */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
