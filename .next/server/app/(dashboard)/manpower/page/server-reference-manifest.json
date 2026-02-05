@@ -1,0 +1,155 @@
+{
+  "node": {
+    "406ac2ac175b3d146fe1ff4c98a98f6f06817b4a46": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "createWorker",
+          "filename": "src/app/actions/manpower.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "createWorker",
+      "filename": "src/app/actions/manpower.ts"
+    },
+    "6009307487f0bcc002ea2a06712ef0cf5b14151857": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "updateWorker",
+          "filename": "src/app/actions/manpower.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "updateWorker",
+      "filename": "src/app/actions/manpower.ts"
+    },
+    "40314a5461dbdec936ffdaef9ba3d3c5a796eb01a5": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "deleteWorker",
+          "filename": "src/app/actions/manpower.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "deleteWorker",
+      "filename": "src/app/actions/manpower.ts"
+    },
+    "780ee3cc288d83043e5027befdbb35280be76f20f0": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "submitBulkAttendance",
+          "filename": "src/app/actions/manpower.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "submitBulkAttendance",
+      "filename": "src/app/actions/manpower.ts"
+    },
+    "40ee2ba9059aa813d068939e092131fc7754826348": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "createUser",
+          "filename": "src/app/actions/users.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "createUser",
+      "filename": "src/app/actions/users.ts"
+    },
+    "60a83923fc2a86194187f0e847e5fddd3c120dcc97": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "updateUser",
+          "filename": "src/app/actions/users.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "updateUser",
+      "filename": "src/app/actions/users.ts"
+    },
+    "4034125df2cbdc005c8af2030decfdd3f9c1030b38": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "deleteUser",
+          "filename": "src/app/actions/users.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "deleteUser",
+      "filename": "src/app/actions/users.ts"
+    },
+    "0003c8a1bd8ed2fe6e53cb9e9606d4dbea40fd5571": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "getStaffList",
+          "filename": "src/app/actions/staff.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "getStaffList",
+      "filename": "src/app/actions/staff.ts"
+    },
+    "40a6297af27422d4551288b5192f26872415ba489b": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "getStaffAttendance",
+          "filename": "src/app/actions/staff.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "getStaffAttendance",
+      "filename": "src/app/actions/staff.ts"
+    },
+    "7c6dc3d93bd39156d689187aa772474e629cd3f5e5": {
+      "workers": {
+        "app/(dashboard)/manpower/page": {
+          "moduleId": 90376,
+          "async": false,
+          "exportedName": "markStaffAttendance",
+          "filename": "src/app/actions/staff.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/manpower/page": "action-browser"
+      },
+      "exportedName": "markStaffAttendance",
+      "filename": "src/app/actions/staff.ts"
+    }
+  },
+  "edge": {}
+}

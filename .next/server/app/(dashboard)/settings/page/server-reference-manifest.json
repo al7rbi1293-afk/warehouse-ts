@@ -1,0 +1,20 @@
+{
+  "node": {
+    "609501e411039257cb35406b60827c2844e7f2ba9d": {
+      "workers": {
+        "app/(dashboard)/settings/page": {
+          "moduleId": 90832,
+          "async": false,
+          "exportedName": "updateUserProfile",
+          "filename": "src/app/actions/auth.ts"
+        }
+      },
+      "layer": {
+        "app/(dashboard)/settings/page": "action-browser"
+      },
+      "exportedName": "updateUserProfile",
+      "filename": "src/app/actions/auth.ts"
+    }
+  },
+  "edge": {}
+}

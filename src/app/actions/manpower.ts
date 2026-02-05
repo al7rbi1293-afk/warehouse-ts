@@ -32,7 +32,7 @@ export async function createWorker(formData: FormData) {
 
 
 
-        await logAudit(session.user.name, "Create Worker", `Created worker ${name} (${role})`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Create Worker", `Created worker ${name} (${role})`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Worker added successfully" };
@@ -66,7 +66,7 @@ export async function updateWorker(
 
 
 
-        await logAudit(session.user.name, "Update Worker", `Updated worker ID ${id}`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Update Worker", `Updated worker ID ${id}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Worker updated successfully" };
@@ -95,7 +95,7 @@ export async function deleteWorker(id: number) {
 
 
 
-        await logAudit(session.user.name, "Delete Worker", `Deleted worker ID ${id}`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Delete Worker", `Deleted worker ID ${id}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Worker deleted successfully" };
@@ -126,7 +126,7 @@ export async function createShift(formData: FormData) {
 
 
 
-        await logAudit(session.user.name, "Create Shift", `Created shift ${name}`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Create Shift", `Created shift ${name}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Shift added successfully" };
@@ -173,7 +173,7 @@ export async function submitAttendance(
 
 
 
-        await logAudit(session.user.name, "Submit Attendance", `Recorded attendance for worker ID ${workerId} (${status})`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Submit Attendance", `Recorded attendance for worker ID ${workerId} (${status})`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Attendance recorded" };
@@ -225,7 +225,7 @@ export async function submitBulkAttendance(
             });
         });
 
-        await logAudit(session.user.name, "Bulk Attendance", `Submitted attendance for ${attendanceData.length} workers`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Bulk Attendance", `Submitted attendance for ${attendanceData.length} workers`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: `Recorded attendance for ${attendanceData.length} workers` };
@@ -260,7 +260,7 @@ export async function updateSupervisorProfile(
 
 
 
-        await logAudit(session.user.name, "Update Profile", `Updated profile for ${username}`, "Manpower");
+        await logAudit(session.user.name || session.user.username, "Update Profile", `Updated profile for ${username}`, "Manpower");
 
         revalidatePath("/manpower");
         return { success: true, message: "Profile updated successfully" };

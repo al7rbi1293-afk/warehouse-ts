@@ -168,7 +168,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                             value={formData.role}
                             onChange={(e) => setFormData({ ...formData, role: e.target.value })}
                         >
-                            {USER_ROLES.map(role => (
+                            {Object.values(USER_ROLES).map(role => (
                                 <option key={role} value={role}>{role}</option>
                             ))}
                         </select>

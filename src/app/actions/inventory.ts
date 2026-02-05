@@ -39,7 +39,7 @@ export async function createInventoryItem(formData: FormData) {
             },
         });
 
-        await logAudit(session.user.name, "Create Item", `Created item ${nameEn} in ${location}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Create Item", `Created item ${nameEn} in ${location}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Item created successfully" };
     } catch (error) {
@@ -135,7 +135,7 @@ export async function updateInventoryItem(
             data: updateData,
         });
 
-        await logAudit(session.user.name, "Update Item", `Updated item ID ${id}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Update Item", `Updated item ID ${id}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Item updated successfully" };
     } catch (error) {
@@ -159,7 +159,7 @@ export async function deleteInventoryItem(id: number) {
 
         await prisma.inventory.delete({ where: { id } });
 
-        await logAudit(session.user.name, "Delete Item", `Deleted item ID ${id}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Delete Item", `Deleted item ID ${id}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Item deleted successfully" };
     } catch (error) {
@@ -510,7 +510,7 @@ export async function createRequest(
             },
         });
 
-        await logAudit(session.user.name, "Create Request", `Created request for ${itemName}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Create Request", `Created request for ${itemName}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Request created" };
     } catch (error) {
@@ -584,7 +584,7 @@ export async function updateRequestStatus(
             },
         });
 
-        await logAudit(session.user.name, "Update Request", `Updated Request #${reqId} status to ${status}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Update Request", `Updated Request #${reqId} status to ${status}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Request updated" };
     } catch (error) {
@@ -651,7 +651,7 @@ export async function confirmReceipt(reqId: number) {
             }
         });
 
-        await logAudit(session.user.name, "Confirm Receipt", `Confirmed receipt of Request #${reqId}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Confirm Receipt", `Confirmed receipt of Request #${reqId}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Receipt confirmed and local inventory updated" };
     } catch (error) {
@@ -743,7 +743,7 @@ export async function deleteRequest(reqId: number) {
 
     try {
         await prisma.request.delete({ where: { reqId } });
-        await logAudit(session.user.name, "Delete Request", `Deleted Request #${reqId}`, "Warehouse");
+        await logAudit(session.user.name || session.user.username, "Delete Request", `Deleted Request #${reqId}`, "Warehouse");
         revalidatePath("/warehouse");
         return { success: true, message: "Request deleted" };
     } catch (error) {

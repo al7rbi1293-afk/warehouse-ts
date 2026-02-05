@@ -207,7 +207,7 @@ export default async function DashboardPage(props: { searchParams: Promise<{ dat
     const searchParams = await props.searchParams;
     const session = await getServerSession(authOptions);
 
-    if (!session || session.user.role !== "manager") {
+    if (!session || !session.user || session.user.role !== "manager") {
         redirect("/warehouse");
     }
 

@@ -108,13 +108,13 @@ export default async function WarehousePage() {
     }
 
     const user = session.user;
-    const data = await getWarehouseData(user.role, user.name);
+    const data = await getWarehouseData(user.role, user.name || "");
 
     return (
         <WarehouseClient
             data={data}
             userRole={user.role}
-            userName={user.name}
+            userName={user.name || ""}
             userRegion={user.region}
         />
     );

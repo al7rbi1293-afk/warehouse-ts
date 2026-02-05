@@ -90,11 +90,11 @@ export default async function ManpowerPage() {
         <ManpowerClient
             data={data}
             userRole={user.role}
-            userName={user.name}
-            userRegion={user.region}
-            userShiftId={user.shiftId}
-            userShiftName={user.shiftName}
-            userAllowedShifts={user.allowedShifts}
+            userName={user.name || undefined}
+            userRegion={user.region || undefined}
+            userShiftId={user.shiftId || undefined}
+            userShiftName={(user as any).shiftName || undefined}
+            userAllowedShifts={(user as any).allowedShifts || undefined}
         />
     );
 }
