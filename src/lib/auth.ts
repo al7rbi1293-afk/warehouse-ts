@@ -77,7 +77,9 @@ export const authOptions: NextAuthOptions = {
                 token.username = user.username;
                 token.role = user.role;
                 token.region = user.region;
+                token.regions = user.regions; // Restore regions
                 token.shiftId = user.shiftId;
+                token.attendanceShiftId = user.attendanceShiftId; // Restore attendanceShiftId
                 token.allowedShifts = user.allowedShifts;
                 token.shiftName = user.shiftName;
                 token.employeeId = user.employeeId;
@@ -90,9 +92,12 @@ export const authOptions: NextAuthOptions = {
                 session.user.username = token.username as string;
                 session.user.role = token.role as string;
                 session.user.region = token.region as string;
+                session.user.regions = token.regions as string | null; // Restore regions
                 session.user.shiftId = token.shiftId as number;
+                session.user.attendanceShiftId = token.attendanceShiftId as number | null; // Restore attendanceShiftId
                 session.user.allowedShifts = token.allowedShifts as string | null;
                 session.user.shiftName = token.shiftName as string | null;
+                session.user.employeeId = token.employeeId as string | null; // Add employeeId to session
             }
             return session;
         }
