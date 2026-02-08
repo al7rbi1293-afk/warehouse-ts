@@ -5,10 +5,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 export interface MasterReportData {
-    management: Array<{ name: string; status: string; notes?: string; empId?: string }>;
-    supervisors: Array<{ name: string; status: string; notes?: string; empId?: string; coverUser?: any }>;
-    morning: Record<string, Array<{ name: string; status: string; notes?: string; empId?: string }>>;
-    night: Record<string, Array<{ name: string; status: string; notes?: string; empId?: string }>>;
+    management: any[];
+    supervisors: any[];
+    morning: Record<string, any[]>;
+    night: Record<string, any[]>;
     dates: {
         morning: string;
         night: string;
@@ -128,20 +128,24 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                         aDate.getDate() === targetDate.getDate();
                 });
 
-                // Logic:
-                // 1. Status: If no record, default to 'Present'. If record, use actual status.
-                // 2. Remarks: If coveredBy exists, show "Covered by: [Name]". Else use notes.
+                // Auto-Attendance Logic: If no record, default to Present
+                // If record exists, use status.
                 const status = relevantAttendance?.status || 'Present';
 
+                // Substitution Logic
                 let notes = relevantAttendance?.notes || '';
                 if (relevantAttendance?.coverUser) {
-                    notes = `Covered by: ${relevantAttendance.coverUser.name}`;
+                    const coverName = relevantAttendance.coverUser.name;
+                    const prefix = "Covered by: ";
+                    if (!notes.includes(prefix)) {
+                        notes = notes ? `${notes}. ${prefix}${coverName}` : `${prefix}${coverName}`;
+                    }
                 }
 
                 return {
                     id: user.id,
                     name: user.name,
-                    empId: user.employeeId || user.username, // Use system ID, fallback to username
+                    empId: user.username, // Using username as ID for users
                     status: status,
                     notes: notes,
                     role: user.role,
@@ -156,10 +160,6 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
         // Helper to Group by Zone (Region)
         const groupByZone = (records: any[]) => {
             return records.reduce((acc, record) => {
-                // Use worker's assigned zone (region) or shift name if region is missing
-                // In this system, A1/B1 seems to be the "Zone" concept effectively for shifts
-                // But user asked for "Zone grouping" inside shifts. 
-                // Let's use 'region' field from worker.
                 const zone = record.worker.region || 'Unassigned';
                 if (!acc[zone]) {
                     acc[zone] = [];

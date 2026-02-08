@@ -15,12 +15,9 @@ export function UserList({ users, onEdit, onDelete }: UserListProps) {
                         <tr>
                             <th className="px-6 py-4 font-semibold text-slate-600">Name</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Username</th>
-                            <th className="px-6 py-4 font-semibold text-slate-600">Employee ID</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Role</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Region</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Shift</th>
-                            <th className="px-6 py-4 font-semibold text-slate-600">Attendance Shift</th>
-                            <th className="px-6 py-4 font-semibold text-slate-600">Allowed Shifts</th>
                             <th className="px-6 py-4 font-semibold text-slate-600 text-right">Actions</th>
                         </tr>
                     </thead>
@@ -29,7 +26,6 @@ export function UserList({ users, onEdit, onDelete }: UserListProps) {
                             <tr key={user.username} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 font-medium text-slate-900">{user.name}</td>
                                 <td className="px-6 py-4 text-slate-600">{user.username}</td>
-                                <td className="px-6 py-4 text-slate-600 font-mono text-xs">{user.employeeId || "-"}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
                                         ${user.role === 'manager' ? 'bg-purple-100 text-purple-700' :
@@ -40,14 +36,6 @@ export function UserList({ users, onEdit, onDelete }: UserListProps) {
                                 </td>
                                 <td className="px-6 py-4 text-slate-600">{user.region || "-"}</td>
                                 <td className="px-6 py-4 text-slate-600">{user.shiftName || "-"}</td>
-                                <td className="px-6 py-4 text-slate-600">
-                                    {user.attendanceShiftId ? <span className="text-amber-600 font-medium" title="Different from primary shift">Override</span> : "-"}
-                                </td>
-                                <td className="px-6 py-4 text-slate-600 text-xs">
-                                    {user.allowedShifts ? user.allowedShifts.split(',').map(s => (
-                                        <span key={s} className="inline-block bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 mr-1 mb-1">{s}</span>
-                                    )) : <span className="text-slate-400">Default</span>}
-                                </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2">
                                         <button

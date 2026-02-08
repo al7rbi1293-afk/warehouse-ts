@@ -32,23 +32,8 @@ export const authOptions: NextAuthOptions = {
                     where: {
                         username: credentials.username,
                     },
-                    select: {
-                        id: true,
-                        username: true,
-                        password: true,
-                        name: true,
-                        role: true,
-                        region: true,
-                        regions: true,
-                        shiftId: true,
-                        attendanceShiftId: true,
-                        allowedShifts: true,
-                        shift: {
-                            select: {
-                                name: true
-                            }
-                        }
-                        // employeeId: true // Excluded to prevent crash if column missing
+                    include: {
+                        shift: true
                     }
                 });
 
@@ -76,8 +61,7 @@ export const authOptions: NextAuthOptions = {
                     shiftId: user.shiftId,
                     attendanceShiftId: user.attendanceShiftId,
                     allowedShifts: user.allowedShifts,
-                    shiftName: user.shift?.name,
-                    employeeId: (user as { employeeId?: string | null }).employeeId
+                    shiftName: user.shift?.name
                 };
             },
         }),
@@ -90,15 +74,12 @@ export const authOptions: NextAuthOptions = {
 
             if (user) {
                 token.id = user.id;
-                token.username = user.username;
-                token.role = user.role;
-                token.region = user.region;
-                token.regions = user.regions;
-                token.shiftId = user.shiftId;
-                token.attendanceShiftId = user.attendanceShiftId;
-                token.allowedShifts = user.allowedShifts;
-                token.shiftName = user.shiftName;
-                token.employeeId = user.employeeId;
+                token.username = (user as any).username;
+                token.role = (user as any).role;
+                token.region = (user as any).region;
+                token.shiftId = (user as any).shiftId;
+                token.allowedShifts = (user as any).allowedShifts;
+                token.shiftName = (user as any).shiftName;
             }
             return token;
         },
@@ -108,12 +89,9 @@ export const authOptions: NextAuthOptions = {
                 session.user.username = token.username as string;
                 session.user.role = token.role as string;
                 session.user.region = token.region as string;
-                session.user.regions = token.regions as string | null; // Restore regions
                 session.user.shiftId = token.shiftId as number;
-                session.user.attendanceShiftId = token.attendanceShiftId as number | null; // Restore attendanceShiftId
                 session.user.allowedShifts = token.allowedShifts as string | null;
                 session.user.shiftName = token.shiftName as string | null;
-                session.user.employeeId = token.employeeId as string | null; // Add employeeId to session
             }
             return session;
         }

@@ -15,9 +15,6 @@ export async function getStaffList() {
 
     try {
         const staff = await prisma.user.findMany({
-            where: {
-                role: { in: ['manager', 'supervisor'] }
-            },
             orderBy: { name: 'asc' },
             select: {
                 id: true,
