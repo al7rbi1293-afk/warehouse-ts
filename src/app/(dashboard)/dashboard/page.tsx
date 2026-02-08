@@ -32,10 +32,6 @@ async function getDashboardData(dateStr?: string) {
             lowStockItems,
             workersByRegion,
             topStockItems,
-            absentCount,
-            vacationCount,
-            dayOffCount,
-            sickCount,
         ] = await Promise.all([
             // Active workers count
             prisma.worker.count({ where: { status: "Active" } }),
@@ -93,38 +89,6 @@ async function getDashboardData(dateStr?: string) {
                 orderBy: { qty: "desc" },
                 take: 10,
             }),
-
-            // Absent Count
-            prisma.attendance.count({
-                where: {
-                    date: { gte: today, lt: tomorrow },
-                    status: "Absent"
-                }
-            }),
-
-            // Vacation Count
-            prisma.attendance.count({
-                where: {
-                    date: { gte: today, lt: tomorrow },
-                    status: "Vacation"
-                }
-            }),
-
-            // Day Off Count
-            prisma.attendance.count({
-                where: {
-                    date: { gte: today, lt: tomorrow },
-                    status: "Day Off"
-                }
-            }),
-
-            // Sick Leave Count
-            prisma.attendance.count({
-                where: {
-                    date: { gte: today, lt: tomorrow },
-                    status: "Sick Leave"
-                }
-            }),
         ]);
 
         // Shift specific metrics
@@ -133,8 +97,19 @@ async function getDashboardData(dateStr?: string) {
         // B1 (Night Shift) uses PREVIOUS day's attendance (shifted for reporting)
         const b1Attendance = b1PreviousDayAttendance.filter(a => a.worker?.shift?.name === "B1");
 
+        // Combine for "Effective Reporting Day" stats
+        // This gives a complete picture: Morning Shift (Today) + Night Shift (started Yesterday)
+        const combinedAttendance = [...a1Attendance, ...b1Attendance];
+
         const a1Present = a1Attendance.filter(a => a.status === "Present").length;
         const b1Present = b1Attendance.filter(a => a.status === "Present").length;
+
+        // Count statuses from the COMBINED list
+        const presentCount = combinedAttendance.filter(a => a.status === "Present").length;
+        const absentCount = combinedAttendance.filter(a => a.status === "Absent").length;
+        const vacationCount = combinedAttendance.filter(a => a.status === "Vacation").length;
+        const dayOffCount = combinedAttendance.filter(a => a.status === "Day Off").length;
+        const sickCount = combinedAttendance.filter(a => a.status === "Sick Leave").length;
 
         // Get attendance trend (last 7 days from selected date)
         const trendStart = new Date(today);
@@ -160,7 +135,6 @@ async function getDashboardData(dateStr?: string) {
             .sort((a, b) => a.date.localeCompare(b.date));
 
         // Calculate attendance rate
-        const presentCount = selectedDateAttendance.filter((a) => a.status === "Present").length;
         const attendanceRate = activeWorkers > 0
             ? Math.round((presentCount / activeWorkers) * 100 * 10) / 10
             : 0;
@@ -179,7 +153,7 @@ async function getDashboardData(dateStr?: string) {
                 sickCount,
                 a1Present,
                 b1Present,
-                a1Total: a1Attendance.length,
+                a1Total: a1Attendance.length, // Approximation based on records found
                 b1Total: b1Attendance.length,
             },
             lowStockItems: lowStockItems.map((item) => ({
@@ -196,7 +170,7 @@ async function getDashboardData(dateStr?: string) {
                 value: item.qty,
             })),
             attendanceTrend,
-            todayAttendance: selectedDateAttendance, // Pass the full detailed list
+            todayAttendance: combinedAttendance, // Pass the full detailed list
         };
     } catch (error) {
         console.error("Dashboard data error:", error);
