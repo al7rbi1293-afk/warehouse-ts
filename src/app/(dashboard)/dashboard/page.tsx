@@ -16,6 +16,10 @@ async function getDashboardData(dateStr?: string) {
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
 
+    // Calculate yesterday for B1 (Night Shift) attendance
+    // B1 attendance from Day N should appear in Day N+1's dashboard
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
     // Format selectedDate as YYYY-MM-DD in local time
     const selectedDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
@@ -23,6 +27,7 @@ async function getDashboardData(dateStr?: string) {
         const [
             activeWorkers,
             selectedDateAttendance,
+            b1PreviousDayAttendance,
             pendingRequests,
             lowStockItems,
             workersByRegion,
@@ -35,12 +40,28 @@ async function getDashboardData(dateStr?: string) {
             // Active workers count
             prisma.worker.count({ where: { status: "Active" } }),
 
-            // Attendance for the selected date
+            // Attendance for the selected date (for A1/day shifts)
             prisma.attendance.findMany({
                 where: {
                     date: {
                         gte: today,
                         lt: tomorrow,
+                    },
+                },
+                include: {
+                    worker: {
+                        include: { shift: true }
+                    },
+                },
+            }),
+
+            // B1 (Night Shift) attendance from PREVIOUS day
+            // This makes night shift attendance from Day N appear in Day N+1's report
+            prisma.attendance.findMany({
+                where: {
+                    date: {
+                        gte: yesterday,
+                        lt: today,
                     },
                 },
                 include: {
@@ -107,8 +128,10 @@ async function getDashboardData(dateStr?: string) {
         ]);
 
         // Shift specific metrics
+        // A1 (Day Shift) uses today's attendance
         const a1Attendance = selectedDateAttendance.filter(a => a.worker?.shift?.name === "A1");
-        const b1Attendance = selectedDateAttendance.filter(a => a.worker?.shift?.name === "B1");
+        // B1 (Night Shift) uses PREVIOUS day's attendance (shifted for reporting)
+        const b1Attendance = b1PreviousDayAttendance.filter(a => a.worker?.shift?.name === "B1");
 
         const a1Present = a1Attendance.filter(a => a.status === "Present").length;
         const b1Present = b1Attendance.filter(a => a.status === "Present").length;
