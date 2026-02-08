@@ -73,13 +73,22 @@ export const authOptions: NextAuthOptions = {
             }
 
             if (user) {
-                token.id = user.id;
-                token.username = (user as any).username;
-                token.role = (user as any).role;
-                token.region = (user as any).region;
-                token.shiftId = (user as any).shiftId;
-                token.allowedShifts = (user as any).allowedShifts;
-                token.shiftName = (user as any).shiftName;
+                const customUser = user as {
+                    id: string;
+                    username: string;
+                    role: string;
+                    region: string | null;
+                    shiftId: number | null;
+                    allowedShifts: string | null;
+                    shiftName: string | null;
+                };
+                token.id = customUser.id;
+                token.username = customUser.username;
+                token.role = customUser.role;
+                token.region = customUser.region;
+                token.shiftId = customUser.shiftId;
+                token.allowedShifts = customUser.allowedShifts;
+                token.shiftName = customUser.shiftName;
             }
             return token;
         },
