@@ -62,7 +62,7 @@ export const authOptions: NextAuthOptions = {
                     attendanceShiftId: user.attendanceShiftId,
                     allowedShifts: user.allowedShifts,
                     shiftName: user.shift?.name,
-                    employeeId: (user as any).employeeId
+                    employeeId: (user as { employeeId?: string | null }).employeeId
                 };
             },
         }),
