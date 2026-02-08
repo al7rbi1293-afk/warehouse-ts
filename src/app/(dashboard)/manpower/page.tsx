@@ -98,6 +98,7 @@ async function getManpowerData(user: any) {
                     shiftId: true,
                     attendanceShiftId: true,
                     allowedShifts: true,
+                    empId: true,
                 },
                 orderBy: { name: 'asc' }
             }) : Promise.resolve([]),
