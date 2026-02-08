@@ -24,100 +24,10 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             }
 
             const wb = XLSX.utils.book_new();
-            const wsData: any[][] = [];
 
             // Define Columns
-            // | # | Name | EMP ID | Status | Remarks |
             const HEADER_ROW = ["#", "Name", "EMP ID", "Status", "Remarks"];
-
-            // --- MANAGEMENT SECTION ---
-            wsData.push(["MANAGEMENT"]); // Main Header
-            wsData.push(HEADER_ROW);
-            if (data.management && data.management.length > 0) {
-                data.management.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-            } else {
-                wsData.push(["No Management Records"]);
-            }
-            wsData.push([]); // Spacer
-
-            // --- SUPERVISORS SECTION ---
-            wsData.push(["SUPERVISORS"]); // Main Header
-            wsData.push(HEADER_ROW);
-            if (data.supervisors && data.supervisors.length > 0) {
-                data.supervisors.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-            } else {
-                wsData.push(["No Supervisor Records"]);
-            }
-            wsData.push([]); // Spacer
-
-            // --- MORNING SHIFT SECTION ---
-            wsData.push([`Morning Shift (Date: ${data.dates.morning})`]); // Main Header
-            wsData.push([]); // Spacer
-
-            Object.entries(data.morning).forEach(([zone, workers]) => {
-                // Zone Sub-header (Bold)
-                wsData.push([zone.toUpperCase()]);
-                // Table Header
-                wsData.push(HEADER_ROW);
-
-                // Data Rows
-                workers.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-
-                wsData.push([]); // Spacer between zones
-            });
-
-            // --- NIGHT SHIFT SECTION ---
-            wsData.push([]); // Spacer before Night Shift
-            wsData.push([`Night Shift (Date: ${data.dates.night})`]); // Main Header
-            wsData.push([]); // Spacer
-
-            Object.entries(data.night).forEach(([zone, workers]) => {
-                // Zone Sub-header (Bold)
-                wsData.push([zone.toUpperCase()]);
-                // Table Header
-                wsData.push(HEADER_ROW);
-
-                // Data Rows
-                workers.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-                wsData.push([]); // Spacer between zones
-            });
-
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-            // Styling (Widths)
-            ws['!cols'] = [
+            const COL_WIDTHS = [
                 { wch: 5 },  // #
                 { wch: 30 }, // Name
                 { wch: 15 }, // EMP ID
@@ -125,7 +35,118 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
                 { wch: 40 }  // Remarks
             ];
 
-            XLSX.utils.book_append_sheet(wb, ws, "Master Report");
+            // ========== MORNING SHIFT SHEET ==========
+            const morningData: any[][] = [];
+
+            // --- MANAGEMENT SECTION ---
+            morningData.push(["MANAGEMENT"]);
+            morningData.push(HEADER_ROW);
+            if (data.management && data.management.length > 0) {
+                data.management.forEach((w: any, idx: number) => {
+                    morningData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+            } else {
+                morningData.push(["No Management Records"]);
+            }
+            morningData.push([]);
+
+            // --- SUPERVISORS SECTION (Day Shift Only) ---
+            const daySupervisors = data.supervisors.filter((s: any) =>
+                !['B1', 'B', 'B2', 'Night'].includes(s.shift) && s.role !== 'night_supervisor'
+            );
+            morningData.push(["SUPERVISORS"]);
+            morningData.push(HEADER_ROW);
+            if (daySupervisors.length > 0) {
+                daySupervisors.forEach((w: any, idx: number) => {
+                    morningData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+            } else {
+                morningData.push(["No Day Supervisor Records"]);
+            }
+            morningData.push([]);
+
+            // --- MORNING WORKERS SECTION ---
+            morningData.push([`WORKERS (Date: ${data.dates.morning})`]);
+            morningData.push([]);
+
+            Object.entries(data.morning).forEach(([zone, workers]) => {
+                morningData.push([zone.toUpperCase()]);
+                morningData.push(HEADER_ROW);
+                workers.forEach((w: any, idx: number) => {
+                    morningData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+                morningData.push([]);
+            });
+
+            const wsMorning = XLSX.utils.aoa_to_sheet(morningData);
+            wsMorning['!cols'] = COL_WIDTHS;
+            XLSX.utils.book_append_sheet(wb, wsMorning, "Morning Shift");
+
+            // ========== NIGHT SHIFT SHEET ==========
+            const nightData: any[][] = [];
+
+            // --- NIGHT SUPERVISORS SECTION ---
+            const nightSupervisors = data.supervisors.filter((s: any) =>
+                ['B1', 'B', 'B2', 'Night'].includes(s.shift) || s.role === 'night_supervisor'
+            );
+            nightData.push(["SUPERVISORS"]);
+            nightData.push(HEADER_ROW);
+            if (nightSupervisors.length > 0) {
+                nightSupervisors.forEach((w: any, idx: number) => {
+                    nightData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+            } else {
+                nightData.push(["No Night Supervisor Records"]);
+            }
+            nightData.push([]);
+
+            // --- NIGHT WORKERS SECTION ---
+            nightData.push([`WORKERS (Date: ${data.dates.night})`]);
+            nightData.push([]);
+
+            Object.entries(data.night).forEach(([zone, workers]) => {
+                nightData.push([zone.toUpperCase()]);
+                nightData.push(HEADER_ROW);
+                workers.forEach((w: any, idx: number) => {
+                    nightData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+                nightData.push([]);
+            });
+
+            const wsNight = XLSX.utils.aoa_to_sheet(nightData);
+            wsNight['!cols'] = COL_WIDTHS;
+            XLSX.utils.book_append_sheet(wb, wsNight, "Night Shift");
+
             XLSX.writeFile(wb, `Master_Report_${currentDate}.xlsx`);
             toast.success("Master Report exported successfully");
 
