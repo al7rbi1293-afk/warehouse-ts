@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 
 export async function createUser(data: any) {
     try {
-        const { username, password, name, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
+        const { username, password, name, empId, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
 
         const hashedPassword = await hash(password, 12);
 
@@ -15,6 +15,7 @@ export async function createUser(data: any) {
                 username,
                 password: hashedPassword,
                 name,
+                empId: empId || null,
                 role,
                 region: region || regions, // Legacy support
                 regions: regions || region, // New field
@@ -35,10 +36,11 @@ export async function createUser(data: any) {
 
 export async function updateUser(username: string, data: any) {
     try {
-        const { password, name, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
+        const { password, name, empId, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
 
         const updateData: any = {
             name,
+            empId: empId || null,
             role,
             region: region || regions,
             regions: regions || region,

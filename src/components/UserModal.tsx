@@ -21,6 +21,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
         username: "",
         password: "",
         name: "",
+        empId: "",
         role: "supervisor",
         region: "",
         regions: "",
@@ -35,6 +36,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                 username: user.username,
                 password: "", // Don't fill password on edit
                 name: user.name || "",
+                empId: user.empId || "",
                 role: user.role || "supervisor",
                 region: user.region || user.regions || "", // Support both legacy and new
                 regions: user.regions || user.region || "",
@@ -47,6 +49,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                 username: "",
                 password: "",
                 name: "",
+                empId: "",
                 role: "supervisor",
                 region: "",
                 regions: "",
@@ -172,6 +175,17 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                             required
                             value={formData.name}
                             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">Employee ID</label>
+                        <input
+                            type="text"
+                            value={formData.empId}
+                            onChange={(e) => setFormData({ ...formData, empId: e.target.value })}
+                            placeholder="e.g., EMP001"
                             className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                         />
                     </div>

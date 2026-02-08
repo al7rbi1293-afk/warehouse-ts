@@ -15,6 +15,7 @@ export function UserList({ users, onEdit, onDelete }: UserListProps) {
                         <tr>
                             <th className="px-6 py-4 font-semibold text-slate-600">Name</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Username</th>
+                            <th className="px-6 py-4 font-semibold text-slate-600">Emp ID</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Role</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Region</th>
                             <th className="px-6 py-4 font-semibold text-slate-600">Shift</th>
@@ -26,6 +27,7 @@ export function UserList({ users, onEdit, onDelete }: UserListProps) {
                             <tr key={user.username} className="hover:bg-slate-50/50 transition-colors">
                                 <td className="px-6 py-4 font-medium text-slate-900">{user.name}</td>
                                 <td className="px-6 py-4 text-slate-600">{user.username}</td>
+                                <td className="px-6 py-4 text-slate-600">{user.empId || "-"}</td>
                                 <td className="px-6 py-4">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
                                         ${user.role === 'manager' ? 'bg-purple-100 text-purple-700' :
