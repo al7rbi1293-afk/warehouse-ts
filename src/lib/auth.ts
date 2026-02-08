@@ -32,8 +32,23 @@ export const authOptions: NextAuthOptions = {
                     where: {
                         username: credentials.username,
                     },
-                    include: {
-                        shift: true
+                    select: {
+                        id: true,
+                        username: true,
+                        password: true,
+                        name: true,
+                        role: true,
+                        region: true,
+                        regions: true,
+                        shiftId: true,
+                        attendanceShiftId: true,
+                        allowedShifts: true,
+                        shift: {
+                            select: {
+                                name: true
+                            }
+                        }
+                        // employeeId: true // Excluded to prevent crash if column missing
                     }
                 });
 
