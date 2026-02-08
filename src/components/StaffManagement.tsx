@@ -125,7 +125,8 @@ export function StaffManagement({ date: globalDate, selectedRegion }: { date?: s
     };
 
     const filteredStaff = staff.filter(s => {
-        if (selectedRegion && selectedRegion !== "All" && s.region !== selectedRegion) return false;
+        if (!['manager', 'supervisor'].includes(s.role)) return false;
+        if (selectedRegion && selectedRegion !== "All" && s.region && !s.region.includes(selectedRegion)) return false;
         return true;
     });
 
@@ -133,7 +134,15 @@ export function StaffManagement({ date: globalDate, selectedRegion }: { date?: s
 
     const columns = [
         { header: "Name", accessorKey: "name" as const, render: (row: StaffUser) => <span className="font-medium text-slate-900">{row.name}</span> },
-        { header: "Role", accessorKey: "role" as const, render: (row: StaffUser) => <span className="capitalize">{row.role}</span> },
+        {
+            header: "Role", accessorKey: "role" as const, render: (row: StaffUser) => (
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
+                ${row.role === 'manager' ? 'bg-purple-100 text-purple-700 border border-purple-200' :
+                        'bg-blue-100 text-blue-700 border border-blue-200'}`}>
+                    {row.role}
+                </span>
+            )
+        },
         { header: "Region", accessorKey: "region" as const, render: (row: StaffUser) => row.region || "-" },
         {
             header: "Status",
