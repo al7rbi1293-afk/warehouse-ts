@@ -12,6 +12,7 @@ import { AttendanceActionControls } from "@/components/AttendanceActionControls"
 import { AttendanceTable } from "@/components/AttendanceTable";
 import { StaffManagement } from "@/components/StaffManagement";
 import { ExportButton } from "@/components/ExportButton";
+import { useAsyncAction } from "@/lib/useDebounce";
 
 interface Props {
     data: ManpowerData & { allUsers?: User[] };
@@ -89,7 +90,7 @@ export function ManpowerClient({
 
     // Track attendance overrides: { [date]: { [workerId]: { status?: string; notes?: string } } }
     const [attendanceBuffer, setAttendanceBuffer] = useState<Record<string, Record<number, { status?: string; notes?: string }>>>({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
+
 
     // Helper to get effective status
     const getWorkerStatus = (workerId: number) => {
@@ -196,7 +197,11 @@ export function ManpowerClient({
     }, [data.workers, selectedRegion, selectedShift, searchTerm, userRole, supervisorRegions, data.shifts, userAllowedShifts, userShiftId]);
 
 
-    const handleSubmitAttendance = async () => {
+
+
+    // ...
+
+    const [isSubmitting, handleSubmitAttendance] = useAsyncAction(async () => {
         if (!confirm(`Submit attendance for ${attendanceDate}? Previous records for this date/shift/region will be overwritten.`)) return;
 
         const currentWorkers = attendanceWorkers;
@@ -212,9 +217,6 @@ export function ManpowerClient({
             notes: getWorkerNotes(w.id),
             shiftId: w.shiftId // Pass the worker's assigned shift
         }));
-
-        if (isSubmitting) return;
-        setIsSubmitting(true);
 
         try {
             const targetShiftId = parseInt(selectedShift);
@@ -238,10 +240,8 @@ export function ManpowerClient({
             }
         } catch {
             toast.error("Failed to submit attendance");
-        } finally {
-            setIsSubmitting(false);
         }
-    };
+    });
 
 
     // Aggregate attendance data for the table

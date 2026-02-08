@@ -182,7 +182,7 @@ export async function getSubstituteZones(substituteUserId: number, date: string)
             where: {
                 coveredBy: substituteUserId,
                 date: new Date(date),
-                // substituteActive: true // Enable after migration
+                substituteActive: true
             },
             include: {
                 user: { select: { region: true } }

@@ -23,7 +23,9 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
         name: "",
         role: "supervisor",
         region: "",
+        regions: "",
         shiftId: "",
+        attendanceShiftId: "",
         allowedShifts: "",
     });
 
@@ -34,8 +36,10 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                 password: "", // Don't fill password on edit
                 name: user.name || "",
                 role: user.role || "supervisor",
-                region: user.region || "",
+                region: user.region || user.regions || "", // Support both legacy and new
+                regions: user.regions || user.region || "",
                 shiftId: user.shiftId?.toString() || "",
+                attendanceShiftId: user.attendanceShiftId?.toString() || "",
                 allowedShifts: user.allowedShifts || "",
             });
         } else {
@@ -45,7 +49,9 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                 name: "",
                 role: "supervisor",
                 region: "",
+                regions: "",
                 shiftId: "",
+                attendanceShiftId: "",
                 allowedShifts: "",
             });
         }
@@ -53,14 +59,23 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
     }, [user, isOpen]);
 
     const handleRegionToggle = (regionName: string) => {
-        const currentRegions = formData.region ? formData.region.split(",").map(r => r.trim()).filter(Boolean) : [];
-        let newRegions;
+        // Use regions field as primary source of truth if available, otherwise fallback to region
+        const sourceRegions = formData.regions || formData.region || "";
+        const currentRegions = sourceRegions.split(",").map(r => r.trim()).filter(Boolean);
+
+        let newRegionsList;
         if (currentRegions.includes(regionName)) {
-            newRegions = currentRegions.filter(r => r !== regionName);
+            newRegionsList = currentRegions.filter(r => r !== regionName);
         } else {
-            newRegions = [...currentRegions, regionName];
+            newRegionsList = [...currentRegions, regionName];
         }
-        setFormData({ ...formData, region: newRegions.join(",") });
+
+        const newRegionsString = newRegionsList.join(",");
+        setFormData({
+            ...formData,
+            region: newRegionsString, // Keep for backward compatibility
+            regions: newRegionsString
+        });
     };
 
     const handleShiftToggle = (shiftName: string) => {
@@ -176,12 +191,14 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
 
                     <div className="space-y-4 pt-2 border-t border-slate-50">
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">Responsible Regions</label>
-                            <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-slate-50">
+                            <label className="block text-sm font-medium text-slate-700 mb-2">Responsible Zones (Multi-select)</label>
+                            <div className="grid grid-cols-2 gap-2 p-3 border rounded-lg bg-slate-50 max-h-40 overflow-y-auto">
                                 {regions.map((r) => {
-                                    const isSelected = formData.region.split(",").map(item => item.trim()).filter(Boolean).includes(r.name);
+                                    // Handle both legacy single region and new multi-region format
+                                    const currentRegions = formData.region.split(",").map(item => item.trim()).filter(Boolean);
+                                    const isSelected = currentRegions.includes(r.name);
                                     return (
-                                        <label key={r.id} className="flex items-center gap-2 cursor-pointer group">
+                                        <label key={r.id} className="flex items-center gap-2 cursor-pointer group hover:bg-white p-1 rounded transition-colors">
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
@@ -196,22 +213,41 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                                 })}
                             </div>
                             {formData.region === "" && (
-                                <p className="mt-1 text-[10px] text-amber-600">No regions selected.</p>
+                                <p className="mt-1 text-[10px] text-amber-600">No zones selected. Supervisor won&apos;t see any workers.</p>
                             )}
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Shift Assignment</label>
-                            <select
-                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
-                                value={formData.shiftId}
-                                onChange={(e) => setFormData({ ...formData, shiftId: e.target.value })}
-                            >
-                                <option value="">Select Shift</option>
-                                {shifts.map((s) => (
-                                    <option key={s.id} value={s.id}>{s.name}</option>
-                                ))}
-                            </select>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Primary Shift</label>
+                                <select
+                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all text-sm"
+                                    value={formData.shiftId}
+                                    onChange={(e) => setFormData({ ...formData, shiftId: e.target.value })}
+                                >
+                                    <option value="">Select Shift</option>
+                                    {shifts.map((s) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">
+                                    Attendance Shift
+                                    <span className="text-slate-400 font-normal ml-1" title="If different from Primary Shift">(Optional)</span>
+                                </label>
+                                <select
+                                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all text-sm"
+                                    value={formData.attendanceShiftId || ""}
+                                    onChange={(e) => setFormData({ ...formData, attendanceShiftId: e.target.value })}
+                                >
+                                    <option value="">Same as Primary</option>
+                                    {shifts.map((s) => (
+                                        <option key={s.id} value={s.id}>{s.name}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         <div>

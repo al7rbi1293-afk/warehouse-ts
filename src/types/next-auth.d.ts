@@ -6,7 +6,9 @@ declare module "next-auth" {
         username: string;
         role: string;
         region?: string | null;
+        regions?: string | null;
         shiftId?: number | null;
+        attendanceShiftId?: number | null;
         allowedShifts?: string | null;
         shiftName?: string | null;
     }
@@ -22,7 +24,9 @@ declare module "next-auth/jwt" {
         username: string;
         role: string;
         region?: string | null;
+        regions?: string | null;
         shiftId?: number | null;
+        attendanceShiftId?: number | null;
         allowedShifts?: string | null;
         shiftName?: string | null;
     }

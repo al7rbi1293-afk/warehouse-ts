@@ -57,7 +57,9 @@ export const authOptions: NextAuthOptions = {
                     username: user.username,
                     role: user.role,
                     region: user.region,
+                    regions: user.regions,
                     shiftId: user.shiftId,
+                    attendanceShiftId: user.attendanceShiftId,
                     allowedShifts: user.allowedShifts,
                     shiftName: user.shift?.name
                 };
