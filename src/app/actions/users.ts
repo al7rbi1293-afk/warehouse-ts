@@ -30,7 +30,9 @@ interface CreateUserParams {
     name: string | null;
     role: string | null;
     region: string | null;
+    regions?: string | null; // Multi-zone: comma-separated list
     shiftId?: string | number | null;
+    attendanceShiftId?: string | number | null; // Attendance shift if different
     allowedShifts?: string | null;
 }
 
@@ -38,7 +40,9 @@ interface UpdateUserParams {
     name?: string | null;
     role?: string | null;
     region?: string | null;
+    regions?: string | null; // Multi-zone: comma-separated list
     shiftId?: string | number | null;
+    attendanceShiftId?: string | number | null; // Attendance shift if different
     password?: string | null;
     allowedShifts?: string | null;
 }
@@ -68,7 +72,9 @@ export async function createUser(data: CreateUserParams) {
                 name: data.name || "",
                 role: data.role || "staff",
                 region: data.region,
+                regions: data.regions || null,
                 shiftId: data.shiftId ? parseInt(data.shiftId as string) : null,
+                attendanceShiftId: data.attendanceShiftId ? parseInt(data.attendanceShiftId as string) : null,
                 allowedShifts: data.allowedShifts || null,
             },
         });
@@ -93,7 +99,9 @@ export async function updateUser(username: string, data: UpdateUserParams) {
         if (data.role) updateData.role = data.role;
         // Region and shiftId can be null
         if (data.region !== undefined) updateData.region = data.region;
+        if (data.regions !== undefined) updateData.regions = data.regions;
         if (data.shiftId !== undefined) updateData.shiftId = data.shiftId ? Number(data.shiftId) : null;
+        if (data.attendanceShiftId !== undefined) updateData.attendanceShiftId = data.attendanceShiftId ? Number(data.attendanceShiftId) : null;
         if (data.allowedShifts !== undefined) updateData.allowedShifts = data.allowedShifts;
 
         if (data.password && data.password.trim() !== "") {

@@ -39,7 +39,9 @@ async function getManpowerData() {
                     name: true,
                     role: true,
                     region: true,
+                    regions: true,
                     shiftId: true,
+                    attendanceShiftId: true,
                     allowedShifts: true,
                 },
                 orderBy: { name: 'asc' }

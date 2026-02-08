@@ -13,9 +13,11 @@ model User {
   password  String
   name      String
   role      String
-  region    String?
+  region    String?  // Legacy single region (kept for backwards compatibility)
+  regions   String?  @map("regions") // Multi-zone: comma-separated list of assigned zones
   shiftId       Int?     @map("shift_id")
   shift         Shift?   @relation(fields: [shiftId], references: [id])
+  attendanceShiftId Int? @map("attendance_shift_id") // Attendance shift if different from primary
   allowedShifts String?  @map("allowed_shifts")
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -29,8 +31,9 @@ model StaffAttendance {
   id        Int      @id @default(autoincrement())
   userId    Int      @map("user_id")
   date      DateTime @db.Date
-  status    String?  // Present, Absent
+  status    String?  // Present, Absent, Vacation, Day Off, Sick Leave
   coveredBy Int?     @map("covered_by") // User ID of the covering supervisor
+  substituteActive Boolean @default(false) @map("substitute_active") // Is substitute currently active?
   notes     String?
   createdAt DateTime @default(now()) @map("created_at")
 

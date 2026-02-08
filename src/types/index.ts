@@ -9,8 +9,10 @@ export interface User {
   password?: string;
   name: string | null;
   role: UserRole | null;
-  region: string | null;
+  region: string | null;  // Legacy single region
+  regions?: string | null; // Multi-zone: comma-separated list of assigned zones
   shiftId: number | null;
+  attendanceShiftId?: number | null; // Attendance shift if different from primary
   createdAt?: Date;
   shiftName?: string | null;
   allowedShifts?: string | null;
@@ -25,7 +27,9 @@ export interface SessionUser {
   name: string;
   role: UserRole;
   region: string;
+  regions: string | null; // Multi-zone support
   shiftId: number | null;
+  attendanceShiftId: number | null;
   shiftName: string | null;
   allowedShifts: string | null;
 }
