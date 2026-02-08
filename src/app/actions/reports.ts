@@ -145,7 +145,7 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                 return {
                     id: user.id,
                     name: user.name,
-                    empId: user.username, // Using username as ID for users
+                    empId: user.empId || user.username, // Prefer empId, fallback to username
                     status: status,
                     notes: notes,
                     role: user.role,
