@@ -30,6 +30,38 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             // | # | Name | EMP ID | Status | Remarks |
             const HEADER_ROW = ["#", "Name", "EMP ID", "Status", "Remarks"];
 
+            // --- MANAGEMENT SECTION ---
+            if (data.management && data.management.length > 0) {
+                wsData.push(["MANAGEMENT"]); // Main Header
+                wsData.push(HEADER_ROW);
+                data.management.forEach((w: any, idx: number) => {
+                    wsData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+                wsData.push([]); // Spacer
+            }
+
+            // --- SUPERVISORS SECTION ---
+            if (data.supervisors && data.supervisors.length > 0) {
+                wsData.push(["SUPERVISORS"]); // Main Header
+                wsData.push(HEADER_ROW);
+                data.supervisors.forEach((w: any, idx: number) => {
+                    wsData.push([
+                        idx + 1,
+                        w.name,
+                        w.empId || '-',
+                        w.status,
+                        w.notes || ''
+                    ]);
+                });
+                wsData.push([]); // Spacer
+            }
+
             // --- MORNING SHIFT SECTION ---
             wsData.push([`Morning Shift (Date: ${data.dates.morning})`]); // Main Header
             wsData.push([]); // Spacer

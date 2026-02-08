@@ -5,6 +5,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 export interface MasterReportData {
+    management: any[];
+    supervisors: any[];
     morning: Record<string, any[]>;
     night: Record<string, any[]>;
     dates: {
@@ -35,7 +37,7 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
     nightNextDay.setDate(nightDate.getDate() + 1);
 
     try {
-        const [morningAttendance, nightAttendance] = await Promise.all([
+        const [morningAttendance, nightAttendance, managers, supervisors] = await Promise.all([
             // 1. Fetch Morning Shift Data (A1, etc.) for Selected Date
             prisma.attendance.findMany({
                 where: {
@@ -74,8 +76,71 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                 orderBy: {
                     worker: { region: 'asc' }
                 }
+            }),
+
+            // 3. Fetch Management Users
+            prisma.user.findMany({
+                where: { role: { in: ['manager', 'admin'] } },
+                include: {
+                    attendance: {
+                        where: { date: { gte: morningDate, lt: morningNextDay } } // Checking Morning Date
+                    },
+                    shift: true
+                }
+            }),
+
+            // 4. Fetch Supervisors
+            prisma.user.findMany({
+                where: { role: { in: ['supervisor', 'night_supervisor'] } },
+                include: {
+                    // We need to check attendance for proper date based on their shift
+                    // For simplicity, we assume day shift date first, but we might need logic below
+                    attendance: {
+                        where: {
+                            date: { gte: nightDate, lt: morningNextDay } // Broad fetch, filter in JS
+                        }
+                    },
+                    shift: true
+                }
             })
         ]);
+
+        // Helper to process Staff (Managers/Supervisors)
+        const processStaff = (users: any[], defaultDate: Date) => {
+            return users.map(user => {
+                // Determine effective date for this user
+                let targetDate = defaultDate;
+                const shiftName = user.shift?.name || '';
+
+                // If user is clearly Night Shift, use Night Date
+                if (['B1', 'B', 'B2', 'Night'].includes(shiftName) || user.role === 'night_supervisor') {
+                    targetDate = nightDate;
+                } else {
+                    targetDate = morningDate;
+                }
+
+                // Find attendance for this specific date
+                const relevantAttendance = user.attendance.find((a: any) => {
+                    const aDate = new Date(a.date);
+                    return aDate.getFullYear() === targetDate.getFullYear() &&
+                        aDate.getMonth() === targetDate.getMonth() &&
+                        aDate.getDate() === targetDate.getDate();
+                });
+
+                return {
+                    id: user.id,
+                    name: user.name,
+                    empId: user.username, // Using username as ID for users
+                    status: relevantAttendance?.status || 'Present', // Auto-Present logic
+                    notes: relevantAttendance?.notes || (relevantAttendance ? '' : 'Auto-generated'),
+                    role: user.role,
+                    shift: shiftName
+                };
+            });
+        };
+
+        const managementList = processStaff(managers, morningDate);
+        const supervisorList = processStaff(supervisors, morningDate); // Shift logic inside handles night supervisors
 
         // Helper to Group by Zone (Region)
         const groupByZone = (records: any[]) => {
@@ -103,6 +168,8 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
         };
 
         return {
+            management: managementList,
+            supervisors: supervisorList,
             morning: groupByZone(morningAttendance),
             night: groupByZone(nightAttendance),
             dates: {
