@@ -1,4 +1,4 @@
-// Type definitions for NSTC Management App
+// Type definitions for NSTC Management App (Updated)
 
 // =====================
 // User Types
@@ -16,6 +16,7 @@ export interface User {
   createdAt?: Date;
   shiftName?: string | null;
   allowedShifts?: string | null;
+  employeeId?: string | null;
 }
 
 export type SafeUser = Omit<User, 'password'>;

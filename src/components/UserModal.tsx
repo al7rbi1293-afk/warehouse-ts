@@ -27,6 +27,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
         shiftId: "",
         attendanceShiftId: "",
         allowedShifts: "",
+        employeeId: "",
     });
 
     useEffect(() => {
@@ -41,6 +42,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                 shiftId: user.shiftId?.toString() || "",
                 attendanceShiftId: user.attendanceShiftId?.toString() || "",
                 allowedShifts: user.allowedShifts || "",
+                employeeId: user.employeeId || "",
             });
         } else {
             setFormData({
@@ -53,6 +55,7 @@ export function UserModal({ isOpen, onClose, user, shifts, regions, onSuccess }:
                 shiftId: "",
                 attendanceShiftId: "",
                 allowedShifts: "",
+                employeeId: "",
             });
         }
         setError("");

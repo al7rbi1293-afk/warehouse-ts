@@ -3,7 +3,7 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { fetchMasterReportData, MasterReportData } from "@/app/actions/reports";
+import { fetchMasterReportData } from "@/app/actions/reports";
 
 interface MasterExportButtonProps {
     currentDate: string; // YYYY-MM-DD
@@ -24,96 +24,11 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             }
 
             const wb = XLSX.utils.book_new();
-            const wsData: any[][] = [];
 
-            // Define Columns
+            // Defined Columns
             // | # | Name | EMP ID | Status | Remarks |
             const HEADER_ROW = ["#", "Name", "EMP ID", "Status", "Remarks"];
-
-            // --- MANAGEMENT SECTION ---
-            if (data.management && data.management.length > 0) {
-                wsData.push(["MANAGEMENT"]); // Main Header
-                wsData.push(HEADER_ROW);
-                data.management.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-                wsData.push([]); // Spacer
-            }
-
-            // --- SUPERVISORS SECTION ---
-            if (data.supervisors && data.supervisors.length > 0) {
-                wsData.push(["SUPERVISORS"]); // Main Header
-                wsData.push(HEADER_ROW);
-                data.supervisors.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-                wsData.push([]); // Spacer
-            }
-
-            // --- MORNING SHIFT SECTION ---
-            wsData.push([`Morning Shift (Date: ${data.dates.morning})`]); // Main Header
-            wsData.push([]); // Spacer
-
-            Object.entries(data.morning).forEach(([zone, workers]) => {
-                // Zone Sub-header (Bold)
-                wsData.push([zone.toUpperCase()]);
-                // Table Header
-                wsData.push(HEADER_ROW);
-
-                // Data Rows
-                workers.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-
-                wsData.push([]); // Spacer between zones
-            });
-
-            // --- NIGHT SHIFT SECTION ---
-            wsData.push([]); // Spacer before Night Shift
-            wsData.push([`Night Shift (Date: ${data.dates.night})`]); // Main Header
-            wsData.push([]); // Spacer
-
-            Object.entries(data.night).forEach(([zone, workers]) => {
-                // Zone Sub-header (Bold)
-                wsData.push([zone.toUpperCase()]);
-                // Table Header
-                wsData.push(HEADER_ROW);
-
-                // Data Rows
-                workers.forEach((w: any, idx: number) => {
-                    wsData.push([
-                        idx + 1,
-                        w.name,
-                        w.empId || '-',
-                        w.status,
-                        w.notes || ''
-                    ]);
-                });
-                wsData.push([]); // Spacer between zones
-            });
-
-            const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-            // Styling (Widths)
-            ws['!cols'] = [
+            const COL_WIDTHS = [
                 { wch: 5 },  // #
                 { wch: 30 }, // Name
                 { wch: 15 }, // EMP ID
@@ -121,11 +36,83 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
                 { wch: 40 }  // Remarks
             ];
 
-            // NOTE: 'xlsx' (SheetJS community) doesn't support bold styling in free version easily 
-            // without additional plugins or Pro. We rely on layout (Caps, Spacing) for hierarchy.
-            // Row merges could be added here if needed but simpler layout is safer.
+            // --- HELPER TO BUILD SHEET DATA ---
+            const buildSheetData = (shiftName: string, shiftDate: string, zoneData: Record<string, Array<{ name: string; status: string; notes?: string; empId?: string }>>) => {
+                const wsData: (string | number | null)[][] = [];
 
-            XLSX.utils.book_append_sheet(wb, ws, "Master Report");
+                // 1. MANAGEMENT SECTION (Same for both sheets)
+                if (data.management && data.management.length > 0) {
+                    wsData.push(["MANAGEMENT"]);
+                    wsData.push(HEADER_ROW);
+                    data.management.forEach((w, idx) => {
+                        wsData.push([
+                            idx + 1,
+                            w.name,
+                            w.empId || '-',
+                            w.status,
+                            w.notes || ''
+                        ]);
+                    });
+                    wsData.push([]); // Spacer
+                }
+
+                // 2. SUPERVISORS SECTION (Same for both sheets)
+                if (data.supervisors && data.supervisors.length > 0) {
+                    wsData.push(["SUPERVISORS"]);
+                    wsData.push(HEADER_ROW);
+                    data.supervisors.forEach((w, idx) => {
+                        wsData.push([
+                            idx + 1,
+                            w.name,
+                            w.empId || '-',
+                            w.status,
+                            w.notes || ''
+                        ]);
+                    });
+                    wsData.push([]); // Spacer
+                }
+
+                // 3. SHIFT WORKERS BY ZONE
+                wsData.push([`${shiftName} Shift (Date: ${shiftDate})`]);
+                wsData.push([]); // Spacer
+
+                Object.entries(zoneData).forEach(([zone, workers]) => {
+                    // Zone Sub-header
+                    wsData.push([zone.toUpperCase()]);
+                    // Table Header
+                    wsData.push(HEADER_ROW);
+
+                    // Data Rows
+                    workers.forEach((w, idx) => {
+                        wsData.push([
+                            idx + 1,
+                            w.name,
+                            w.empId || '-',
+                            w.status,
+                            w.notes || ''
+                        ]);
+                    });
+
+                    wsData.push([]); // Spacer between zones
+                });
+
+                return wsData;
+            };
+
+
+            // --- SHEET 1: MORNING ---
+            const morningData = buildSheetData("Morning", data.dates.morning, data.morning);
+            const wsMorning = XLSX.utils.aoa_to_sheet(morningData);
+            wsMorning['!cols'] = COL_WIDTHS;
+            XLSX.utils.book_append_sheet(wb, wsMorning, `Morning - ${data.dates.morning}`);
+
+            // --- SHEET 2: NIGHT ---
+            const nightData = buildSheetData("Night", data.dates.night, data.night);
+            const wsNight = XLSX.utils.aoa_to_sheet(nightData);
+            wsNight['!cols'] = COL_WIDTHS;
+            XLSX.utils.book_append_sheet(wb, wsNight, `Night - ${data.dates.night}`);
+
+            // Export
             XLSX.writeFile(wb, `Master_Report_${currentDate}.xlsx`);
             toast.success("Master Report exported successfully");
 

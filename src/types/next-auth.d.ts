@@ -11,6 +11,7 @@ declare module "next-auth" {
         attendanceShiftId?: number | null;
         allowedShifts?: string | null;
         shiftName?: string | null;
+        employeeId?: string | null;
     }
 
     interface Session {
@@ -29,5 +30,6 @@ declare module "next-auth/jwt" {
         attendanceShiftId?: number | null;
         allowedShifts?: string | null;
         shiftName?: string | null;
+        employeeId?: string | null;
     }
 }

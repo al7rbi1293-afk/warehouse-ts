@@ -5,10 +5,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
 export interface MasterReportData {
-    management: any[];
-    supervisors: any[];
-    morning: Record<string, any[]>;
-    night: Record<string, any[]>;
+    management: Array<{ name: string; status: string; notes?: string; empId?: string }>;
+    supervisors: Array<{ name: string; status: string; notes?: string; empId?: string; coverUser?: any }>;
+    morning: Record<string, Array<{ name: string; status: string; notes?: string; empId?: string }>>;
+    night: Record<string, Array<{ name: string; status: string; notes?: string; empId?: string }>>;
     dates: {
         morning: string;
         night: string;
@@ -141,7 +141,7 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                 return {
                     id: user.id,
                     name: user.name,
-                    empId: user.username, // Using username as ID for users
+                    empId: user.employeeId || user.username, // Use system ID, fallback to username
                     status: status,
                     notes: notes,
                     role: user.role,

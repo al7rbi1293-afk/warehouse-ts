@@ -74,12 +74,13 @@ export const authOptions: NextAuthOptions = {
 
             if (user) {
                 token.id = user.id;
-                token.username = (user as any).username;
-                token.role = (user as any).role;
-                token.region = (user as any).region;
-                token.shiftId = (user as any).shiftId;
-                token.allowedShifts = (user as any).allowedShifts;
-                token.shiftName = (user as any).shiftName;
+                token.username = user.username;
+                token.role = user.role;
+                token.region = user.region;
+                token.shiftId = user.shiftId;
+                token.allowedShifts = user.allowedShifts;
+                token.shiftName = user.shiftName;
+                token.employeeId = user.employeeId;
             }
             return token;
         },

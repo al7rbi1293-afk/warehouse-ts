@@ -19,6 +19,7 @@ model User {
   shift         Shift?   @relation(fields: [shiftId], references: [id])
   attendanceShiftId Int? @map("attendance_shift_id") // Attendance shift if different from primary
   allowedShifts String?  @map("allowed_shifts")
+  employeeId    String?  @map("employee_id") // New: System-wide Employee ID
   createdAt     DateTime @default(now()) @map("created_at")
 
   attendance StaffAttendance[] @relation("UserAttendance")
