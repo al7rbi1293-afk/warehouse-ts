@@ -47,3 +47,11 @@ export const USER_ROLES = {
     STOREKEEPER: "storekeeper",
     NIGHT_SUPERVISOR: "night_supervisor"
 };
+
+export const STAFF_ATTENDANCE_STATUSES = [
+    "Present",
+    "Absent",
+    "Vacation",
+    "Day Off",
+    "Sick Leave"
+] as const;

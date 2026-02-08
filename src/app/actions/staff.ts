@@ -5,14 +5,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
-// Staff attendance statuses
-export const STAFF_ATTENDANCE_STATUSES = [
-    "Present",
-    "Absent",
-    "Vacation",
-    "Day Off",
-    "Sick Leave"
-] as const;
+
 
 export async function getStaffList() {
     const session = await getServerSession(authOptions);
