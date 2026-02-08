@@ -34,6 +34,7 @@ interface CreateUserParams {
     shiftId?: string | number | null;
     attendanceShiftId?: string | number | null; // Attendance shift if different
     allowedShifts?: string | null;
+    empId?: string | null;
 }
 
 interface UpdateUserParams {
@@ -45,6 +46,7 @@ interface UpdateUserParams {
     attendanceShiftId?: string | number | null; // Attendance shift if different
     password?: string | null;
     allowedShifts?: string | null;
+    empId?: string | null;
 }
 
 export async function createUser(data: CreateUserParams) {
@@ -76,6 +78,7 @@ export async function createUser(data: CreateUserParams) {
                 shiftId: data.shiftId ? parseInt(data.shiftId as string) : null,
                 attendanceShiftId: data.attendanceShiftId ? parseInt(data.attendanceShiftId as string) : null,
                 allowedShifts: data.allowedShifts || null,
+                empId: data.empId || null,
             },
         });
 
@@ -103,6 +106,7 @@ export async function updateUser(username: string, data: UpdateUserParams) {
         if (data.shiftId !== undefined) updateData.shiftId = data.shiftId ? Number(data.shiftId) : null;
         if (data.attendanceShiftId !== undefined) updateData.attendanceShiftId = data.attendanceShiftId ? Number(data.attendanceShiftId) : null;
         if (data.allowedShifts !== undefined) updateData.allowedShifts = data.allowedShifts;
+        if (data.empId !== undefined) updateData.empId = data.empId;
 
         if (data.password && data.password.trim() !== "") {
             updateData.password = await hashPassword(data.password);

@@ -16,6 +16,7 @@ export interface User {
   createdAt?: Date;
   shiftName?: string | null;
   allowedShifts?: string | null;
+  empId?: string | null;
 }
 
 export type SafeUser = Omit<User, 'password'>;
