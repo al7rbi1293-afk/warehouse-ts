@@ -83,7 +83,8 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                 where: { role: { in: ['manager', 'admin'] } },
                 include: {
                     attendance: {
-                        where: { date: { gte: morningDate, lt: morningNextDay } } // Checking Morning Date
+                        where: { date: { gte: morningDate, lt: morningNextDay } }, // Checking Morning Date
+                        include: { coverUser: true }
                     },
                     shift: true
                 }
@@ -94,11 +95,11 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                 where: { role: { in: ['supervisor', 'night_supervisor'] } },
                 include: {
                     // We need to check attendance for proper date based on their shift
-                    // For simplicity, we assume day shift date first, but we might need logic below
                     attendance: {
                         where: {
                             date: { gte: nightDate, lt: morningNextDay } // Broad fetch, filter in JS
-                        }
+                        },
+                        include: { coverUser: true }
                     },
                     shift: true
                 }
@@ -127,12 +128,22 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                         aDate.getDate() === targetDate.getDate();
                 });
 
+                // Logic:
+                // 1. Status: If no record, default to 'Present'. If record, use actual status.
+                // 2. Remarks: If coveredBy exists, show "Covered by: [Name]". Else use notes.
+                const status = relevantAttendance?.status || 'Present';
+
+                let notes = relevantAttendance?.notes || '';
+                if (relevantAttendance?.coverUser) {
+                    notes = `Covered by: ${relevantAttendance.coverUser.name}`;
+                }
+
                 return {
                     id: user.id,
                     name: user.name,
                     empId: user.username, // Using username as ID for users
-                    status: relevantAttendance?.status || 'Present', // Auto-Present logic
-                    notes: relevantAttendance?.notes || (relevantAttendance ? '' : 'Auto-generated'),
+                    status: status,
+                    notes: notes,
                     role: user.role,
                     shift: shiftName
                 };
