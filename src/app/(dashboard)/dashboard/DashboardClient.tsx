@@ -14,6 +14,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { StatCard } from "@/components/StatCard";
 import { PremiumTable } from "@/components/PremiumTable";
+import { MasterExportButton } from "@/components/MasterExportButton";
 import { Attendance } from "@/types";
 import {
     LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -98,14 +99,18 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     <h1 className="text-2xl font-bold text-slate-900">KPI Stats</h1>
                     <p className="text-slate-500 text-sm">Real-time performance metrics</p>
                 </div>
-                <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
-                    <span className="text-sm font-medium text-slate-600 ml-2">Select Date:</span>
-                    <input
-                        type="date"
-                        value={data.selectedDate}
-                        onChange={(e) => handleDateChange(e.target.value)}
-                        className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+                <div className="flex items-center gap-3">
+                    <MasterExportButton currentDate={data.selectedDate} />
+
+                    <div className="flex items-center gap-3 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                        <span className="text-sm font-medium text-slate-600 ml-2">Select Date:</span>
+                        <input
+                            type="date"
+                            value={data.selectedDate}
+                            onChange={(e) => handleDateChange(e.target.value)}
+                            className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                    </div>
                 </div>
             </div>
 
