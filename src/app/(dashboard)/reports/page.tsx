@@ -16,5 +16,5 @@ export default async function ReportsPage() {
         redirect("/warehouse");
     }
 
-    return <ReportsClient userRole={session.user.role} />;
+    return <ReportsClient userRole={session.user.role} userName={session.user.name || ""} />;
 }

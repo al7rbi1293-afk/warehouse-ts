@@ -25,6 +25,7 @@ model User {
   attendance StaffAttendance[] @relation("UserAttendance")
   covering   StaffAttendance[] @relation("CoveringUser")
   reportAnswers ReportAnswer[]
+  dailyReportSubmissions DailyReportSubmission[]
 
   @@map("users")
 }
@@ -235,4 +236,22 @@ model ReportAnswer {
   @@index([reportDate])
   @@index([supervisorId])
   @@map("report_answers")
+}
+
+model DailyReportSubmission {
+  id               Int      @id @default(autoincrement())
+  reportDate       DateTime @map("report_date") @db.Date
+  supervisorId     Int      @map("supervisor_id")
+  supervisorName   String   @map("supervisor_name")
+  region           String
+  roundNumber      String   @map("round_number")
+  checklistAnswers Json     @map("checklist_answers")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  supervisor       User     @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+
+  @@unique([reportDate, supervisorId, roundNumber])
+  @@index([reportDate])
+  @@index([supervisorId])
+  @@map("daily_report_submissions")
 }

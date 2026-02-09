@@ -5,14 +5,23 @@ import { toast } from "sonner";
 import {
     addReportQuestion,
     deleteReportQuestion,
+    getDailyReportSubmissions,
     getReportQuestionnaireData,
+    submitDailyReportForm,
     submitSupervisorReportAnswers,
     updateReportQuestion,
+    type DailySubmissionInput,
     type ReportType,
 } from "@/app/actions/reportQuestionnaire";
+import {
+    DAILY_REPORT_ROUNDS,
+    DAILY_REPORT_SECTIONS,
+    DAILY_REPORT_SUPERVISORS,
+} from "@/lib/dailyReportTemplate";
 
 interface ReportsClientProps {
     userRole: string;
+    userName?: string;
 }
 
 interface ReportQuestionItem {
@@ -28,6 +37,23 @@ interface ManagerAnswerItem {
     supervisorName: string;
     answer: string;
     updatedAt: string;
+}
+
+interface DailySubmissionItem {
+    id: number;
+    reportDate: string;
+    supervisorName: string;
+    region: string;
+    roundNumber: string;
+    checklistAnswers: Record<string, string[]>;
+    updatedAt: string;
+}
+
+interface DailyFormState {
+    supervisorName: string;
+    region: string;
+    roundNumber: string;
+    checklistAnswers: Record<string, string[]>;
 }
 
 const reportTabs: Array<{ key: ReportType; label: string }> = [
@@ -47,17 +73,39 @@ function getTodayLocalDateString() {
     return `${year}-${month}-${day}`;
 }
 
-export function ReportsClient({ userRole }: ReportsClientProps) {
+function createChecklistDefaults() {
+    return DAILY_REPORT_SECTIONS.reduce((acc, section) => {
+        acc[section.id] = [];
+        return acc;
+    }, {} as Record<string, string[]>);
+}
+
+function getDefaultSupervisor(userName?: string) {
+    if (userName && DAILY_REPORT_SUPERVISORS.includes(userName)) {
+        return userName;
+    }
+
+    return DAILY_REPORT_SUPERVISORS[0] || "";
+}
+
+export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [activeTab, setActiveTab] = useState<ReportType>("daily");
     const [reportDate, setReportDate] = useState(getTodayLocalDateString());
     const [questions, setQuestions] = useState<ReportQuestionItem[]>([]);
     const [managerAnswers, setManagerAnswers] = useState<ManagerAnswerItem[]>([]);
+    const [dailySubmissions, setDailySubmissions] = useState<DailySubmissionItem[]>([]);
     const [draftAnswers, setDraftAnswers] = useState<Record<number, string>>({});
     const [newQuestion, setNewQuestion] = useState("");
     const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
     const [editingQuestionText, setEditingQuestionText] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isPending, startTransition] = useTransition();
+    const [dailyForm, setDailyForm] = useState<DailyFormState>({
+        supervisorName: getDefaultSupervisor(userName),
+        region: "",
+        roundNumber: DAILY_REPORT_ROUNDS[0] || "",
+        checklistAnswers: createChecklistDefaults(),
+    });
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
@@ -83,13 +131,56 @@ export function ReportsClient({ userRole }: ReportsClientProps) {
             return acc;
         }, {} as Record<number, string>);
         setDraftAnswers(mappedAnswers);
+        setDailySubmissions([]);
+        setIsLoading(false);
+    };
+
+    const loadDailyData = async () => {
+        setIsLoading(true);
+        const result = await getDailyReportSubmissions(reportDate);
+
+        if (!result.success || !result.data) {
+            toast.error(result.message || "Failed to load daily reports");
+            setDailySubmissions([]);
+            setQuestions([]);
+            setManagerAnswers([]);
+            setDraftAnswers({});
+            setIsLoading(false);
+            return;
+        }
+
+        setDailySubmissions(result.data.submissions);
+        setQuestions([]);
+        setManagerAnswers([]);
+        setDraftAnswers({});
+
+        if (isSupervisor && result.data.submissions.length > 0) {
+            const latest = result.data.submissions[0];
+            setDailyForm((prev) => ({
+                ...prev,
+                supervisorName: latest.supervisorName || prev.supervisorName,
+                region: latest.region || prev.region,
+            }));
+        }
+
         setIsLoading(false);
     };
 
     useEffect(() => {
-        loadQuestionnaireData();
+        if (activeTab === "daily") {
+            loadDailyData();
+        } else {
+            loadQuestionnaireData();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, reportDate]);
+
+    useEffect(() => {
+        setDailyForm((prev) => ({
+            ...prev,
+            supervisorName: getDefaultSupervisor(userName),
+        }));
+    }, [userName]);
 
     const handleAddQuestion = () => {
         if (!newQuestion.trim()) {
@@ -164,6 +255,70 @@ export function ReportsClient({ userRole }: ReportsClientProps) {
         });
     };
 
+    const toggleDailyItem = (sectionId: string, item: string) => {
+        setDailyForm((prev) => {
+            const currentItems = prev.checklistAnswers[sectionId] || [];
+            const exists = currentItems.includes(item);
+            const nextItems = exists
+                ? currentItems.filter((x) => x !== item)
+                : [...currentItems, item];
+
+            return {
+                ...prev,
+                checklistAnswers: {
+                    ...prev.checklistAnswers,
+                    [sectionId]: nextItems,
+                },
+            };
+        });
+    };
+
+    const handleSubmitDailyReport = () => {
+        if (!dailyForm.supervisorName) {
+            toast.error("يرجى اختيار اسم المشرف");
+            return;
+        }
+
+        if (!dailyForm.region.trim()) {
+            toast.error("يرجى إدخال المنطقة");
+            return;
+        }
+
+        if (!dailyForm.roundNumber) {
+            toast.error("يرجى اختيار رقم الجولة");
+            return;
+        }
+
+        for (const section of DAILY_REPORT_SECTIONS) {
+            if (
+                section.required &&
+                (!dailyForm.checklistAnswers[section.id] ||
+                    dailyForm.checklistAnswers[section.id].length === 0)
+            ) {
+                toast.error(`يرجى تعبئة القسم الإلزامي: ${section.title}`);
+                return;
+            }
+        }
+
+        const payload: DailySubmissionInput = {
+            supervisorName: dailyForm.supervisorName,
+            region: dailyForm.region.trim(),
+            roundNumber: dailyForm.roundNumber,
+            checklistAnswers: dailyForm.checklistAnswers,
+        };
+
+        startTransition(async () => {
+            const result = await submitDailyReportForm(reportDate, payload);
+            if (!result.success) {
+                toast.error(result.message);
+                return;
+            }
+
+            toast.success(result.message);
+            await loadDailyData();
+        });
+    };
+
     const groupedManagerAnswers = useMemo(() => {
         return managerAnswers.reduce((acc, answer) => {
             if (!acc[answer.supervisorName]) {
@@ -174,6 +329,16 @@ export function ReportsClient({ userRole }: ReportsClientProps) {
         }, {} as Record<string, ManagerAnswerItem[]>);
     }, [managerAnswers]);
 
+    const myDailySubmissions = useMemo(() => {
+        if (!isSupervisor) {
+            return [];
+        }
+
+        return [...dailySubmissions].sort((a, b) =>
+            a.roundNumber.localeCompare(b.roundNumber, "ar")
+        );
+    }, [dailySubmissions, isSupervisor]);
+
     const currentTabLabel = reportTabs.find((tab) => tab.key === activeTab)?.label || "Report";
 
     return (
@@ -181,7 +346,9 @@ export function ReportsClient({ userRole }: ReportsClientProps) {
             <div>
                 <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
                 <p className="text-slate-500 text-sm">
-                    {isManager
+                    {activeTab === "daily"
+                        ? "Daily report form cloned from the provided Google Form"
+                        : isManager
                         ? "Configure report questions and review supervisor answers"
                         : "Answer manager-defined questions for each report type"}
                 </p>
@@ -226,7 +393,208 @@ export function ReportsClient({ userRole }: ReportsClientProps) {
                 </div>
             ) : (
                 <>
-                    {isManager && (
+                    {activeTab === "daily" && (
+                        <div className="space-y-6" dir="rtl">
+                            {isSupervisor && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-slate-900">نموذج تقرير الاشراف اليومي</h2>
+                                        <p className="text-sm text-slate-500">
+                                            النموذج يتضمن بعض الاسئلة التي يجب اجابتها بجميع التفاصيل
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-slate-700">اسم المشرف</label>
+                                            <select
+                                                value={dailyForm.supervisorName}
+                                                onChange={(e) =>
+                                                    setDailyForm((prev) => ({
+                                                        ...prev,
+                                                        supervisorName: e.target.value,
+                                                    }))
+                                                }
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                            >
+                                                {DAILY_REPORT_SUPERVISORS.map((name) => (
+                                                    <option key={name} value={name}>
+                                                        {name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-slate-700">المنطقة</label>
+                                            <input
+                                                type="text"
+                                                value={dailyForm.region}
+                                                onChange={(e) =>
+                                                    setDailyForm((prev) => ({
+                                                        ...prev,
+                                                        region: e.target.value,
+                                                    }))
+                                                }
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                placeholder="أدخل المنطقة"
+                                            />
+                                        </div>
+
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-slate-700">جولة رقم</label>
+                                            <select
+                                                value={dailyForm.roundNumber}
+                                                onChange={(e) =>
+                                                    setDailyForm((prev) => ({
+                                                        ...prev,
+                                                        roundNumber: e.target.value,
+                                                    }))
+                                                }
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                            >
+                                                {DAILY_REPORT_ROUNDS.map((round) => (
+                                                    <option key={round} value={round}>
+                                                        {round}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        {DAILY_REPORT_SECTIONS.map((section) => {
+                                            const selected = dailyForm.checklistAnswers[section.id] || [];
+                                            return (
+                                                <div key={section.id} className="border border-slate-200 rounded-lg p-4 space-y-3">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h3 className="text-sm font-semibold text-slate-900">
+                                                            {section.title}
+                                                        </h3>
+                                                        {section.required && (
+                                                            <span className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full border border-red-100">
+                                                                إلزامي
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                                        {section.items.map((item) => (
+                                                            <label
+                                                                key={item}
+                                                                className="flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-sm text-slate-800"
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={selected.includes(item)}
+                                                                    onChange={() => toggleDailyItem(section.id, item)}
+                                                                    className="h-4 w-4"
+                                                                />
+                                                                <span>{item}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="pt-2 flex justify-end">
+                                        <button
+                                            type="button"
+                                            onClick={handleSubmitDailyReport}
+                                            disabled={isPending}
+                                            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                                        >
+                                            {isPending ? "جاري الإرسال..." : "إرسال التقرير اليومي"}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isManager && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-slate-900">ردود المشرفين</h2>
+                                        <p className="text-sm text-slate-500">
+                                            عرض الردود المرسلة بتاريخ {reportDate}
+                                        </p>
+                                    </div>
+
+                                    {dailySubmissions.length === 0 ? (
+                                        <p className="text-sm text-slate-500">لا توجد ردود مرسلة لهذا التاريخ.</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {dailySubmissions.map((submission) => (
+                                                <div
+                                                    key={submission.id}
+                                                    className="border border-slate-200 rounded-lg overflow-hidden"
+                                                >
+                                                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3">
+                                                        <p className="text-sm font-semibold text-slate-900">
+                                                            {submission.supervisorName}
+                                                        </p>
+                                                        <p className="text-xs text-slate-500 mt-1">
+                                                            المنطقة: {submission.region} | الجولة: {submission.roundNumber} | آخر تحديث:{" "}
+                                                            {new Date(submission.updatedAt).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-4 space-y-4">
+                                                        {DAILY_REPORT_SECTIONS.map((section) => {
+                                                            const selected = submission.checklistAnswers[section.id] || [];
+                                                            return (
+                                                                <div key={section.id} className="space-y-2">
+                                                                    <p className="text-xs font-semibold text-slate-600">
+                                                                        {section.title}
+                                                                    </p>
+                                                                    {selected.length === 0 ? (
+                                                                        <p className="text-xs text-slate-400">لا يوجد اختيار</p>
+                                                                    ) : (
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {selected.map((item) => (
+                                                                                <span
+                                                                                    key={item}
+                                                                                    className="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded-full px-2 py-1"
+                                                                                >
+                                                                                    {item}
+                                                                                </span>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {isSupervisor && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                    <h3 className="text-sm font-semibold text-slate-900">تقاريرك المرسلة لهذا التاريخ</h3>
+                                    {myDailySubmissions.length === 0 ? (
+                                        <p className="text-sm text-slate-500">لم يتم إرسال أي تقرير بعد.</p>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            {myDailySubmissions.map((submission) => (
+                                                <div
+                                                    key={submission.id}
+                                                    className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700"
+                                                >
+                                                    الجولة: <span className="font-semibold">{submission.roundNumber}</span> | آخر تحديث:{" "}
+                                                    {new Date(submission.updatedAt).toLocaleString()}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab !== "daily" && isManager && (
                         <div className="space-y-6">
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
                                 <div>
@@ -367,7 +735,7 @@ export function ReportsClient({ userRole }: ReportsClientProps) {
                         </div>
                     )}
 
-                    {isSupervisor && (
+                    {activeTab !== "daily" && isSupervisor && (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
                             <div>
                                 <h2 className="text-lg font-semibold text-slate-900">{currentTabLabel} questionnaire</h2>

@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import {
+    DAILY_REPORT_ROUNDS,
+    DAILY_REPORT_SECTIONS,
+    DAILY_REPORT_SUPERVISORS,
+} from "@/lib/dailyReportTemplate";
 
 export type ReportType = "daily" | "weekly" | "discharge";
 
@@ -31,6 +36,23 @@ interface ManagerAnswerDto {
 interface SupervisorAnswerDto {
     questionId: number;
     answer: string;
+}
+
+export interface DailySubmissionInput {
+    supervisorName: string;
+    region: string;
+    roundNumber: string;
+    checklistAnswers: Record<string, string[]>;
+}
+
+interface DailySubmissionDto {
+    id: number;
+    reportDate: string;
+    supervisorName: string;
+    region: string;
+    roundNumber: string;
+    checklistAnswers: Record<string, string[]>;
+    updatedAt: string;
 }
 
 const REPORT_TYPES: ReportType[] = ["daily", "weekly", "discharge"];
@@ -101,6 +123,54 @@ async function ensureDefaultQuestions(reportType: ReportType, createdBy: string)
             createdBy,
         })),
     });
+}
+
+function sanitizeChecklistAnswers(input: Record<string, string[]>): Record<string, string[]> {
+    const sectionMap = new Map(
+        DAILY_REPORT_SECTIONS.map((section) => [section.id, new Set(section.items)])
+    );
+
+    const sanitized: Record<string, string[]> = {};
+
+    for (const section of DAILY_REPORT_SECTIONS) {
+        const allowed = sectionMap.get(section.id);
+        const selected = Array.isArray(input[section.id]) ? input[section.id] : [];
+
+        const cleaned = selected
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0 && allowed?.has(item));
+
+        // Remove duplicates while preserving order
+        sanitized[section.id] = Array.from(new Set(cleaned));
+    }
+
+    return sanitized;
+}
+
+function parseChecklistAnswers(raw: unknown): Record<string, string[]> {
+    const empty: Record<string, string[]> = {};
+    for (const section of DAILY_REPORT_SECTIONS) {
+        empty[section.id] = [];
+    }
+
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+        return empty;
+    }
+
+    const parsed: Record<string, string[]> = { ...empty };
+
+    for (const section of DAILY_REPORT_SECTIONS) {
+        const candidate = (raw as Record<string, unknown>)[section.id];
+        if (!Array.isArray(candidate)) {
+            continue;
+        }
+
+        parsed[section.id] = candidate
+            .filter((value): value is string => typeof value === "string")
+            .filter((value) => section.items.includes(value));
+    }
+
+    return parsed;
 }
 
 export async function getReportQuestionnaireData(
@@ -385,4 +455,131 @@ export async function submitSupervisorReportAnswers(
         message: "Answers submitted",
         data: { submitted: cleanedAnswers.length },
     };
+}
+
+export async function getDailyReportSubmissions(
+    reportDate: string
+): Promise<
+    ActionResult<{
+        mode: "manager" | "supervisor";
+        submissions: DailySubmissionDto[];
+    }>
+> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const normalizedDate = normalizeReportDate(reportDate);
+    const supervisorId = Number(session.user.id);
+    if (SUPERVISOR_ROLES.has(role) && !Number.isFinite(supervisorId)) {
+        return { success: false, message: "Invalid supervisor session" };
+    }
+
+    const whereClause = MANAGER_ROLES.has(role)
+        ? { reportDate: normalizedDate }
+        : {
+            reportDate: normalizedDate,
+            supervisorId,
+        };
+
+    const records = await prisma.dailyReportSubmission.findMany({
+        where: whereClause,
+        orderBy: [
+            { supervisorName: "asc" },
+            { roundNumber: "asc" },
+            { updatedAt: "desc" },
+        ],
+    });
+
+    return {
+        success: true,
+        message: "OK",
+        data: {
+            mode: MANAGER_ROLES.has(role) ? "manager" : "supervisor",
+            submissions: records.map((record) => ({
+                id: record.id,
+                reportDate: record.reportDate.toISOString(),
+                supervisorName: record.supervisorName,
+                region: record.region,
+                roundNumber: record.roundNumber,
+                checklistAnswers: parseChecklistAnswers(record.checklistAnswers),
+                updatedAt: record.updatedAt.toISOString(),
+            })),
+        },
+    };
+}
+
+export async function submitDailyReportForm(
+    reportDate: string,
+    payload: DailySubmissionInput
+): Promise<ActionResult> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !SUPERVISOR_ROLES.has(role)) {
+        return { success: false, message: "Only supervisors can submit daily reports" };
+    }
+
+    const supervisorId = Number(session.user.id);
+    if (!Number.isFinite(supervisorId)) {
+        return { success: false, message: "Invalid supervisor session" };
+    }
+
+    const normalizedDate = normalizeReportDate(reportDate);
+
+    const supervisorName = payload.supervisorName?.trim();
+    const region = payload.region?.trim();
+    const roundNumber = payload.roundNumber?.trim();
+
+    if (!supervisorName || !DAILY_REPORT_SUPERVISORS.includes(supervisorName)) {
+        return { success: false, message: "Please select a valid supervisor name" };
+    }
+
+    if (!region || region.length < 2) {
+        return { success: false, message: "Please enter a valid region" };
+    }
+
+    if (!roundNumber || !DAILY_REPORT_ROUNDS.includes(roundNumber)) {
+        return { success: false, message: "Please select a valid round number" };
+    }
+
+    const checklistAnswers = sanitizeChecklistAnswers(payload.checklistAnswers || {});
+
+    for (const section of DAILY_REPORT_SECTIONS) {
+        if (section.required && checklistAnswers[section.id].length === 0) {
+            return {
+                success: false,
+                message: `Please complete required section: ${section.title}`,
+            };
+        }
+    }
+
+    await prisma.dailyReportSubmission.upsert({
+        where: {
+            reportDate_supervisorId_roundNumber: {
+                reportDate: normalizedDate,
+                supervisorId,
+                roundNumber,
+            },
+        },
+        update: {
+            supervisorName,
+            region,
+            checklistAnswers,
+        },
+        create: {
+            reportDate: normalizedDate,
+            supervisorId,
+            supervisorName,
+            region,
+            roundNumber,
+            checklistAnswers,
+        },
+    });
+
+    revalidatePath("/reports");
+    return { success: true, message: "Daily report submitted successfully" };
 }
