@@ -2,16 +2,33 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+interface DebugResults {
+    activeWorkers?: number;
+    attendanceCount?: number;
+    pendingRequests?: number;
+    inventoryCount?: number;
+    lowStock?: { id: number; nameEn: string; qty: number }[];
+    workerGroups?: { region: string | null; _count: { id: number } }[];
+}
+
+interface DebugErrors {
+    activeWorkers?: string;
+    attendance?: string;
+    requests?: string;
+    inventory?: string;
+    workerGroups?: string;
+}
+
 export async function GET() {
-    const results: any = {};
-    const errors: any = {};
+    const results: DebugResults = {};
+    const errors: DebugErrors = {};
 
     try {
         // 1. Workers
         try {
             results.activeWorkers = await prisma.worker.count({ where: { status: "Active" } });
-        } catch (e: any) {
-            errors.activeWorkers = e.message;
+        } catch (e: unknown) {
+            errors.activeWorkers = e instanceof Error ? e.message : "Unknown error";
         }
 
         // 2. Attendance
@@ -21,15 +38,15 @@ export async function GET() {
             results.attendanceCount = await prisma.attendance.count({
                 where: { date: { gte: today } }
             });
-        } catch (e: any) {
-            errors.attendance = e.message;
+        } catch (e: unknown) {
+            errors.attendance = e instanceof Error ? e.message : "Unknown error";
         }
 
         // 3. Requests
         try {
             results.pendingRequests = await prisma.request.count({ where: { status: "Pending" } });
-        } catch (e: any) {
-            errors.requests = e.message;
+        } catch (e: unknown) {
+            errors.requests = e instanceof Error ? e.message : "Unknown error";
         }
 
         // 4. Inventory
@@ -37,10 +54,11 @@ export async function GET() {
             results.inventoryCount = await prisma.inventory.count();
             results.lowStock = await prisma.inventory.findMany({
                 where: { qty: { lt: 10 } },
-                take: 1
+                take: 1,
+                select: { id: true, nameEn: true, qty: true }
             });
-        } catch (e: any) {
-            errors.inventory = e.message;
+        } catch (e: unknown) {
+            errors.inventory = e instanceof Error ? e.message : "Unknown error";
         }
 
         // 5. Worker groupBy
@@ -50,8 +68,8 @@ export async function GET() {
                 where: { status: "Active" },
                 _count: { id: true },
             });
-        } catch (e: any) {
-            errors.workerGroups = e.message;
+        } catch (e: unknown) {
+            errors.workerGroups = e instanceof Error ? e.message : "Unknown error";
         }
 
         return NextResponse.json({
@@ -59,10 +77,10 @@ export async function GET() {
             results,
             errors
         });
-    } catch (error: any) {
+    } catch (error: unknown) {
         return NextResponse.json({
             status: 'critical_failure',
-            message: error.message
+            message: error instanceof Error ? error.message : "Unknown error"
         }, { status: 500 });
     }
 }

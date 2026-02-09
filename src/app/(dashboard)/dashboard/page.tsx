@@ -1,6 +1,5 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { DashboardClient } from "./DashboardClient";
 
@@ -172,7 +171,8 @@ async function getDashboardData(dateStr?: string) {
             attendanceTrend,
             todayAttendance: combinedAttendance, // Pass the full detailed list
         };
-    } catch (error: any) {
+    } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
         console.error("Dashboard data error:", error);
         return {
             selectedDate,
@@ -196,18 +196,15 @@ async function getDashboardData(dateStr?: string) {
             topStockItems: [],
             attendanceTrend: [],
             todayAttendance: [],
-            debugError: error?.message || "Unknown error occurred",
+            debugError: errorMessage,
         };
     }
 }
 
 export default async function DashboardPage(props: { searchParams: Promise<{ date?: string }> }) {
     const searchParams = await props.searchParams;
-    const session = await getServerSession(authOptions);
-
-    // if (!session || !session.user || session.user.role !== "manager") {
-    //     redirect("/warehouse");
-    // }
+    // Auth check disabled for now
+    await getServerSession(authOptions);
 
     const data = await getDashboardData(searchParams.date);
 
