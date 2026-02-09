@@ -70,7 +70,7 @@ interface DailyFormState {
     checklistAnswers: Record<string, string[]>;
 }
 
-interface WeeklySheetRow {
+interface WeeklyFormState {
     area: string;
     areaType: string;
     specificWork: string;
@@ -132,60 +132,12 @@ function normalizeQuestionKey(value: string) {
     return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function createEmptyWeeklyRow(): WeeklySheetRow {
+function createWeeklyDefaults(): WeeklyFormState {
     return {
         area: "",
         areaType: WEEKLY_AREA_TYPE_OPTIONS[0] || "High critical",
         specificWork: "",
     };
-}
-
-function weeklyRowHasValue(row: WeeklySheetRow) {
-    return row.area.trim().length > 0 || row.specificWork.trim().length > 0;
-}
-
-function splitAnswerLines(value: string) {
-    return value
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-}
-
-function mapWeeklyAnswersToRows(
-    areaAnswer: string,
-    areaTypeAnswer: string,
-    specificWorkAnswer: string
-) {
-    const areaLines = splitAnswerLines(areaAnswer);
-    const areaTypeLines = splitAnswerLines(areaTypeAnswer);
-    let specificWorkLines = splitAnswerLines(specificWorkAnswer);
-
-    // Backward compatibility for older single-answer weekly submissions with line breaks.
-    if (areaLines.length <= 1 && areaTypeLines.length <= 1 && specificWorkLines.length > 1) {
-        specificWorkLines = [specificWorkAnswer.trim()].filter(Boolean);
-    }
-
-    const rowCount = Math.max(
-        areaLines.length,
-        areaTypeLines.length,
-        specificWorkLines.length,
-        1
-    );
-
-    const mappedRows: WeeklySheetRow[] = Array.from({ length: rowCount }, (_, index) => {
-        const areaType = areaTypeLines[index] || "";
-        return {
-            area: areaLines[index] || "",
-            areaType: WEEKLY_AREA_TYPE_OPTIONS.includes(areaType)
-                ? areaType
-                : (WEEKLY_AREA_TYPE_OPTIONS[0] || "High critical"),
-            specificWork: specificWorkLines[index] || "",
-        };
-    });
-
-    return weeklyRowHasValue(mappedRows[mappedRows.length - 1] || createEmptyWeeklyRow())
-        ? [...mappedRows, createEmptyWeeklyRow()]
-        : mappedRows;
 }
 
 function getWeeklyQuestionIdMap(questions: ReportQuestionItem[]) {
@@ -211,6 +163,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dischargeRows, setDischargeRows] = useState<DischargeEntryInput[]>([
         createEmptyDischargeRow(),
     ]);
+    const [dischargeFillDrag, setDischargeFillDrag] = useState<{
+        startIndex: number;
+        source: DischargeEntryInput;
+    } | null>(null);
     const [dischargeAllowedRegions, setDischargeAllowedRegions] = useState<string[]>([]);
     const [dischargeLoadError, setDischargeLoadError] = useState<string | null>(null);
     const [weeklyAllowedRegions, setWeeklyAllowedRegions] = useState<string[]>([]);
@@ -223,11 +179,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         roundNumber: DAILY_REPORT_ROUNDS[0] || "",
         checklistAnswers: createChecklistDefaults(),
     });
-    const [weeklyRows, setWeeklyRows] = useState<WeeklySheetRow[]>([createEmptyWeeklyRow()]);
-    const [weeklyFillDrag, setWeeklyFillDrag] = useState<{
-        startIndex: number;
-        source: WeeklySheetRow;
-    } | null>(null);
+    const [weeklyForm, setWeeklyForm] = useState<WeeklyFormState>(createWeeklyDefaults());
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
@@ -274,17 +226,19 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 setWeeklyAllowedRegions(allowed);
 
                 const questionIdMap = getWeeklyQuestionIdMap(result.data.questions);
-                const areaAnswer = questionIdMap.area ? (mappedAnswers[questionIdMap.area] || "") : "";
-                const areaTypeAnswer = questionIdMap.areaType
-                    ? (mappedAnswers[questionIdMap.areaType] || "")
-                    : "";
-                const specificWorkAnswer = questionIdMap.specificWork
-                    ? (mappedAnswers[questionIdMap.specificWork] || "")
-                    : "";
+                const areaValue = questionIdMap.area ? (mappedAnswers[questionIdMap.area] || "") : "";
+                const areaTypeValue = questionIdMap.areaType ? (mappedAnswers[questionIdMap.areaType] || "") : "";
+                const normalizedAreaType = WEEKLY_AREA_TYPE_OPTIONS.includes(areaTypeValue)
+                    ? areaTypeValue
+                    : (WEEKLY_AREA_TYPE_OPTIONS[0] || "High critical");
 
-                setWeeklyRows(
-                    mapWeeklyAnswersToRows(areaAnswer, areaTypeAnswer, specificWorkAnswer)
-                );
+                setWeeklyForm({
+                    area: areaValue,
+                    areaType: normalizedAreaType,
+                    specificWork: questionIdMap.specificWork
+                        ? (mappedAnswers[questionIdMap.specificWork] || "")
+                        : "",
+                });
             } else {
                 setWeeklyAllowedRegions([]);
             }
@@ -429,16 +383,16 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     }, [activeTab, reportDate]);
 
     useEffect(() => {
-        if (!weeklyFillDrag) {
+        if (!dischargeFillDrag) {
             return;
         }
 
-        const stopFillDrag = () => setWeeklyFillDrag(null);
-        window.addEventListener("mouseup", stopFillDrag);
+        const stopDischargeFill = () => setDischargeFillDrag(null);
+        window.addEventListener("mouseup", stopDischargeFill);
         return () => {
-            window.removeEventListener("mouseup", stopFillDrag);
+            window.removeEventListener("mouseup", stopDischargeFill);
         };
-    }, [weeklyFillDrag]);
+    }, [dischargeFillDrag]);
 
     const handleSubmitWeeklyReport = () => {
         const questionIdMap = getWeeklyQuestionIdMap(questions);
@@ -448,54 +402,33 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             return;
         }
 
-        const payloadRows = weeklyRows
-            .filter((row) => weeklyRowHasValue(row))
-            .map((row) => ({
-                area: row.area.trim(),
-                areaType: row.areaType.trim(),
-                specificWork: row.specificWork.trim(),
-            }));
-
-        if (payloadRows.length === 0) {
-            toast.error("Please add at least one weekly row");
+        if (!weeklyForm.area.trim()) {
+            toast.error("Please select area");
             return;
         }
 
-        for (const [index, row] of payloadRows.entries()) {
-            if (!row.area) {
-                toast.error(`Area is required in row ${index + 1}`);
-                return;
-            }
+        if (!weeklyForm.areaType.trim()) {
+            toast.error("Please select type of area");
+            return;
+        }
 
-            if (!row.areaType) {
-                toast.error(`Type of area is required in row ${index + 1}`);
-                return;
-            }
+        if (!weeklyForm.specificWork.trim()) {
+            toast.error("Please add specific work done this week");
+            return;
+        }
 
-            if (!row.specificWork) {
-                toast.error(`Specific work is required in row ${index + 1}`);
-                return;
-            }
-
-            if (weeklyAllowedRegions.length > 0 && !weeklyAllowedRegions.includes(row.area)) {
-                toast.error(`Area is not assigned to your account in row ${index + 1}`);
-                return;
-            }
+        if (
+            weeklyAllowedRegions.length > 0 &&
+            !weeklyAllowedRegions.includes(weeklyForm.area.trim())
+        ) {
+            toast.error("Selected area is not assigned to your account");
+            return;
         }
 
         const payload = [
-            {
-                questionId: questionIdMap.area as number,
-                answer: payloadRows.map((row) => row.area).join("\n"),
-            },
-            {
-                questionId: questionIdMap.areaType as number,
-                answer: payloadRows.map((row) => row.areaType).join("\n"),
-            },
-            {
-                questionId: questionIdMap.specificWork as number,
-                answer: payloadRows.map((row) => row.specificWork).join("\n"),
-            },
+            { questionId: questionIdMap.area as number, answer: weeklyForm.area.trim() },
+            { questionId: questionIdMap.areaType as number, answer: weeklyForm.areaType.trim() },
+            { questionId: questionIdMap.specificWork as number, answer: weeklyForm.specificWork.trim() },
         ];
 
         startTransition(async () => {
@@ -508,98 +441,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             toast.success("Weekly report submitted");
             const token = beginLoad();
             await loadQuestionnaireData(token, "weekly", reportDate);
-        });
-    };
-
-    const updateWeeklyRow = (
-        index: number,
-        field: keyof WeeklySheetRow,
-        value: string
-    ) => {
-        setWeeklyRows((prev) => {
-            const next = [...prev];
-            const current = next[index] || createEmptyWeeklyRow();
-            next[index] = {
-                ...current,
-                [field]: value,
-            };
-
-            if (next.length === 0) {
-                return [createEmptyWeeklyRow()];
-            }
-
-            if (weeklyRowHasValue(next[next.length - 1])) {
-                next.push(createEmptyWeeklyRow());
-            }
-
-            return next;
-        });
-    };
-
-    const addWeeklyRow = () => {
-        setWeeklyRows((prev) => [...prev, createEmptyWeeklyRow()]);
-    };
-
-    const removeWeeklyRow = (index: number) => {
-        setWeeklyRows((prev) => {
-            const next = prev.filter((_, rowIndex) => rowIndex !== index);
-
-            if (next.length === 0) {
-                return [createEmptyWeeklyRow()];
-            }
-
-            if (weeklyRowHasValue(next[next.length - 1])) {
-                next.push(createEmptyWeeklyRow());
-            }
-
-            return next;
-        });
-    };
-
-    const startWeeklyRowFill = (index: number) => {
-        const sourceRow = weeklyRows[index];
-        if (!sourceRow) {
-            return;
-        }
-        setWeeklyFillDrag({
-            startIndex: index,
-            source: { ...sourceRow },
-        });
-    };
-
-    const applyWeeklyRowFill = (targetIndex: number) => {
-        if (!weeklyFillDrag) {
-            return;
-        }
-
-        setWeeklyRows((prev) => {
-            const next = [...prev];
-            const from = Math.min(weeklyFillDrag.startIndex, targetIndex);
-            const to = Math.max(weeklyFillDrag.startIndex, targetIndex);
-
-            for (let rowIndex = from; rowIndex <= to; rowIndex += 1) {
-                if (rowIndex === weeklyFillDrag.startIndex) {
-                    continue;
-                }
-
-                const current = next[rowIndex] || createEmptyWeeklyRow();
-                next[rowIndex] = {
-                    ...current,
-                    area: weeklyFillDrag.source.area,
-                    areaType: weeklyFillDrag.source.areaType,
-                    specificWork: weeklyFillDrag.source.specificWork,
-                };
-            }
-
-            if (next.length === 0) {
-                return [createEmptyWeeklyRow()];
-            }
-
-            if (weeklyRowHasValue(next[next.length - 1])) {
-                next.push(createEmptyWeeklyRow());
-            }
-
-            return next;
         });
     };
 
@@ -714,6 +555,54 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const removeDischargeRow = (index: number) => {
         setDischargeRows((prev) => {
             const next = prev.filter((_, rowIndex) => rowIndex !== index);
+
+            if (next.length === 0) {
+                return [createEmptyDischargeRow()];
+            }
+
+            if (dischargeRowHasValue(next[next.length - 1])) {
+                next.push(createEmptyDischargeRow());
+            }
+
+            return next;
+        });
+    };
+
+    const startDischargeRowFill = (index: number) => {
+        const sourceRow = dischargeRows[index];
+        if (!sourceRow) {
+            return;
+        }
+
+        setDischargeFillDrag({
+            startIndex: index,
+            source: { ...sourceRow },
+        });
+    };
+
+    const applyDischargeRowFill = (targetIndex: number) => {
+        if (!dischargeFillDrag) {
+            return;
+        }
+
+        setDischargeRows((prev) => {
+            const next = [...prev];
+            const from = Math.min(dischargeFillDrag.startIndex, targetIndex);
+            const to = Math.max(dischargeFillDrag.startIndex, targetIndex);
+
+            for (let rowIndex = from; rowIndex <= to; rowIndex += 1) {
+                if (rowIndex === dischargeFillDrag.startIndex) {
+                    continue;
+                }
+
+                const current = next[rowIndex] || createEmptyDischargeRow();
+                next[rowIndex] = {
+                    ...current,
+                    roomNumber: dischargeFillDrag.source.roomNumber,
+                    roomType: dischargeFillDrag.source.roomType,
+                    area: dischargeFillDrag.source.area,
+                };
+            }
 
             if (next.length === 0) {
                 return [createEmptyDischargeRow()];
@@ -1361,6 +1250,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </p>
                                     ) : null}
 
+                                    <p className="text-xs text-slate-500">
+                                        Spreadsheet mode: hold `Fill` on a row, then drag over other rows to copy values.
+                                    </p>
+
                                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                         <table className="min-w-full text-sm">
                                             <thead className="bg-slate-50">
@@ -1368,12 +1261,21 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
+                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Fill</th>
                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Action</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
                                                 {dischargeRows.map((row, index) => (
-                                                    <tr key={`discharge-row-${index}`}>
+                                                    <tr
+                                                        key={`discharge-row-${index}`}
+                                                        onMouseEnter={() => applyDischargeRowFill(index)}
+                                                        className={
+                                                            dischargeFillDrag?.startIndex === index
+                                                                ? "bg-blue-50/40"
+                                                                : undefined
+                                                        }
+                                                    >
                                                         <td className="px-3 py-2">
                                                             <input
                                                                 type="text"
@@ -1440,6 +1342,25 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         <td className="px-3 py-2">
                                                             <button
                                                                 type="button"
+                                                                onMouseDown={(e) => {
+                                                                    e.preventDefault();
+                                                                    startDischargeRowFill(index);
+                                                                }}
+                                                                className={`px-2 py-1.5 text-xs font-medium rounded-md border ${dischargeFillDrag?.startIndex === index
+                                                                    ? "bg-blue-600 text-white border-blue-600"
+                                                                    : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                                                                    }`}
+                                                                disabled={
+                                                                    dischargeAllowedRegions.length === 0 ||
+                                                                    Boolean(dischargeLoadError)
+                                                                }
+                                                            >
+                                                                Fill
+                                                            </button>
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <button
+                                                                type="button"
                                                                 onClick={() => removeDischargeRow(index)}
                                                                 className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-60"
                                                                 disabled={dischargeRows.length <= 1}
@@ -1452,6 +1373,12 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             </tbody>
                                         </table>
                                     </div>
+
+                                    {dischargeFillDrag && (
+                                        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
+                                            Fill mode is active. Drag over rows, then release mouse to stop filling.
+                                        </p>
+                                    )}
 
                                     <div className="flex items-center justify-between gap-3">
                                         <button
@@ -1639,125 +1566,69 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 </p>
                             )}
 
-                            <div className="space-y-2">
-                                <p className="text-xs text-slate-500">
-                                    Spreadsheet mode: drag the Fill handle on any row, then move over other rows to copy values down.
-                                </p>
-                                <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                                    <table className="min-w-full text-sm">
-                                        <thead className="bg-slate-50">
-                                            <tr>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700 w-12">#</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700 min-w-44">Area</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700 min-w-44">Type of area</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700 min-w-72">
-                                                    Specific work completed this week
-                                                </th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700 w-28">Fill</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700 w-24">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100">
-                                            {weeklyRows.map((row, index) => (
-                                                <tr
-                                                    key={`weekly-row-${index}`}
-                                                    onMouseEnter={() => applyWeeklyRowFill(index)}
-                                                    className={
-                                                        weeklyFillDrag?.startIndex === index
-                                                            ? "bg-blue-50/40"
-                                                            : undefined
-                                                    }
-                                                >
-                                                    <td className="px-3 py-2 text-slate-500">{index + 1}</td>
-                                                    <td className="px-3 py-2">
-                                                        <select
-                                                            value={row.area}
-                                                            onChange={(e) =>
-                                                                updateWeeklyRow(index, "area", e.target.value)
-                                                            }
-                                                            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                            disabled={weeklyAllowedRegions.length === 0}
-                                                        >
-                                                            <option value="">Select area</option>
-                                                            {weeklyAllowedRegions.map((region) => (
-                                                                <option key={region} value={region}>
-                                                                    {region}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <select
-                                                            value={row.areaType}
-                                                            onChange={(e) =>
-                                                                updateWeeklyRow(index, "areaType", e.target.value)
-                                                            }
-                                                            className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                        >
-                                                            {WEEKLY_AREA_TYPE_OPTIONS.map((option) => (
-                                                                <option key={option} value={option}>
-                                                                    {option}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <input
-                                                            type="text"
-                                                            value={row.specificWork}
-                                                            onChange={(e) =>
-                                                                updateWeeklyRow(index, "specificWork", e.target.value)
-                                                            }
-                                                            placeholder="Write the specific work done this week"
-                                                            className="w-full px-3 py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                        />
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <button
-                                                            type="button"
-                                                            onMouseDown={(e) => {
-                                                                e.preventDefault();
-                                                                startWeeklyRowFill(index);
-                                                            }}
-                                                            className={`px-2 py-1.5 text-xs font-medium rounded-md border ${weeklyFillDrag?.startIndex === index
-                                                                ? "bg-blue-600 text-white border-blue-600"
-                                                                : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                                                                }`}
-                                                        >
-                                                            Fill
-                                                        </button>
-                                                    </td>
-                                                    <td className="px-3 py-2">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeWeeklyRow(index)}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-60"
-                                                            disabled={weeklyRows.length <= 1}
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Area</label>
+                                    <select
+                                        value={weeklyForm.area}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                area: e.target.value,
+                                            }))
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        disabled={weeklyAllowedRegions.length === 0}
+                                    >
+                                        <option value="">Select area</option>
+                                        {weeklyAllowedRegions.map((region) => (
+                                            <option key={region} value={region}>
+                                                {region}
+                                            </option>
+                                        ))}
+                                    </select>
                                 </div>
-                                {weeklyFillDrag && (
-                                    <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                                        Fill mode is active. Drag over rows, then release mouse to stop filling.
-                                    </p>
-                                )}
+
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Type of area</label>
+                                    <select
+                                        value={weeklyForm.areaType}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                areaType: e.target.value,
+                                            }))
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    >
+                                        {WEEKLY_AREA_TYPE_OPTIONS.map((option) => (
+                                            <option key={option} value={option}>
+                                                {option}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
                             </div>
 
-                            <div className="pt-2 flex items-center justify-between gap-3">
-                                <button
-                                    type="button"
-                                    onClick={addWeeklyRow}
-                                    disabled={weeklyAllowedRegions.length === 0}
-                                    className="px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-60"
-                                >
-                                    Add row
-                                </button>
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-slate-700">
+                                    Specific work completed this week
+                                </label>
+                                <textarea
+                                    value={weeklyForm.specificWork}
+                                    onChange={(e) =>
+                                        setWeeklyForm((prev) => ({
+                                            ...prev,
+                                            specificWork: e.target.value,
+                                        }))
+                                    }
+                                    rows={5}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    placeholder="Write the specific work done this week"
+                                />
+                            </div>
+
+                            <div className="pt-2 flex justify-end">
                                 <button
                                     type="button"
                                     onClick={handleSubmitWeeklyReport}
