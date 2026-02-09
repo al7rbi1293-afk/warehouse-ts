@@ -156,115 +156,152 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         requestedTab: ReportType,
         requestedDate: string
     ) => {
-        const result = await getReportQuestionnaireData(requestedTab, requestedDate);
+        try {
+            const result = await getReportQuestionnaireData(requestedTab, requestedDate);
 
-        if (!isLatestLoad(token)) {
-            return;
-        }
+            if (!isLatestLoad(token)) {
+                return;
+            }
 
-        if (!result.success || !result.data) {
-            toast.error(result.message || "Failed to load report questionnaire");
+            if (!result.success || !result.data) {
+                toast.error(result.message || "Failed to load report questionnaire");
+                setQuestions([]);
+                setManagerAnswers([]);
+                setDraftAnswers({});
+                return;
+            }
+
+            setQuestions(result.data.questions);
+            setManagerAnswers(result.data.managerAnswers);
+
+            const mappedAnswers = result.data.supervisorAnswers.reduce((acc, row) => {
+                acc[row.questionId] = row.answer;
+                return acc;
+            }, {} as Record<number, string>);
+            setDraftAnswers(mappedAnswers);
+        } catch {
+            if (!isLatestLoad(token)) {
+                return;
+            }
+
+            toast.error("Failed to load report questionnaire");
             setQuestions([]);
             setManagerAnswers([]);
             setDraftAnswers({});
-            setIsLoading(false);
-            return;
+        } finally {
+            if (isLatestLoad(token)) {
+                setIsLoading(false);
+            }
         }
-
-        setQuestions(result.data.questions);
-        setManagerAnswers(result.data.managerAnswers);
-
-        const mappedAnswers = result.data.supervisorAnswers.reduce((acc, row) => {
-            acc[row.questionId] = row.answer;
-            return acc;
-        }, {} as Record<number, string>);
-        setDraftAnswers(mappedAnswers);
-        setIsLoading(false);
     };
 
     const loadDailyData = async (token: number, requestedDate: string) => {
-        const result = await getDailyReportSubmissions(requestedDate);
+        try {
+            const result = await getDailyReportSubmissions(requestedDate);
 
-        if (!isLatestLoad(token)) {
-            return;
-        }
+            if (!isLatestLoad(token)) {
+                return;
+            }
 
-        if (!result.success || !result.data) {
-            toast.error(result.message || "Failed to load daily reports");
+            if (!result.success || !result.data) {
+                toast.error(result.message || "Failed to load daily reports");
+                setDailySubmissions([]);
+                return;
+            }
+
+            setDailySubmissions(result.data.submissions);
+            setAvailableRegions(result.data.allowedRegions || []);
+
+            if (isSupervisor) {
+                const latest = result.data.submissions[0];
+                const allowed = result.data.allowedRegions || [];
+
+                setDailyForm((prev) => {
+                    const latestRegion = latest?.region || "";
+                    const canUseLatest = latestRegion && (allowed.length === 0 || allowed.includes(latestRegion));
+                    const canKeepCurrent = prev.region && (allowed.length === 0 || allowed.includes(prev.region));
+
+                    return {
+                        ...prev,
+                        region: canUseLatest
+                            ? latestRegion
+                            : canKeepCurrent
+                                ? prev.region
+                                : (allowed[0] || ""),
+                    };
+                });
+            }
+        } catch {
+            if (!isLatestLoad(token)) {
+                return;
+            }
+
+            toast.error("Failed to load daily reports");
             setDailySubmissions([]);
-            setIsLoading(false);
-            return;
+        } finally {
+            if (isLatestLoad(token)) {
+                setIsLoading(false);
+            }
         }
-
-        setDailySubmissions(result.data.submissions);
-        setAvailableRegions(result.data.allowedRegions || []);
-
-        if (isSupervisor) {
-            const latest = result.data.submissions[0];
-            const allowed = result.data.allowedRegions || [];
-
-            setDailyForm((prev) => {
-                const latestRegion = latest?.region || "";
-                const canUseLatest = latestRegion && (allowed.length === 0 || allowed.includes(latestRegion));
-                const canKeepCurrent = prev.region && (allowed.length === 0 || allowed.includes(prev.region));
-
-                return {
-                    ...prev,
-                    region: canUseLatest
-                        ? latestRegion
-                        : canKeepCurrent
-                            ? prev.region
-                            : (allowed[0] || ""),
-                };
-            });
-        }
-
-        setIsLoading(false);
     };
 
     const loadDischargeData = async (token: number, requestedDate: string) => {
-        const result = await getDischargeReportData(requestedDate);
+        try {
+            const result = await getDischargeReportData(requestedDate);
 
-        if (!isLatestLoad(token)) {
-            return;
-        }
+            if (!isLatestLoad(token)) {
+                return;
+            }
 
-        if (!result.success || !result.data) {
-            const message = result.message || "Failed to load discharge reports";
+            if (!result.success || !result.data) {
+                const message = result.message || "Failed to load discharge reports";
+                toast.error(message);
+                setDischargeLoadError(message);
+                setDischargeEntries([]);
+                setDischargeRows([createEmptyDischargeRow()]);
+                setDischargeAllowedRegions([]);
+                return;
+            }
+
+            setDischargeLoadError(null);
+            setDischargeEntries(result.data.entries);
+            setDischargeAllowedRegions(result.data.allowedRegions || []);
+
+            if (isSupervisor) {
+                const rowsFromServer = result.data.entries.map((entry) => ({
+                    roomNumber: entry.roomNumber,
+                    roomType: entry.roomType,
+                    area: entry.area,
+                }));
+
+                setDischargeRows(
+                    dischargeRowHasValue(
+                        rowsFromServer[rowsFromServer.length - 1] || createEmptyDischargeRow()
+                    )
+                        ? [...rowsFromServer, createEmptyDischargeRow()]
+                        : rowsFromServer.length > 0
+                            ? rowsFromServer
+                            : [createEmptyDischargeRow()]
+                );
+            } else {
+                setDischargeRows([createEmptyDischargeRow()]);
+            }
+        } catch {
+            if (!isLatestLoad(token)) {
+                return;
+            }
+
+            const message = "Failed to load discharge reports";
             toast.error(message);
             setDischargeLoadError(message);
             setDischargeEntries([]);
             setDischargeRows([createEmptyDischargeRow()]);
             setDischargeAllowedRegions([]);
-            setIsLoading(false);
-            return;
+        } finally {
+            if (isLatestLoad(token)) {
+                setIsLoading(false);
+            }
         }
-
-        setDischargeLoadError(null);
-        setDischargeEntries(result.data.entries);
-        setDischargeAllowedRegions(result.data.allowedRegions || []);
-
-        if (isSupervisor) {
-            const rowsFromServer = result.data.entries.map((entry) => ({
-                roomNumber: entry.roomNumber,
-                roomType: entry.roomType,
-                area: entry.area,
-            }));
-
-            setDischargeRows(
-                dischargeRowHasValue(
-                    rowsFromServer[rowsFromServer.length - 1] || createEmptyDischargeRow()
-                )
-                    ? [...rowsFromServer, createEmptyDischargeRow()]
-                    : rowsFromServer.length > 0
-                        ? rowsFromServer
-                        : [createEmptyDischargeRow()]
-            );
-        } else {
-            setDischargeRows([createEmptyDischargeRow()]);
-        }
-
-        setIsLoading(false);
     };
 
     useEffect(() => {
