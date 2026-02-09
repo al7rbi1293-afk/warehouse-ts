@@ -16,7 +16,6 @@ import {
 import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
-    DAILY_REPORT_SUPERVISORS,
 } from "@/lib/dailyReportTemplate";
 
 interface ReportsClientProps {
@@ -50,7 +49,6 @@ interface DailySubmissionItem {
 }
 
 interface DailyFormState {
-    supervisorName: string;
     region: string;
     roundNumber: string;
     checklistAnswers: Record<string, string[]>;
@@ -80,20 +78,13 @@ function createChecklistDefaults() {
     }, {} as Record<string, string[]>);
 }
 
-function getDefaultSupervisor(userName?: string) {
-    if (userName && DAILY_REPORT_SUPERVISORS.includes(userName)) {
-        return userName;
-    }
-
-    return DAILY_REPORT_SUPERVISORS[0] || "";
-}
-
 export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [activeTab, setActiveTab] = useState<ReportType>("daily");
     const [reportDate, setReportDate] = useState(getTodayLocalDateString());
     const [questions, setQuestions] = useState<ReportQuestionItem[]>([]);
     const [managerAnswers, setManagerAnswers] = useState<ManagerAnswerItem[]>([]);
     const [dailySubmissions, setDailySubmissions] = useState<DailySubmissionItem[]>([]);
+    const [availableRegions, setAvailableRegions] = useState<string[]>([]);
     const [draftAnswers, setDraftAnswers] = useState<Record<number, string>>({});
     const [newQuestion, setNewQuestion] = useState("");
     const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
@@ -101,7 +92,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [isPending, startTransition] = useTransition();
     const [dailyForm, setDailyForm] = useState<DailyFormState>({
-        supervisorName: getDefaultSupervisor(userName),
         region: "",
         roundNumber: DAILY_REPORT_ROUNDS[0] || "",
         checklistAnswers: createChecklistDefaults(),
@@ -132,6 +122,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }, {} as Record<number, string>);
         setDraftAnswers(mappedAnswers);
         setDailySubmissions([]);
+        setAvailableRegions([]);
         setIsLoading(false);
     };
 
@@ -150,17 +141,29 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
 
         setDailySubmissions(result.data.submissions);
+        setAvailableRegions(result.data.allowedRegions || []);
         setQuestions([]);
         setManagerAnswers([]);
         setDraftAnswers({});
 
-        if (isSupervisor && result.data.submissions.length > 0) {
+        if (isSupervisor) {
             const latest = result.data.submissions[0];
-            setDailyForm((prev) => ({
-                ...prev,
-                supervisorName: latest.supervisorName || prev.supervisorName,
-                region: latest.region || prev.region,
-            }));
+            const allowed = result.data.allowedRegions || [];
+
+            setDailyForm((prev) => {
+                const latestRegion = latest?.region || "";
+                const canUseLatest = latestRegion && (allowed.length === 0 || allowed.includes(latestRegion));
+                const canKeepCurrent = prev.region && (allowed.length === 0 || allowed.includes(prev.region));
+
+                return {
+                    ...prev,
+                    region: canUseLatest
+                        ? latestRegion
+                        : canKeepCurrent
+                            ? prev.region
+                            : (allowed[0] || ""),
+                };
+            });
         }
 
         setIsLoading(false);
@@ -174,13 +177,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, reportDate]);
-
-    useEffect(() => {
-        setDailyForm((prev) => ({
-            ...prev,
-            supervisorName: getDefaultSupervisor(userName),
-        }));
-    }, [userName]);
 
     const handleAddQuestion = () => {
         if (!newQuestion.trim()) {
@@ -273,14 +269,29 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
     };
 
-    const handleSubmitDailyReport = () => {
-        if (!dailyForm.supervisorName) {
-            toast.error("يرجى اختيار اسم المشرف");
-            return;
-        }
+    const setAllSectionItems = (sectionId: string, items: string[]) => {
+        setDailyForm((prev) => ({
+            ...prev,
+            checklistAnswers: {
+                ...prev.checklistAnswers,
+                [sectionId]: [...items],
+            },
+        }));
+    };
 
+    const clearSectionItems = (sectionId: string) => {
+        setDailyForm((prev) => ({
+            ...prev,
+            checklistAnswers: {
+                ...prev.checklistAnswers,
+                [sectionId]: [],
+            },
+        }));
+    };
+
+    const handleSubmitDailyReport = () => {
         if (!dailyForm.region.trim()) {
-            toast.error("يرجى إدخال المنطقة");
+            toast.error("يرجى اختيار المنطقة");
             return;
         }
 
@@ -301,7 +312,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
 
         const payload: DailySubmissionInput = {
-            supervisorName: dailyForm.supervisorName,
             region: dailyForm.region.trim(),
             roundNumber: dailyForm.roundNumber,
             checklistAnswers: dailyForm.checklistAnswers,
@@ -407,28 +417,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium text-slate-700">اسم المشرف</label>
-                                            <select
-                                                value={dailyForm.supervisorName}
-                                                onChange={(e) =>
-                                                    setDailyForm((prev) => ({
-                                                        ...prev,
-                                                        supervisorName: e.target.value,
-                                                    }))
-                                                }
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                            >
-                                                {DAILY_REPORT_SUPERVISORS.map((name) => (
-                                                    <option key={name} value={name}>
-                                                        {name}
-                                                    </option>
-                                                ))}
-                                            </select>
+                                            <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
+                                                {userName || "Supervisor"}
+                                            </div>
                                         </div>
 
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium text-slate-700">المنطقة</label>
-                                            <input
-                                                type="text"
+                                            <select
                                                 value={dailyForm.region}
                                                 onChange={(e) =>
                                                     setDailyForm((prev) => ({
@@ -436,9 +432,22 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         region: e.target.value,
                                                     }))
                                                 }
-                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                placeholder="أدخل المنطقة"
-                                            />
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                disabled={availableRegions.length === 0}
+                                            >
+                                                {availableRegions.length === 0 ? (
+                                                    <option value="">لا توجد مناطق مرتبطة بك</option>
+                                                ) : (
+                                                    <>
+                                                        <option value="">اختر المنطقة</option>
+                                                        {availableRegions.map((region) => (
+                                                            <option key={region} value={region}>
+                                                                {region}
+                                                            </option>
+                                                        ))}
+                                                    </>
+                                                )}
+                                            </select>
                                         </div>
 
                                         <div className="space-y-1">
@@ -462,6 +471,12 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </div>
                                     </div>
 
+                                    {availableRegions.length === 0 && (
+                                        <p className="text-sm text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                            لا توجد مناطق مخصصة لهذا المشرف حالياً.
+                                        </p>
+                                    )}
+
                                     <div className="space-y-4">
                                         {DAILY_REPORT_SECTIONS.map((section) => {
                                             const selected = dailyForm.checklistAnswers[section.id] || [];
@@ -476,6 +491,22 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                 إلزامي
                                                             </span>
                                                         )}
+                                                        <div className="mr-auto flex items-center gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setAllSectionItems(section.id, section.items)}
+                                                                className="text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100"
+                                                            >
+                                                                تحديد الكل
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => clearSectionItems(section.id)}
+                                                                className="text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200"
+                                                            >
+                                                                إلغاء الكل
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                         {section.items.map((item) => (
@@ -502,7 +533,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <button
                                             type="button"
                                             onClick={handleSubmitDailyReport}
-                                            disabled={isPending}
+                                            disabled={isPending || availableRegions.length === 0}
                                             className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                         >
                                             {isPending ? "جاري الإرسال..." : "إرسال التقرير اليومي"}

@@ -7,7 +7,6 @@ import { prisma } from "@/lib/prisma";
 import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
-    DAILY_REPORT_SUPERVISORS,
 } from "@/lib/dailyReportTemplate";
 
 export type ReportType = "daily" | "weekly" | "discharge";
@@ -39,7 +38,6 @@ interface SupervisorAnswerDto {
 }
 
 export interface DailySubmissionInput {
-    supervisorName: string;
     region: string;
     roundNumber: string;
     checklistAnswers: Record<string, string[]>;
@@ -171,6 +169,63 @@ function parseChecklistAnswers(raw: unknown): Record<string, string[]> {
     }
 
     return parsed;
+}
+
+async function getSupervisorAllowedRegions(
+    supervisorId: number,
+    reportDate: Date
+): Promise<string[]> {
+    const user = await prisma.user.findUnique({
+        where: { id: supervisorId },
+        select: { region: true, regions: true },
+    });
+
+    const values: string[] = [];
+
+    const pushValues = (source: string | null | undefined) => {
+        if (!source) {
+            return;
+        }
+        source
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .forEach((item) => values.push(item));
+    };
+
+    pushValues(user?.region);
+    pushValues(user?.regions);
+
+    const substitutions = await prisma.staffAttendance.findMany({
+        where: {
+            coveredBy: supervisorId,
+            date: reportDate,
+            substituteActive: true,
+        },
+        include: {
+            user: {
+                select: {
+                    region: true,
+                    regions: true,
+                },
+            },
+        },
+    });
+
+    for (const substitution of substitutions) {
+        pushValues(substitution.user?.region);
+        pushValues(substitution.user?.regions);
+    }
+
+    const dedup = new Map<string, string>();
+    for (const value of values) {
+        const key = value.toUpperCase();
+        if (!dedup.has(key)) {
+            dedup.set(key, value);
+        }
+    }
+
+    return Array.from(dedup.values()).sort((a, b) => a.localeCompare(b, "ar"));
 }
 
 export async function getReportQuestionnaireData(
@@ -463,6 +518,7 @@ export async function getDailyReportSubmissions(
     ActionResult<{
         mode: "manager" | "supervisor";
         submissions: DailySubmissionDto[];
+        allowedRegions: string[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -478,7 +534,8 @@ export async function getDailyReportSubmissions(
         return { success: false, message: "Invalid supervisor session" };
     }
 
-    const whereClause = MANAGER_ROLES.has(role)
+    const isManager = MANAGER_ROLES.has(role);
+    const whereClause = isManager
         ? { reportDate: normalizedDate }
         : {
             reportDate: normalizedDate,
@@ -498,7 +555,8 @@ export async function getDailyReportSubmissions(
         success: true,
         message: "OK",
         data: {
-            mode: MANAGER_ROLES.has(role) ? "manager" : "supervisor",
+            mode: isManager ? "manager" : "supervisor",
+            allowedRegions: isManager ? [] : await getSupervisorAllowedRegions(supervisorId, normalizedDate),
             submissions: records.map((record) => ({
                 id: record.id,
                 reportDate: record.reportDate.toISOString(),
@@ -530,16 +588,21 @@ export async function submitDailyReportForm(
 
     const normalizedDate = normalizeReportDate(reportDate);
 
-    const supervisorName = payload.supervisorName?.trim();
+    const supervisorName = (session.user.name || session.user.username || "").trim();
     const region = payload.region?.trim();
     const roundNumber = payload.roundNumber?.trim();
 
-    if (!supervisorName || !DAILY_REPORT_SUPERVISORS.includes(supervisorName)) {
-        return { success: false, message: "Please select a valid supervisor name" };
+    if (!supervisorName) {
+        return { success: false, message: "Supervisor profile name is required" };
     }
 
     if (!region || region.length < 2) {
         return { success: false, message: "Please enter a valid region" };
+    }
+
+    const allowedRegions = await getSupervisorAllowedRegions(supervisorId, normalizedDate);
+    if (allowedRegions.length > 0 && !allowedRegions.includes(region)) {
+        return { success: false, message: "Selected region is not assigned to your account" };
     }
 
     if (!roundNumber || !DAILY_REPORT_ROUNDS.includes(roundNumber)) {
