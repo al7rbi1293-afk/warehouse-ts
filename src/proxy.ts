@@ -50,7 +50,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // Check authentication for protected routes
-    const protectedRoutes = ["/dashboard", "/warehouse", "/manpower"];
+    const protectedRoutes = ["/dashboard", "/warehouse", "/manpower", "/reports"];
     const isProtectedRoute = protectedRoutes.some((route) =>
         pathname.startsWith(route)
     );
