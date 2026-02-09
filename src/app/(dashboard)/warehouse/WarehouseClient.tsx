@@ -1161,6 +1161,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                         <select
                                             value={stocktakeCategory}
                                             onChange={(e) => setStocktakeCategory(e.target.value)}
+                                            aria-label="Filter by category"
                                             className="px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                         >
                                             <option value="All">All Categories</option>
@@ -1196,6 +1197,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                                         type="number"
                                                         min="0"
                                                         value={currentVal}
+                                                        aria-label={`Quantity for ${itemName}`}
                                                         onChange={(e) => {
                                                             const val = parseInt(e.target.value) || 0;
                                                             setStocktakeBuffer(prev => ({

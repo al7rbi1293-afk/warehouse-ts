@@ -121,6 +121,7 @@ export function BulkRequestForm({ inventory, supervisorName, defaultRegion, regi
                     <select
                         value={selectedCategory}
                         onChange={(e) => setSelectedCategory(e.target.value)}
+                        aria-label="Filter by category"
                         className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                     >
                         {categories.map(c => (
@@ -132,6 +133,7 @@ export function BulkRequestForm({ inventory, supervisorName, defaultRegion, regi
                     <select
                         value={selectedRequestRegion}
                         onChange={(e) => setSelectedRequestRegion(e.target.value)}
+                        aria-label="Select region"
                         className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all font-medium text-slate-700"
                     >
                         <option value="">Select Region</option>

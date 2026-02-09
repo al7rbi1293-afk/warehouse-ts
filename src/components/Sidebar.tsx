@@ -90,13 +90,9 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
             )}
 
             <aside
-                className={`${staticPositioning ? "relative" : "fixed top-0 left-0"} h-full bg-[#1E64EB] text-white transition-all duration-300 z-50 flex flex-col 
+                className={`${staticPositioning ? "relative" : "fixed top-0 left-0"} h-full text-white transition-all duration-300 z-50 flex flex-col sidebar-gradient
                 ${isSidebarOpen ? "translate-x-0 w-[260px]" : "-translate-x-full md:translate-x-0 w-[260px] md:w-[80px]"} 
                 ${className}`}
-                style={{
-                    background: "linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%)",
-                    boxShadow: "4px 0 15px rgba(0,0,0,0.05)"
-                }}
             >
                 {/* Logo Area */}
                 <div className={`p-6 flex items-center gap-3 ${!isSidebarOpen && "justify-center"}`}>

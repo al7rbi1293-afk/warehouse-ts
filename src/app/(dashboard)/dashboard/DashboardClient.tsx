@@ -123,6 +123,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             type="date"
                             value={data.selectedDate}
                             onChange={(e) => handleDateChange(e.target.value)}
+                            aria-label="Select date"
                             className="px-3 py-1.5 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
@@ -236,6 +237,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                             <h3 className="text-lg font-bold text-slate-900">{selectedStat.title}</h3>
                             <button
                                 onClick={() => setSelectedStat(null)}
+                                aria-label="Close modal"
                                 className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-200 rounded-full transition-colors"
                             >
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
