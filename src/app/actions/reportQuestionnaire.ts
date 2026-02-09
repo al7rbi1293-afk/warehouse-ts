@@ -27,6 +27,7 @@ interface ManagerAnswerDto {
     id: number;
     questionId: number;
     question: string;
+    supervisorId: number;
     supervisorName: string;
     answer: string;
     updatedAt: string;
@@ -280,6 +281,7 @@ export async function getReportQuestionnaireData(
                 id: true,
                 questionId: true,
                 answer: true,
+                supervisorId: true,
                 supervisorName: true,
                 updatedAt: true,
                 question: {
@@ -305,6 +307,7 @@ export async function getReportQuestionnaireData(
                     id: row.id,
                     questionId: row.questionId,
                     question: row.question.question,
+                    supervisorId: row.supervisorId,
                     supervisorName: row.supervisorName,
                     answer: row.answer,
                     updatedAt: row.updatedAt.toISOString(),
@@ -512,6 +515,46 @@ export async function submitSupervisorReportAnswers(
     };
 }
 
+export async function deleteSupervisorReportAnswers(
+    reportType: string,
+    reportDate: string,
+    supervisorId: number
+): Promise<ActionResult<{ deleted: number }>> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    if (!isReportType(reportType) || reportType === "daily") {
+        return { success: false, message: "Invalid report type" };
+    }
+
+    if (!Number.isFinite(supervisorId) || supervisorId <= 0) {
+        return { success: false, message: "Invalid supervisor id" };
+    }
+
+    const normalizedDate = normalizeReportDate(reportDate);
+
+    const deleted = await prisma.reportAnswer.deleteMany({
+        where: {
+            supervisorId,
+            reportDate: normalizedDate,
+            question: {
+                reportType,
+            },
+        },
+    });
+
+    revalidatePath("/reports");
+    return {
+        success: true,
+        message: deleted.count > 0 ? "Report deleted" : "No report was found to delete",
+        data: { deleted: deleted.count },
+    };
+}
+
 export async function getDailyReportSubmissions(
     reportDate: string
 ): Promise<
@@ -645,4 +688,30 @@ export async function submitDailyReportForm(
 
     revalidatePath("/reports");
     return { success: true, message: "Daily report submitted successfully" };
+}
+
+export async function deleteDailyReportSubmission(
+    submissionId: number
+): Promise<ActionResult> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    if (!Number.isFinite(submissionId) || submissionId <= 0) {
+        return { success: false, message: "Invalid submission id" };
+    }
+
+    try {
+        await prisma.dailyReportSubmission.delete({
+            where: { id: submissionId },
+        });
+    } catch {
+        return { success: false, message: "Daily report not found" };
+    }
+
+    revalidatePath("/reports");
+    return { success: true, message: "Daily report deleted" };
 }

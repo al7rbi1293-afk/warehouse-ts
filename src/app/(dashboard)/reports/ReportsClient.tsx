@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
     addReportQuestion,
+    deleteDailyReportSubmission,
     deleteReportQuestion,
+    deleteSupervisorReportAnswers,
     getDailyReportSubmissions,
     getReportQuestionnaireData,
     submitDailyReportForm,
@@ -33,6 +35,7 @@ interface ManagerAnswerItem {
     id: number;
     questionId: number;
     question: string;
+    supervisorId: number;
     supervisorName: string;
     answer: string;
     updatedAt: string;
@@ -329,14 +332,67 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
     };
 
-    const groupedManagerAnswers = useMemo(() => {
-        return managerAnswers.reduce((acc, answer) => {
-            if (!acc[answer.supervisorName]) {
-                acc[answer.supervisorName] = [];
+    const handleDeleteDailySubmission = (submissionId: number, supervisorName: string) => {
+        if (!confirm(`Delete this daily report for ${supervisorName}?`)) {
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await deleteDailyReportSubmission(submissionId);
+            if (!result.success) {
+                toast.error(result.message);
+                return;
             }
-            acc[answer.supervisorName].push(answer);
-            return acc;
-        }, {} as Record<string, ManagerAnswerItem[]>);
+
+            toast.success(result.message);
+            await loadDailyData();
+        });
+    };
+
+    const handleDeleteSupervisorReport = (supervisorId: number, supervisorName: string) => {
+        if (
+            !confirm(
+                `Delete ${activeTab} report answers for ${supervisorName} on ${reportDate}?`
+            )
+        ) {
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await deleteSupervisorReportAnswers(activeTab, reportDate, supervisorId);
+            if (!result.success) {
+                toast.error(result.message);
+                return;
+            }
+
+            toast.success(result.message);
+            await loadQuestionnaireData();
+        });
+    };
+
+    const groupedManagerAnswers = useMemo(() => {
+        const groups = new Map<
+            number,
+            { supervisorId: number; supervisorName: string; answers: ManagerAnswerItem[] }
+        >();
+
+        for (const answer of managerAnswers) {
+            const existing = groups.get(answer.supervisorId);
+            if (existing) {
+                existing.answers.push(answer);
+                continue;
+            }
+
+            groups.set(answer.supervisorId, {
+                supervisorId: answer.supervisorId,
+                supervisorName: answer.supervisorName,
+                answers: [answer],
+            });
+        }
+
+        return Array.from(groups.values()).sort((a, b) =>
+            a.supervisorName.localeCompare(b.supervisorName, "ar")
+        );
     }, [managerAnswers]);
 
     const myDailySubmissions = useMemo(() => {
@@ -560,14 +616,29 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     key={submission.id}
                                                     className="border border-slate-200 rounded-lg overflow-hidden"
                                                 >
-                                                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3">
-                                                        <p className="text-sm font-semibold text-slate-900">
-                                                            {submission.supervisorName}
-                                                        </p>
-                                                        <p className="text-xs text-slate-500 mt-1">
-                                                            المنطقة: {submission.region} | الجولة: {submission.roundNumber} | آخر تحديث:{" "}
-                                                            {new Date(submission.updatedAt).toLocaleString()}
-                                                        </p>
+                                                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <p className="text-sm font-semibold text-slate-900">
+                                                                {submission.supervisorName}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500 mt-1">
+                                                                المنطقة: {submission.region} | الجولة: {submission.roundNumber} | آخر تحديث:{" "}
+                                                                {new Date(submission.updatedAt).toLocaleString()}
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleDeleteDailySubmission(
+                                                                    submission.id,
+                                                                    submission.supervisorName
+                                                                )
+                                                            }
+                                                            disabled={isPending}
+                                                            className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                        >
+                                                            Delete
+                                                        </button>
                                                     </div>
                                                     <div className="p-4 space-y-4">
                                                         {DAILY_REPORT_SECTIONS.map((section) => {
@@ -734,17 +805,32 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     </p>
                                 </div>
 
-                                {Object.keys(groupedManagerAnswers).length === 0 ? (
+                                {groupedManagerAnswers.length === 0 ? (
                                     <p className="text-sm text-slate-500">No responses submitted yet.</p>
                                 ) : (
                                     <div className="space-y-4">
-                                        {Object.entries(groupedManagerAnswers).map(([supervisorName, answers]) => (
-                                            <div key={supervisorName} className="border border-slate-200 rounded-lg overflow-hidden">
-                                                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200">
-                                                    <p className="text-sm font-semibold text-slate-800">{supervisorName}</p>
+                                        {groupedManagerAnswers.map((group) => (
+                                            <div key={group.supervisorId} className="border border-slate-200 rounded-lg overflow-hidden">
+                                                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+                                                    <p className="text-sm font-semibold text-slate-800">
+                                                        {group.supervisorName}
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDeleteSupervisorReport(
+                                                                group.supervisorId,
+                                                                group.supervisorName
+                                                            )
+                                                        }
+                                                        disabled={isPending}
+                                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                    >
+                                                        Delete report
+                                                    </button>
                                                 </div>
                                                 <div className="divide-y divide-slate-100">
-                                                    {answers.map((answer) => (
+                                                    {group.answers.map((answer) => (
                                                         <div key={answer.id} className="px-4 py-3">
                                                             <p className="text-xs font-semibold text-slate-500 mb-1">
                                                                 {answer.question}
