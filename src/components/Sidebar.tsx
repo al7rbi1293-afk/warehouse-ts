@@ -70,7 +70,7 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
         { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard, roles: ["manager"] },
         { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory, roles: ["manager", "supervisor", "storekeeper"] },
         { name: "Manpower", href: "/manpower", icon: Icons.Reports, roles: ["manager", "supervisor"] },
-        { name: "Reports", href: "/reports", icon: Icons.Requests, roles: ["manager", "supervisor", "storekeeper"] },
+        { name: "Reports", href: "/reports", icon: Icons.Requests, roles: ["manager", "supervisor", "night_supervisor"] },
     ];
 
     const filteredNavItems = navItems.filter(item => item.roles.includes(session.user.role as string));

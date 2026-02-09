@@ -82,7 +82,7 @@ export function MobileNav() {
                             <Link href="/manpower" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Manpower</Link>
                         )}
 
-                        {["manager", "supervisor", "storekeeper"].includes(session.user.role) && (
+                        {["manager", "supervisor", "night_supervisor"].includes(session.user.role) && (
                             <Link href="/reports" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Reports</Link>
                         )}
 

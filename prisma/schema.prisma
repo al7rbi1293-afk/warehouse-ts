@@ -24,6 +24,7 @@ model User {
 
   attendance StaffAttendance[] @relation("UserAttendance")
   covering   StaffAttendance[] @relation("CoveringUser")
+  reportAnswers ReportAnswer[]
 
   @@map("users")
 }
@@ -201,4 +202,37 @@ model loan {
   type     String
   date     String
   status   String @default("Active")
+}
+
+model ReportQuestion {
+  id        Int      @id @default(autoincrement())
+  reportType String  @map("report_type")
+  question  String
+  sortOrder Int      @default(0) @map("sort_order")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdBy String?  @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  answers   ReportAnswer[]
+
+  @@index([reportType, sortOrder])
+  @@map("report_questions")
+}
+
+model ReportAnswer {
+  id             Int            @id @default(autoincrement())
+  questionId     Int            @map("question_id")
+  reportDate     DateTime       @map("report_date") @db.Date
+  answer         String
+  supervisorId   Int            @map("supervisor_id")
+  supervisorName String         @map("supervisor_name")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  question       ReportQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  supervisor     User           @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, reportDate, supervisorId])
+  @@index([reportDate])
+  @@index([supervisorId])
+  @@map("report_answers")
 }
