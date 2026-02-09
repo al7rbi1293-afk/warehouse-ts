@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
     addReportQuestion,
@@ -124,6 +124,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         createEmptyDischargeRow(),
     ]);
     const [dischargeAllowedRegions, setDischargeAllowedRegions] = useState<string[]>([]);
+    const [dischargeLoadError, setDischargeLoadError] = useState<string | null>(null);
     const [availableRegions, setAvailableRegions] = useState<string[]>([]);
     const [draftAnswers, setDraftAnswers] = useState<Record<number, string>>({});
     const [newQuestion, setNewQuestion] = useState("");
@@ -139,10 +140,27 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
+    const loadTokenRef = useRef(0);
 
-    const loadQuestionnaireData = async () => {
+    const beginLoad = () => {
+        const token = loadTokenRef.current + 1;
+        loadTokenRef.current = token;
         setIsLoading(true);
-        const result = await getReportQuestionnaireData(activeTab, reportDate);
+        return token;
+    };
+
+    const isLatestLoad = (token: number) => token === loadTokenRef.current;
+
+    const loadQuestionnaireData = async (
+        token: number,
+        requestedTab: ReportType,
+        requestedDate: string
+    ) => {
+        const result = await getReportQuestionnaireData(requestedTab, requestedDate);
+
+        if (!isLatestLoad(token)) {
+            return;
+        }
 
         if (!result.success || !result.data) {
             toast.error(result.message || "Failed to load report questionnaire");
@@ -161,39 +179,25 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             return acc;
         }, {} as Record<number, string>);
         setDraftAnswers(mappedAnswers);
-        setDailySubmissions([]);
-        setDischargeEntries([]);
-        setDischargeRows([createEmptyDischargeRow()]);
-        setDischargeAllowedRegions([]);
-        setAvailableRegions([]);
         setIsLoading(false);
     };
 
-    const loadDailyData = async () => {
-        setIsLoading(true);
-        const result = await getDailyReportSubmissions(reportDate);
+    const loadDailyData = async (token: number, requestedDate: string) => {
+        const result = await getDailyReportSubmissions(requestedDate);
+
+        if (!isLatestLoad(token)) {
+            return;
+        }
 
         if (!result.success || !result.data) {
             toast.error(result.message || "Failed to load daily reports");
             setDailySubmissions([]);
-            setQuestions([]);
-            setManagerAnswers([]);
-            setDraftAnswers({});
-            setDischargeEntries([]);
-            setDischargeRows([createEmptyDischargeRow()]);
-            setDischargeAllowedRegions([]);
             setIsLoading(false);
             return;
         }
 
         setDailySubmissions(result.data.submissions);
         setAvailableRegions(result.data.allowedRegions || []);
-        setQuestions([]);
-        setManagerAnswers([]);
-        setDraftAnswers({});
-        setDischargeEntries([]);
-        setDischargeRows([createEmptyDischargeRow()]);
-        setDischargeAllowedRegions([]);
 
         if (isSupervisor) {
             const latest = result.data.submissions[0];
@@ -218,31 +222,27 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         setIsLoading(false);
     };
 
-    const loadDischargeData = async () => {
-        setIsLoading(true);
-        const result = await getDischargeReportData(reportDate);
+    const loadDischargeData = async (token: number, requestedDate: string) => {
+        const result = await getDischargeReportData(requestedDate);
+
+        if (!isLatestLoad(token)) {
+            return;
+        }
 
         if (!result.success || !result.data) {
-            toast.error(result.message || "Failed to load discharge reports");
+            const message = result.message || "Failed to load discharge reports";
+            toast.error(message);
+            setDischargeLoadError(message);
             setDischargeEntries([]);
             setDischargeRows([createEmptyDischargeRow()]);
             setDischargeAllowedRegions([]);
-            setQuestions([]);
-            setManagerAnswers([]);
-            setDraftAnswers({});
-            setDailySubmissions([]);
-            setAvailableRegions([]);
             setIsLoading(false);
             return;
         }
 
+        setDischargeLoadError(null);
         setDischargeEntries(result.data.entries);
         setDischargeAllowedRegions(result.data.allowedRegions || []);
-        setQuestions([]);
-        setManagerAnswers([]);
-        setDraftAnswers({});
-        setDailySubmissions([]);
-        setAvailableRegions([]);
 
         if (isSupervisor) {
             const rowsFromServer = result.data.entries.map((entry) => ({
@@ -268,12 +268,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     };
 
     useEffect(() => {
+        const token = beginLoad();
         if (activeTab === "daily") {
-            loadDailyData();
+            void loadDailyData(token, reportDate);
         } else if (activeTab === "discharge") {
-            loadDischargeData();
+            setDischargeLoadError(null);
+            void loadDischargeData(token, reportDate);
         } else {
-            loadQuestionnaireData();
+            void loadQuestionnaireData(token, activeTab, reportDate);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, reportDate]);
@@ -293,7 +295,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             setNewQuestion("");
             toast.success("Question added");
-            await loadQuestionnaireData();
+            const token = beginLoad();
+            await loadQuestionnaireData(token, activeTab, reportDate);
         });
     };
 
@@ -312,7 +315,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             toast.success("Question updated");
             setEditingQuestionId(null);
             setEditingQuestionText("");
-            await loadQuestionnaireData();
+            const token = beginLoad();
+            await loadQuestionnaireData(token, activeTab, reportDate);
         });
     };
 
@@ -329,7 +333,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success("Question removed");
-            await loadQuestionnaireData();
+            const token = beginLoad();
+            await loadQuestionnaireData(token, activeTab, reportDate);
         });
     };
 
@@ -347,7 +352,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
-            await loadQuestionnaireData();
+            const token = beginLoad();
+            await loadQuestionnaireData(token, activeTab, reportDate);
         });
     };
 
@@ -425,7 +431,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
-            await loadDailyData();
+            const token = beginLoad();
+            await loadDailyData(token, reportDate);
         });
     };
 
@@ -475,6 +482,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     };
 
     const handleSubmitDischargeReport = () => {
+        if (dischargeLoadError) {
+            toast.error("Failed to load discharge areas. Please refresh and try again.");
+            return;
+        }
+
         if (dischargeAllowedRegions.length === 0) {
             toast.error("No assigned areas found for your account");
             return;
@@ -501,7 +513,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
-            await loadDischargeData();
+            const token = beginLoad();
+            await loadDischargeData(token, reportDate);
         });
     };
 
@@ -518,7 +531,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
-            await loadDailyData();
+            const token = beginLoad();
+            await loadDailyData(token, reportDate);
         });
     };
 
@@ -535,7 +549,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
-            await loadDischargeData();
+            const token = beginLoad();
+            await loadDischargeData(token, reportDate);
         });
     };
 
@@ -556,7 +571,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
-            await loadQuestionnaireData();
+            const token = beginLoad();
+            await loadQuestionnaireData(token, activeTab, reportDate);
         });
     };
 
@@ -941,11 +957,15 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </div>
                                     </div>
 
-                                    {dischargeAllowedRegions.length === 0 && (
+                                    {dischargeLoadError ? (
+                                        <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                            Failed to load discharge areas: {dischargeLoadError}
+                                        </p>
+                                    ) : dischargeAllowedRegions.length === 0 ? (
                                         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                                             No areas are assigned to your account currently.
                                         </p>
-                                    )}
+                                    ) : null}
 
                                     <div className="overflow-x-auto border border-slate-200 rounded-lg">
                                         <table className="min-w-full text-sm">
@@ -973,7 +993,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                 }
                                                                 placeholder="e.g. 1203"
                                                                 className="w-full px-3 py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                                disabled={dischargeAllowedRegions.length === 0}
+                                                                disabled={
+                                                                    dischargeAllowedRegions.length === 0 ||
+                                                                    Boolean(dischargeLoadError)
+                                                                }
                                                             />
                                                         </td>
                                                         <td className="px-3 py-2">
@@ -987,7 +1010,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                     )
                                                                 }
                                                                 className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                                disabled={dischargeAllowedRegions.length === 0}
+                                                                disabled={
+                                                                    dischargeAllowedRegions.length === 0 ||
+                                                                    Boolean(dischargeLoadError)
+                                                                }
                                                             >
                                                                 <option value="normal_patient">Normal patient</option>
                                                                 <option value="isolation">Isolation</option>
@@ -1004,7 +1030,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                     )
                                                                 }
                                                                 className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                                disabled={dischargeAllowedRegions.length === 0}
+                                                                disabled={
+                                                                    dischargeAllowedRegions.length === 0 ||
+                                                                    Boolean(dischargeLoadError)
+                                                                }
                                                             >
                                                                 <option value="">Select area</option>
                                                                 {dischargeAllowedRegions.map((region) => (
@@ -1034,7 +1063,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <button
                                             type="button"
                                             onClick={addDischargeRow}
-                                            disabled={dischargeAllowedRegions.length === 0}
+                                            disabled={
+                                                dischargeAllowedRegions.length === 0 ||
+                                                Boolean(dischargeLoadError)
+                                            }
                                             className="px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-60"
                                         >
                                             Add row
@@ -1042,7 +1074,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <button
                                             type="button"
                                             onClick={handleSubmitDischargeReport}
-                                            disabled={isPending || dischargeAllowedRegions.length === 0}
+                                            disabled={
+                                                isPending ||
+                                                dischargeAllowedRegions.length === 0 ||
+                                                Boolean(dischargeLoadError)
+                                            }
                                             className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                         >
                                             {isPending ? "Submitting..." : "Submit discharge report"}
