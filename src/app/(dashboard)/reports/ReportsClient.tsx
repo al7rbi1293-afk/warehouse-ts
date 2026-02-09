@@ -131,6 +131,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
     const [editingQuestionText, setEditingQuestionText] = useState("");
     const [isLoading, setIsLoading] = useState(true);
+    const [isExporting, setIsExporting] = useState(false);
     const [isPending, startTransition] = useTransition();
     const [dailyForm, setDailyForm] = useState<DailyFormState>({
         region: "",
@@ -613,6 +614,133 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
     };
 
+    const handleExportAllReports = async () => {
+        if (!isManager) {
+            return;
+        }
+
+        setIsExporting(true);
+        try {
+            const [dailyResult, weeklyResult, dischargeResult] = await Promise.all([
+                getDailyReportSubmissions(reportDate),
+                getReportQuestionnaireData("weekly", reportDate),
+                getDischargeReportData(reportDate),
+            ]);
+
+            if (!dailyResult.success || !dailyResult.data) {
+                toast.error(dailyResult.message || "Failed to load daily reports for export");
+                return;
+            }
+
+            if (!weeklyResult.success || !weeklyResult.data) {
+                toast.error(weeklyResult.message || "Failed to load weekly reports for export");
+                return;
+            }
+
+            if (!dischargeResult.success || !dischargeResult.data) {
+                toast.error(dischargeResult.message || "Failed to load discharge reports for export");
+                return;
+            }
+
+            const XLSX = await import("xlsx");
+            const workbook = XLSX.utils.book_new();
+
+            const dailyRows: Array<Record<string, string>> = [];
+            for (const submission of dailyResult.data.submissions) {
+                for (const section of DAILY_REPORT_SECTIONS) {
+                    const selected = new Set(submission.checklistAnswers[section.id] || []);
+                    for (const item of section.items) {
+                        const isChecked = selected.has(item);
+                        dailyRows.push({
+                            Date: submission.reportDate.slice(0, 10),
+                            Supervisor: submission.supervisorName,
+                            Area: submission.region,
+                            Round: submission.roundNumber,
+                            Section: section.title,
+                            Item: item,
+                            Status: isChecked ? "Checked" : "Not checked",
+                            Color: isChecked ? "Green" : "Red",
+                        });
+                    }
+                }
+            }
+
+            if (dailyRows.length === 0) {
+                dailyRows.push({
+                    Date: reportDate,
+                    Supervisor: "",
+                    Area: "",
+                    Round: "",
+                    Section: "",
+                    Item: "",
+                    Status: "No daily submissions",
+                    Color: "",
+                });
+            }
+
+            const weeklyRows = weeklyResult.data.managerAnswers.length > 0
+                ? weeklyResult.data.managerAnswers.map((answer) => ({
+                    Date: reportDate,
+                    Supervisor: answer.supervisorName,
+                    Question: answer.question,
+                    Answer: answer.answer,
+                    UpdatedAt: new Date(answer.updatedAt).toLocaleString(),
+                }))
+                : [
+                    {
+                        Date: reportDate,
+                        Supervisor: "",
+                        Question: "",
+                        Answer: "No weekly responses",
+                        UpdatedAt: "",
+                    },
+                ];
+
+            const dischargeRows = dischargeResult.data.entries.length > 0
+                ? dischargeResult.data.entries.map((entry) => ({
+                    Date: entry.reportDate.slice(0, 10),
+                    RoomNumber: entry.roomNumber,
+                    RoomType: getDischargeRoomTypeLabel(entry.roomType),
+                    Supervisor: entry.supervisorName,
+                    Area: entry.area,
+                    UpdatedAt: new Date(entry.updatedAt).toLocaleString(),
+                }))
+                : [
+                    {
+                        Date: reportDate,
+                        RoomNumber: "",
+                        RoomType: "",
+                        Supervisor: "",
+                        Area: "",
+                        UpdatedAt: "No discharge responses",
+                    },
+                ];
+
+            XLSX.utils.book_append_sheet(
+                workbook,
+                XLSX.utils.json_to_sheet(dailyRows),
+                "Daily Report"
+            );
+            XLSX.utils.book_append_sheet(
+                workbook,
+                XLSX.utils.json_to_sheet(weeklyRows),
+                "Weekly Report"
+            );
+            XLSX.utils.book_append_sheet(
+                workbook,
+                XLSX.utils.json_to_sheet(dischargeRows),
+                "Discharge Report"
+            );
+
+            XLSX.writeFile(workbook, `reports-${reportDate}.xlsx`);
+            toast.success("Reports exported successfully");
+        } catch {
+            toast.error("Failed to export reports");
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const groupedManagerAnswers = useMemo(() => {
         const groups = new Map<
             number,
@@ -711,7 +839,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <label htmlFor="report-date" className="text-sm font-medium text-slate-700">
                         Report date
                     </label>
@@ -722,6 +850,16 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         onChange={(e) => setReportDate(e.target.value)}
                         className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                     />
+                    {isManager && (
+                        <button
+                            type="button"
+                            onClick={handleExportAllReports}
+                            disabled={isExporting || isPending}
+                            className="px-3 py-2 text-xs font-semibold rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+                        >
+                            {isExporting ? "Exporting..." : "Export all .xlsx"}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -915,25 +1053,28 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     <div className="p-4 space-y-4">
                                                         {DAILY_REPORT_SECTIONS.map((section) => {
                                                             const selected = submission.checklistAnswers[section.id] || [];
+                                                            const selectedSet = new Set(selected);
                                                             return (
                                                                 <div key={section.id} className="space-y-2">
                                                                     <p className="text-xs font-semibold text-slate-600">
                                                                         {section.title}
                                                                     </p>
-                                                                    {selected.length === 0 ? (
-                                                                        <p className="text-xs text-slate-400">لا يوجد اختيار</p>
-                                                                    ) : (
-                                                                        <div className="flex flex-wrap gap-2">
-                                                                            {selected.map((item) => (
+                                                                    <div className="flex flex-wrap gap-2">
+                                                                        {section.items.map((item) => {
+                                                                            const isChecked = selectedSet.has(item);
+                                                                            return (
                                                                                 <span
                                                                                     key={item}
-                                                                                    className="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded-full px-2 py-1"
+                                                                                    className={`text-xs rounded-full px-2 py-1 border ${isChecked
+                                                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                                                        : "bg-red-50 text-red-700 border-red-100"
+                                                                                        }`}
                                                                                 >
                                                                                     {item}
                                                                                 </span>
-                                                                            ))}
-                                                                        </div>
-                                                                    )}
+                                                                            );
+                                                                        })}
+                                                                    </div>
                                                                 </div>
                                                             );
                                                         })}
