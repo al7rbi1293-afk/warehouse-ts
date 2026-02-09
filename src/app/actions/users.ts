@@ -1,52 +1,88 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 
-export async function createUser(data: any) {
+interface UserActionInput {
+    username: string;
+    password?: string;
+    name: string;
+    empId?: string | null;
+    role: string;
+    region?: string | null;
+    regions?: string | null;
+    shiftId?: string | number | null;
+    attendanceShiftId?: string | number | null;
+    allowedShifts?: string | null;
+}
+
+function parseOptionalInt(value: string | number | null | undefined): number | null {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getErrorMessage(error: unknown) {
+    if (error instanceof Error) {
+        return error.message;
+    }
+    return "Unexpected error";
+}
+
+export async function createUser(data: UserActionInput) {
     try {
         const { username, password, name, empId, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
 
+        if (!password || password.trim().length < 6) {
+            return { success: false, message: "Password must be at least 6 characters" };
+        }
+
         const hashedPassword = await hash(password, 12);
 
+        const createData: Prisma.UserUncheckedCreateInput = {
+            username,
+            password: hashedPassword,
+            name,
+            empId: empId || null,
+            role,
+            region: region || regions || null, // Legacy support
+            regions: regions || region || null, // New field
+            shiftId: parseOptionalInt(shiftId),
+            attendanceShiftId: parseOptionalInt(attendanceShiftId),
+            allowedShifts: allowedShifts || null,
+        };
+
         await prisma.user.create({
-            data: {
-                username,
-                password: hashedPassword,
-                name,
-                empId: empId || null,
-                role,
-                region: region || regions, // Legacy support
-                regions: regions || region, // New field
-                shiftId: shiftId ? parseInt(shiftId) : null,
-                attendanceShiftId: attendanceShiftId ? parseInt(attendanceShiftId) : null,
-                allowedShifts
-            }
+            data: createData,
         });
 
         revalidatePath("/profile");
         revalidatePath("/settings"); // Assuming user management might be here
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Create User Error:", error);
-        return { success: false, message: error.message };
+        return { success: false, message: getErrorMessage(error) };
     }
 }
 
-export async function updateUser(username: string, data: any) {
+export async function updateUser(username: string, data: UserActionInput) {
     try {
         const { password, name, empId, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
 
-        const updateData: any = {
+        const updateData: Prisma.UserUncheckedUpdateInput = {
             name,
             empId: empId || null,
             role,
-            region: region || regions,
-            regions: regions || region,
-            shiftId: shiftId ? parseInt(shiftId) : null,
-            attendanceShiftId: attendanceShiftId ? parseInt(attendanceShiftId) : null,
-            allowedShifts
+            region: region || regions || null,
+            regions: regions || region || null,
+            shiftId: parseOptionalInt(shiftId),
+            attendanceShiftId: parseOptionalInt(attendanceShiftId),
+            allowedShifts: allowedShifts || null,
         };
 
         if (password && password.trim() !== "") {
@@ -60,9 +96,9 @@ export async function updateUser(username: string, data: any) {
 
         revalidatePath("/profile");
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Update User Error:", error);
-        return { success: false, message: error.message };
+        return { success: false, message: getErrorMessage(error) };
     }
 }
 
@@ -73,8 +109,8 @@ export async function deleteUser(username: string) {
         });
         revalidatePath("/profile");
         return { success: true };
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error("Delete User Error:", error);
-        return { success: false, message: error.message };
+        return { success: false, message: getErrorMessage(error) };
     }
 }

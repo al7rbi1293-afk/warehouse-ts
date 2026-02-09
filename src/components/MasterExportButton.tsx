@@ -3,12 +3,18 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
-import { fetchMasterReportData, MasterReportData } from "@/app/actions/reports";
+import {
+    fetchMasterReportData,
+    type StaffReportRow,
+    type WorkerReportRow,
+} from "@/app/actions/reports";
 
 interface MasterExportButtonProps {
     currentDate: string; // YYYY-MM-DD
     className?: string;
 }
+
+type SheetCell = string | number;
 
 export function MasterExportButton({ currentDate, className }: MasterExportButtonProps) {
     const [isExporting, setIsExporting] = useState(false);
@@ -36,13 +42,13 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             ];
 
             // ========== MORNING SHIFT SHEET ==========
-            const morningData: any[][] = [];
+            const morningData: SheetCell[][] = [];
 
             // --- MANAGEMENT SECTION ---
             morningData.push(["MANAGEMENT"]);
             morningData.push(HEADER_ROW);
             if (data.management && data.management.length > 0) {
-                data.management.forEach((w: any, idx: number) => {
+                data.management.forEach((w: StaffReportRow, idx: number) => {
                     morningData.push([
                         idx + 1,
                         w.name,
@@ -57,13 +63,13 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             morningData.push([]);
 
             // --- SUPERVISORS SECTION (Day Shift Only) ---
-            const daySupervisors = data.supervisors.filter((s: any) =>
+            const daySupervisors = data.supervisors.filter((s: StaffReportRow) =>
                 !['B1', 'B', 'B2', 'Night'].includes(s.shift) && s.role !== 'night_supervisor'
             );
             morningData.push(["SUPERVISORS"]);
             morningData.push(HEADER_ROW);
             if (daySupervisors.length > 0) {
-                daySupervisors.forEach((w: any, idx: number) => {
+                daySupervisors.forEach((w: StaffReportRow, idx: number) => {
                     morningData.push([
                         idx + 1,
                         w.name,
@@ -84,12 +90,12 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             Object.entries(data.morning).forEach(([zone, workers]) => {
                 morningData.push([zone.toUpperCase()]);
                 morningData.push(HEADER_ROW);
-                workers.forEach((w: any, idx: number) => {
+                workers.forEach((w: WorkerReportRow, idx: number) => {
                     morningData.push([
                         idx + 1,
                         w.name,
                         w.empId || '-',
-                        w.status,
+                        w.status || '-',
                         w.notes || ''
                     ]);
                 });
@@ -101,16 +107,16 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             XLSX.utils.book_append_sheet(wb, wsMorning, "Morning Shift");
 
             // ========== NIGHT SHIFT SHEET ==========
-            const nightData: any[][] = [];
+            const nightData: SheetCell[][] = [];
 
             // --- NIGHT SUPERVISORS SECTION ---
-            const nightSupervisors = data.supervisors.filter((s: any) =>
+            const nightSupervisors = data.supervisors.filter((s: StaffReportRow) =>
                 ['B1', 'B', 'B2', 'Night'].includes(s.shift) || s.role === 'night_supervisor'
             );
             nightData.push(["SUPERVISORS"]);
             nightData.push(HEADER_ROW);
             if (nightSupervisors.length > 0) {
-                nightSupervisors.forEach((w: any, idx: number) => {
+                nightSupervisors.forEach((w: StaffReportRow, idx: number) => {
                     nightData.push([
                         idx + 1,
                         w.name,
@@ -131,12 +137,12 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             Object.entries(data.night).forEach(([zone, workers]) => {
                 nightData.push([zone.toUpperCase()]);
                 nightData.push(HEADER_ROW);
-                workers.forEach((w: any, idx: number) => {
+                workers.forEach((w: WorkerReportRow, idx: number) => {
                     nightData.push([
                         idx + 1,
                         w.name,
                         w.empId || '-',
-                        w.status,
+                        w.status || '-',
                         w.notes || ''
                     ]);
                 });

@@ -1,4 +1,5 @@
 import { getServerSession } from "next-auth";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ManpowerClient } from "./ManpowerClient";
@@ -8,13 +9,23 @@ import { UserRole } from "@/types";
 import { getAuthorizedZones } from "@/lib/zoneMapping";
 import { getSubstituteZones } from "@/app/actions/staff"; // Direct import for server component
 
-async function getManpowerData(user: any) {
+type SessionManpowerUser = {
+    id: string;
+    role: string;
+    region?: string | null;
+    regions?: string | null;
+    shiftId?: number | null;
+    shiftName?: string | null;
+    allowedShifts?: string | null;
+};
+
+async function getManpowerData(user: SessionManpowerUser) {
     try {
         const isManager = user.role === 'manager';
 
         // Default filters (fetch all for manager)
-        let workerFilter: any = {};
-        let attendanceFilter: any = {
+        let workerFilter: Prisma.WorkerWhereInput = {};
+        const attendanceFilter: Prisma.AttendanceWhereInput = {
             date: {
                 gte: new Date(new Date().setDate(new Date().getDate() - 14)), // Reduced to 14 days for performance
             },
@@ -24,7 +35,7 @@ async function getManpowerData(user: any) {
         if (!isManager && user.role === 'supervisor') {
             // 1. Get base authorized zones from shift/tags
             const shiftName = user.shiftName || (user.shiftId ? user.shiftId.toString() : null);
-            let authorizedZones = new Set(getAuthorizedZones(shiftName));
+            const authorizedZones = new Set(getAuthorizedZones(shiftName));
 
             // 2. Add directly assigned regions (new multi-zone field)
             if (user.regions) {
@@ -37,7 +48,7 @@ async function getManpowerData(user: any) {
             // 3. Add inherited zones from active substitutions
             try {
                 const today = new Date().toISOString().split('T')[0];
-                const subRes = await getSubstituteZones(parseInt(user.id), today);
+                const subRes = await getSubstituteZones(Number.parseInt(user.id, 10), today);
                 if (subRes.success && subRes.data) {
                     subRes.data.forEach((z: string) => authorizedZones.add(z.trim().toUpperCase()));
                 }
@@ -158,7 +169,7 @@ export default async function ManpowerPage() {
 
     if (user.role === 'supervisor') {
         const today = new Date().toISOString().split('T')[0];
-        const subRes = await getSubstituteZones(parseInt(user.id), today);
+        const subRes = await getSubstituteZones(Number.parseInt(user.id, 10), today);
 
         if (subRes.success && subRes.data && subRes.data.length > 0) {
             const currentRegions = effectiveRegion.split(",").map(r => r.trim()).filter(Boolean);
@@ -174,8 +185,8 @@ export default async function ManpowerPage() {
             userName={user.name || undefined}
             userRegion={effectiveRegion || undefined}
             userShiftId={user.shiftId || undefined}
-            userShiftName={(user as any).shiftName || undefined}
-            userAllowedShifts={(user as any).allowedShifts || undefined}
+            userShiftName={user.shiftName || undefined}
+            userAllowedShifts={user.allowedShifts || undefined}
         />
     );
 }

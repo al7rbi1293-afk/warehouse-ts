@@ -1,19 +1,59 @@
 "use server";
 
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
+export interface StaffReportRow {
+    id: number;
+    name: string;
+    empId: string;
+    status: string;
+    notes: string;
+    role: string;
+    shift: string;
+}
+
+export interface WorkerReportRow {
+    id: number;
+    name: string;
+    empId: string | null;
+    status: string | null;
+    notes: string | null;
+    region: string;
+    shift: string | null;
+}
+
 export interface MasterReportData {
-    management: any[];
-    supervisors: any[];
-    morning: Record<string, any[]>;
-    night: Record<string, any[]>;
+    management: StaffReportRow[];
+    supervisors: StaffReportRow[];
+    morning: Record<string, WorkerReportRow[]>;
+    night: Record<string, WorkerReportRow[]>;
     dates: {
         morning: string;
         night: string;
     };
 }
+
+type StaffAttendanceWithCover = Prisma.StaffAttendanceGetPayload<{
+    include: { coverUser: true };
+}>;
+
+type UserWithAttendanceAndShift = Prisma.UserGetPayload<{
+    include: {
+        attendance: { include: { coverUser: true } };
+        shift: true;
+    };
+}>;
+
+type AttendanceWithWorkerShift = Prisma.AttendanceGetPayload<{
+    include: {
+        worker: {
+            include: { shift: true };
+        };
+    };
+}>;
 
 export async function fetchMasterReportData(dateStr: string): Promise<MasterReportData | { error: string }> {
     const session = await getServerSession(authOptions);
@@ -107,7 +147,10 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
         ]);
 
         // Helper to process Staff (Managers/Supervisors)
-        const processStaff = (users: any[], defaultDate: Date) => {
+        const processStaff = (
+            users: UserWithAttendanceAndShift[],
+            defaultDate: Date
+        ): StaffReportRow[] => {
             return users.map(user => {
                 // Determine effective date for this user
                 let targetDate = defaultDate;
@@ -121,7 +164,7 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                 }
 
                 // Find attendance for this specific date
-                const relevantAttendance = user.attendance.find((a: any) => {
+                const relevantAttendance = user.attendance.find((a: StaffAttendanceWithCover) => {
                     const aDate = new Date(a.date);
                     return aDate.getFullYear() === targetDate.getFullYear() &&
                         aDate.getMonth() === targetDate.getMonth() &&
@@ -158,7 +201,7 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
         const supervisorList = processStaff(supervisors, morningDate); // Shift logic inside handles night supervisors
 
         // Helper to Group by Zone (Region)
-        const groupByZone = (records: any[]) => {
+        const groupByZone = (records: AttendanceWithWorkerShift[]): Record<string, WorkerReportRow[]> => {
             return records.reduce((acc, record) => {
                 const zone = record.worker.region || 'Unassigned';
                 if (!acc[zone]) {
@@ -172,10 +215,10 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
                     status: record.status,
                     notes: record.notes,
                     region: zone,
-                    shift: record.worker.shift?.name
+                    shift: record.worker.shift?.name || null,
                 });
                 return acc;
-            }, {} as Record<string, any[]>);
+            }, {} as Record<string, WorkerReportRow[]>);
         };
 
         return {
