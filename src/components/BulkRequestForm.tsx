@@ -37,8 +37,7 @@ export function BulkRequestForm({ inventory, supervisorName, defaultRegion, regi
         inventory.forEach(item => {
             if (!uniqueItems.has(item.nameEn)) {
                 // Check filters
-                const matchesSearch = item.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                    (item.nameAr && item.nameAr.includes(searchTerm));
+                const matchesSearch = item.nameEn.toLowerCase().includes(searchTerm.toLowerCase());
                 const matchesCategory = selectedCategory === "All" || item.category === selectedCategory;
 
                 if (matchesSearch && matchesCategory) {

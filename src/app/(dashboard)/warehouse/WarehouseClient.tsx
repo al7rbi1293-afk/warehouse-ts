@@ -167,8 +167,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     // Filter Logic
     const currentInventory = data.inventory.filter(item => item.location === warehouseFilter);
     const filteredInventory = currentInventory.filter(item =>
-        item.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.nameAr && item.nameAr.includes(searchTerm))
+        item.nameEn.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     // Combined inventory for transfer dropdown

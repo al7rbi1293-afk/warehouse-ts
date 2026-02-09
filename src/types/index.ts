@@ -108,8 +108,6 @@ export interface AttendanceFormData {
 export interface InventoryItem {
   id: number;
   nameEn: string;
-  nameAr?: string;
-  materialCode?: string;
   category: string | null;
   unit: string | null;
   qty: number;
