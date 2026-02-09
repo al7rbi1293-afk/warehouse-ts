@@ -47,9 +47,6 @@ export interface DailySubmissionInput {
 export interface WeeklyReportInput {
     area: string;
     areaType: string;
-    highCritical: string;
-    midCritical: string;
-    lowCritical: string;
     specificWork: string;
 }
 
@@ -96,9 +93,6 @@ const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
     weekly: [
         "Area",
         "Type of area",
-        "High critical",
-        "Mid critical",
-        "Low critical",
         "Specific work completed this week",
     ],
     discharge: [
@@ -111,9 +105,6 @@ const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
 const WEEKLY_TEMPLATE_QUESTIONS = [
     "Area",
     "Type of area",
-    "High critical",
-    "Mid critical",
-    "Low critical",
     "Specific work completed this week",
 ] as const;
 

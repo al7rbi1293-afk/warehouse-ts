@@ -73,27 +73,19 @@ interface DailyFormState {
 interface WeeklyFormState {
     area: string;
     areaType: string;
-    highCritical: string;
-    midCritical: string;
-    lowCritical: string;
     specificWork: string;
 }
 
 const WEEKLY_QUESTION_KEYS = {
     area: "Area",
     areaType: "Type of area",
-    highCritical: "High critical",
-    midCritical: "Mid critical",
-    lowCritical: "Low critical",
     specificWork: "Specific work completed this week",
 } as const;
 
 const WEEKLY_AREA_TYPE_OPTIONS = [
-    "General",
-    "Clinical",
-    "Service",
-    "Support",
-    "Critical",
+    "High critical",
+    "Mid critical",
+    "Low critical",
 ];
 
 const reportTabs: Array<{ key: ReportType; label: string }> = [
@@ -143,10 +135,7 @@ function normalizeQuestionKey(value: string) {
 function createWeeklyDefaults(): WeeklyFormState {
     return {
         area: "",
-        areaType: WEEKLY_AREA_TYPE_OPTIONS[0] || "General",
-        highCritical: "",
-        midCritical: "",
-        lowCritical: "",
+        areaType: WEEKLY_AREA_TYPE_OPTIONS[0] || "High critical",
         specificWork: "",
     };
 }
@@ -160,9 +149,6 @@ function getWeeklyQuestionIdMap(questions: ReportQuestionItem[]) {
     return {
         area: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.area)) || null,
         areaType: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.areaType)) || null,
-        highCritical: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.highCritical)) || null,
-        midCritical: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.midCritical)) || null,
-        lowCritical: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.lowCritical)) || null,
         specificWork: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.specificWork)) || null,
     };
 }
@@ -240,20 +226,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 const areaTypeValue = questionIdMap.areaType ? (mappedAnswers[questionIdMap.areaType] || "") : "";
                 const normalizedAreaType = WEEKLY_AREA_TYPE_OPTIONS.includes(areaTypeValue)
                     ? areaTypeValue
-                    : (WEEKLY_AREA_TYPE_OPTIONS[0] || "General");
+                    : (WEEKLY_AREA_TYPE_OPTIONS[0] || "High critical");
 
                 setWeeklyForm({
                     area: areaValue,
                     areaType: normalizedAreaType,
-                    highCritical: questionIdMap.highCritical
-                        ? (mappedAnswers[questionIdMap.highCritical] || "")
-                        : "",
-                    midCritical: questionIdMap.midCritical
-                        ? (mappedAnswers[questionIdMap.midCritical] || "")
-                        : "",
-                    lowCritical: questionIdMap.lowCritical
-                        ? (mappedAnswers[questionIdMap.lowCritical] || "")
-                        : "",
                     specificWork: questionIdMap.specificWork
                         ? (mappedAnswers[questionIdMap.specificWork] || "")
                         : "",
@@ -435,9 +412,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         const payload = [
             { questionId: questionIdMap.area as number, answer: weeklyForm.area.trim() },
             { questionId: questionIdMap.areaType as number, answer: weeklyForm.areaType.trim() },
-            { questionId: questionIdMap.highCritical as number, answer: weeklyForm.highCritical.trim() },
-            { questionId: questionIdMap.midCritical as number, answer: weeklyForm.midCritical.trim() },
-            { questionId: questionIdMap.lowCritical as number, answer: weeklyForm.lowCritical.trim() },
             { questionId: questionIdMap.specificWork as number, answer: weeklyForm.specificWork.trim() },
         ];
 
@@ -1531,54 +1505,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             </option>
                                         ))}
                                     </select>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-slate-700">High critical</label>
-                                    <textarea
-                                        value={weeklyForm.highCritical}
-                                        onChange={(e) =>
-                                            setWeeklyForm((prev) => ({
-                                                ...prev,
-                                                highCritical: e.target.value,
-                                            }))
-                                        }
-                                        rows={4}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                        placeholder="Write high critical updates"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-slate-700">Mid critical</label>
-                                    <textarea
-                                        value={weeklyForm.midCritical}
-                                        onChange={(e) =>
-                                            setWeeklyForm((prev) => ({
-                                                ...prev,
-                                                midCritical: e.target.value,
-                                            }))
-                                        }
-                                        rows={4}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                        placeholder="Write mid critical updates"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-sm font-medium text-slate-700">Low critical</label>
-                                    <textarea
-                                        value={weeklyForm.lowCritical}
-                                        onChange={(e) =>
-                                            setWeeklyForm((prev) => ({
-                                                ...prev,
-                                                lowCritical: e.target.value,
-                                            }))
-                                        }
-                                        rows={4}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                        placeholder="Write low critical updates"
-                                    />
                                 </div>
                             </div>
 
