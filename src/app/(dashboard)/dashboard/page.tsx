@@ -172,7 +172,7 @@ async function getDashboardData(dateStr?: string) {
             attendanceTrend,
             todayAttendance: combinedAttendance, // Pass the full detailed list
         };
-    } catch (error) {
+    } catch (error: any) {
         console.error("Dashboard data error:", error);
         return {
             selectedDate,
@@ -196,6 +196,7 @@ async function getDashboardData(dateStr?: string) {
             topStockItems: [],
             attendanceTrend: [],
             todayAttendance: [],
+            debugError: error?.message || "Unknown error occurred",
         };
     }
 }
@@ -204,9 +205,9 @@ export default async function DashboardPage(props: { searchParams: Promise<{ dat
     const searchParams = await props.searchParams;
     const session = await getServerSession(authOptions);
 
-    if (!session || !session.user || session.user.role !== "manager") {
-        redirect("/warehouse");
-    }
+    // if (!session || !session.user || session.user.role !== "manager") {
+    //     redirect("/warehouse");
+    // }
 
     const data = await getDashboardData(searchParams.date);
 

@@ -43,6 +43,7 @@ interface DashboardData {
     topStockItems: { name: string; value: number }[];
     attendanceTrend: { date: string; count: number }[];
     todayAttendance: Attendance[];
+    debugError?: string;
 }
 
 // Icons matching the mockup style
@@ -94,6 +95,12 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         <div className="space-y-8 animate-fade-in pb-12">
 
             {/* Header */}
+            {data.debugError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+                    <strong className="font-bold">Dashboard Error: </strong>
+                    <span className="block sm:inline">{data.debugError}</span>
+                </div>
+            )}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">KPI Stats</h1>
