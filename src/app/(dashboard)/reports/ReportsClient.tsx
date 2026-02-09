@@ -673,87 +673,106 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
     };
 
-    const handleExportAllReports = async () => {
+    const handleExportTabReports = async () => {
         if (!isManager) {
             return;
         }
 
         setIsExporting(true);
         try {
-            const [dailyResult, weeklyResult, dischargeResult] = await Promise.all([
-                getDailyReportSubmissions(reportDate),
-                getReportQuestionnaireData("weekly", reportDate),
-                getDischargeReportData(reportDate),
-            ]);
+            const XLSX = await import("xlsx");
+            const workbook = XLSX.utils.book_new();
 
-            if (!dailyResult.success || !dailyResult.data) {
-                toast.error(dailyResult.message || "Failed to load daily reports for export");
+            if (activeTab === "daily") {
+                const dailyResult = await getDailyReportSubmissions(reportDate);
+                if (!dailyResult.success || !dailyResult.data) {
+                    toast.error(dailyResult.message || "Failed to load daily reports for export");
+                    return;
+                }
+
+                const dailyRows: Array<Record<string, string>> = [];
+                for (const submission of dailyResult.data.submissions) {
+                    for (const section of DAILY_REPORT_SECTIONS) {
+                        const selected = new Set(submission.checklistAnswers[section.id] || []);
+                        for (const item of section.items) {
+                            const isChecked = selected.has(item);
+                            dailyRows.push({
+                                Date: submission.reportDate.slice(0, 10),
+                                Supervisor: submission.supervisorName,
+                                Area: submission.region,
+                                Round: submission.roundNumber,
+                                Section: section.title,
+                                Item: item,
+                                Status: isChecked ? "Checked" : "Not checked",
+                                Color: isChecked ? "Green" : "Red",
+                            });
+                        }
+                    }
+                }
+
+                if (dailyRows.length === 0) {
+                    dailyRows.push({
+                        Date: reportDate,
+                        Supervisor: "",
+                        Area: "",
+                        Round: "",
+                        Section: "",
+                        Item: "",
+                        Status: "No daily submissions",
+                        Color: "",
+                    });
+                }
+
+                XLSX.utils.book_append_sheet(
+                    workbook,
+                    XLSX.utils.json_to_sheet(dailyRows),
+                    "Daily Report"
+                );
+                XLSX.writeFile(workbook, `daily-report-${reportDate}.xlsx`);
+                toast.success("Daily reports exported");
                 return;
             }
 
-            if (!weeklyResult.success || !weeklyResult.data) {
-                toast.error(weeklyResult.message || "Failed to load weekly reports for export");
+            if (activeTab === "weekly") {
+                const weeklyResult = await getReportQuestionnaireData("weekly", reportDate);
+                if (!weeklyResult.success || !weeklyResult.data) {
+                    toast.error(weeklyResult.message || "Failed to load weekly reports for export");
+                    return;
+                }
+
+                const weeklyRows = weeklyResult.data.managerAnswers.length > 0
+                    ? weeklyResult.data.managerAnswers.map((answer) => ({
+                        Date: reportDate,
+                        Supervisor: answer.supervisorName,
+                        Question: answer.question,
+                        Answer: answer.answer,
+                        UpdatedAt: new Date(answer.updatedAt).toLocaleString(),
+                    }))
+                    : [
+                        {
+                            Date: reportDate,
+                            Supervisor: "",
+                            Question: "",
+                            Answer: "No weekly responses",
+                            UpdatedAt: "",
+                        },
+                    ];
+
+                XLSX.utils.book_append_sheet(
+                    workbook,
+                    XLSX.utils.json_to_sheet(weeklyRows),
+                    "Weekly Report"
+                );
+                XLSX.writeFile(workbook, `weekly-report-${reportDate}.xlsx`);
+                toast.success("Weekly reports exported");
                 return;
             }
 
+            const dischargeResult = await getDischargeReportData(reportDate);
             if (!dischargeResult.success || !dischargeResult.data) {
                 toast.error(dischargeResult.message || "Failed to load discharge reports for export");
                 return;
             }
-
-            const XLSX = await import("xlsx");
-            const workbook = XLSX.utils.book_new();
-
-            const dailyRows: Array<Record<string, string>> = [];
-            for (const submission of dailyResult.data.submissions) {
-                for (const section of DAILY_REPORT_SECTIONS) {
-                    const selected = new Set(submission.checklistAnswers[section.id] || []);
-                    for (const item of section.items) {
-                        const isChecked = selected.has(item);
-                        dailyRows.push({
-                            Date: submission.reportDate.slice(0, 10),
-                            Supervisor: submission.supervisorName,
-                            Area: submission.region,
-                            Round: submission.roundNumber,
-                            Section: section.title,
-                            Item: item,
-                            Status: isChecked ? "Checked" : "Not checked",
-                            Color: isChecked ? "Green" : "Red",
-                        });
-                    }
-                }
-            }
-
-            if (dailyRows.length === 0) {
-                dailyRows.push({
-                    Date: reportDate,
-                    Supervisor: "",
-                    Area: "",
-                    Round: "",
-                    Section: "",
-                    Item: "",
-                    Status: "No daily submissions",
-                    Color: "",
-                });
-            }
-
-            const weeklyRows = weeklyResult.data.managerAnswers.length > 0
-                ? weeklyResult.data.managerAnswers.map((answer) => ({
-                    Date: reportDate,
-                    Supervisor: answer.supervisorName,
-                    Question: answer.question,
-                    Answer: answer.answer,
-                    UpdatedAt: new Date(answer.updatedAt).toLocaleString(),
-                }))
-                : [
-                    {
-                        Date: reportDate,
-                        Supervisor: "",
-                        Question: "",
-                        Answer: "No weekly responses",
-                        UpdatedAt: "",
-                    },
-                ];
 
             const dischargeRows = dischargeResult.data.entries.length > 0
                 ? dischargeResult.data.entries.map((entry) => ({
@@ -777,22 +796,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             XLSX.utils.book_append_sheet(
                 workbook,
-                XLSX.utils.json_to_sheet(dailyRows),
-                "Daily Report"
-            );
-            XLSX.utils.book_append_sheet(
-                workbook,
-                XLSX.utils.json_to_sheet(weeklyRows),
-                "Weekly Report"
-            );
-            XLSX.utils.book_append_sheet(
-                workbook,
                 XLSX.utils.json_to_sheet(dischargeRows),
                 "Discharge Report"
             );
-
-            XLSX.writeFile(workbook, `reports-${reportDate}.xlsx`);
-            toast.success("Reports exported successfully");
+            XLSX.writeFile(workbook, `discharge-report-${reportDate}.xlsx`);
+            toast.success("Discharge reports exported");
         } catch {
             toast.error("Failed to export reports");
         } finally {
@@ -912,11 +920,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     {isManager && (
                         <button
                             type="button"
-                            onClick={handleExportAllReports}
+                            onClick={handleExportTabReports}
                             disabled={isExporting || isPending}
                             className="px-3 py-2 text-xs font-semibold rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
                         >
-                            {isExporting ? "Exporting..." : "Export all .xlsx"}
+                            {isExporting ? "Exporting..." : `Export ${activeTab} .xlsx`}
                         </button>
                     )}
                 </div>
