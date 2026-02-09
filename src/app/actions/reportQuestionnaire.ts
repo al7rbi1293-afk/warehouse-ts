@@ -44,6 +44,15 @@ export interface DailySubmissionInput {
     checklistAnswers: Record<string, string[]>;
 }
 
+export interface WeeklyReportInput {
+    area: string;
+    areaType: string;
+    highCritical: string;
+    midCritical: string;
+    lowCritical: string;
+    specificWork: string;
+}
+
 export type DischargeRoomType = "normal_patient" | "isolation";
 
 export interface DischargeEntryInput {
@@ -85,9 +94,12 @@ const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
         "What actions are required for the next shift?",
     ],
     weekly: [
-        "What progress was completed this week?",
-        "What recurring issues were observed this week?",
-        "What priorities should be carried to next week?",
+        "Area",
+        "Type of area",
+        "High critical",
+        "Mid critical",
+        "Low critical",
+        "Specific work completed this week",
     ],
     discharge: [
         "Which items or tasks were discharged?",
@@ -96,12 +108,25 @@ const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
     ],
 };
 
+const WEEKLY_TEMPLATE_QUESTIONS = [
+    "Area",
+    "Type of area",
+    "High critical",
+    "Mid critical",
+    "Low critical",
+    "Specific work completed this week",
+] as const;
+
 function isReportType(value: string): value is ReportType {
     return REPORT_TYPES.includes(value as ReportType);
 }
 
 function isDischargeRoomType(value: string): value is DischargeRoomType {
     return DISCHARGE_ROOM_TYPES.includes(value as DischargeRoomType);
+}
+
+function normalizeQuestionKey(value: string) {
+    return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function normalizeReportDate(dateStr?: string): Date {
@@ -145,6 +170,81 @@ async function ensureDefaultQuestions(reportType: ReportType, createdBy: string)
             sortOrder: index,
             createdBy,
         })),
+    });
+}
+
+async function ensureWeeklyTemplateQuestions(createdBy: string) {
+    const weeklyQuestions = await prisma.reportQuestion.findMany({
+        where: { reportType: "weekly" },
+        select: { id: true, question: true, sortOrder: true, isActive: true },
+        orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+    });
+
+    const byKey = new Map<string, typeof weeklyQuestions>();
+    for (const question of weeklyQuestions) {
+        const key = normalizeQuestionKey(question.question);
+        const list = byKey.get(key) || [];
+        list.push(question);
+        byKey.set(key, list);
+    }
+
+    await prisma.$transaction(async (tx) => {
+        const usedIds = new Set<number>();
+
+        for (const [index, templateQuestion] of WEEKLY_TEMPLATE_QUESTIONS.entries()) {
+            const key = normalizeQuestionKey(templateQuestion);
+            const existing = (byKey.get(key) || []).find((item) => !usedIds.has(item.id));
+
+            if (existing) {
+                usedIds.add(existing.id);
+                await tx.reportQuestion.update({
+                    where: { id: existing.id },
+                    data: {
+                        question: templateQuestion,
+                        sortOrder: index,
+                        isActive: true,
+                    },
+                });
+
+                const duplicates = (byKey.get(key) || []).filter((item) => item.id !== existing.id);
+                for (const duplicate of duplicates) {
+                    if (usedIds.has(duplicate.id)) {
+                        continue;
+                    }
+                    usedIds.add(duplicate.id);
+                    if (duplicate.isActive) {
+                        await tx.reportQuestion.update({
+                            where: { id: duplicate.id },
+                            data: { isActive: false },
+                        });
+                    }
+                }
+                continue;
+            }
+
+            await tx.reportQuestion.create({
+                data: {
+                    reportType: "weekly",
+                    question: templateQuestion,
+                    sortOrder: index,
+                    createdBy,
+                    isActive: true,
+                },
+            });
+        }
+
+        for (const question of weeklyQuestions) {
+            if (usedIds.has(question.id)) {
+                continue;
+            }
+            if (!question.isActive) {
+                continue;
+            }
+            await tx.reportQuestion.update({
+                where: { id: question.id },
+                data: { isActive: false },
+            });
+        }
     });
 }
 
@@ -262,6 +362,7 @@ export async function getReportQuestionnaireData(
         questions: ReportQuestionDto[];
         managerAnswers: ManagerAnswerDto[];
         supervisorAnswers: SupervisorAnswerDto[];
+        allowedRegions: string[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -277,7 +378,12 @@ export async function getReportQuestionnaireData(
 
     const normalizedDate = normalizeReportDate(reportDate);
 
-    await ensureDefaultQuestions(reportType, session.user.name || session.user.username || "manager");
+    const actorName = session.user.name || session.user.username || "manager";
+    if (reportType === "weekly") {
+        await ensureWeeklyTemplateQuestions(actorName);
+    } else {
+        await ensureDefaultQuestions(reportType, actorName);
+    }
 
     const questions = await prisma.reportQuestion.findMany({
         where: {
@@ -337,6 +443,7 @@ export async function getReportQuestionnaireData(
                     updatedAt: row.updatedAt.toISOString(),
                 })),
                 supervisorAnswers: [],
+                allowedRegions: [],
             },
         };
     }
@@ -361,6 +468,11 @@ export async function getReportQuestionnaireData(
         },
     });
 
+    const allowedRegions =
+        reportType === "weekly"
+            ? await getSupervisorAllowedRegions(supervisorId, normalizedDate)
+            : [];
+
     return {
         success: true,
         message: "OK",
@@ -369,6 +481,7 @@ export async function getReportQuestionnaireData(
             questions,
             managerAnswers: [],
             supervisorAnswers,
+            allowedRegions,
         },
     };
 }
@@ -485,7 +598,12 @@ export async function submitSupervisorReportAnswers(
 
     const normalizedDate = normalizeReportDate(reportDate);
 
-    await ensureDefaultQuestions(reportType, session.user.name || session.user.username || "manager");
+    const actorName = session.user.name || session.user.username || "manager";
+    if (reportType === "weekly") {
+        await ensureWeeklyTemplateQuestions(actorName);
+    } else {
+        await ensureDefaultQuestions(reportType, actorName);
+    }
 
     const activeQuestions = await prisma.reportQuestion.findMany({
         where: {

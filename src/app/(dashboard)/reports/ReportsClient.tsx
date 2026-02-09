@@ -3,10 +3,8 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
-    addReportQuestion,
     deleteDischargeSupervisorReport,
     deleteDailyReportSubmission,
-    deleteReportQuestion,
     deleteSupervisorReportAnswers,
     getDischargeReportData,
     getDailyReportSubmissions,
@@ -14,7 +12,6 @@ import {
     submitDischargeReport,
     submitDailyReportForm,
     submitSupervisorReportAnswers,
-    updateReportQuestion,
     type DischargeEntryInput,
     type DischargeRoomType,
     type DailySubmissionInput,
@@ -73,6 +70,32 @@ interface DailyFormState {
     checklistAnswers: Record<string, string[]>;
 }
 
+interface WeeklyFormState {
+    area: string;
+    areaType: string;
+    highCritical: string;
+    midCritical: string;
+    lowCritical: string;
+    specificWork: string;
+}
+
+const WEEKLY_QUESTION_KEYS = {
+    area: "Area",
+    areaType: "Type of area",
+    highCritical: "High critical",
+    midCritical: "Mid critical",
+    lowCritical: "Low critical",
+    specificWork: "Specific work completed this week",
+} as const;
+
+const WEEKLY_AREA_TYPE_OPTIONS = [
+    "General",
+    "Clinical",
+    "Service",
+    "Support",
+    "Critical",
+];
+
 const reportTabs: Array<{ key: ReportType; label: string }> = [
     { key: "daily", label: "Daily report" },
     { key: "weekly", label: "Weekly report" },
@@ -113,6 +136,37 @@ function getDischargeRoomTypeLabel(roomType: DischargeRoomType) {
     return roomType === "isolation" ? "Isolation" : "Normal patient";
 }
 
+function normalizeQuestionKey(value: string) {
+    return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function createWeeklyDefaults(): WeeklyFormState {
+    return {
+        area: "",
+        areaType: WEEKLY_AREA_TYPE_OPTIONS[0] || "General",
+        highCritical: "",
+        midCritical: "",
+        lowCritical: "",
+        specificWork: "",
+    };
+}
+
+function getWeeklyQuestionIdMap(questions: ReportQuestionItem[]) {
+    const byNormalized = new Map<string, number>();
+    for (const question of questions) {
+        byNormalized.set(normalizeQuestionKey(question.question), question.id);
+    }
+
+    return {
+        area: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.area)) || null,
+        areaType: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.areaType)) || null,
+        highCritical: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.highCritical)) || null,
+        midCritical: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.midCritical)) || null,
+        lowCritical: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.lowCritical)) || null,
+        specificWork: byNormalized.get(normalizeQuestionKey(WEEKLY_QUESTION_KEYS.specificWork)) || null,
+    };
+}
+
 export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [activeTab, setActiveTab] = useState<ReportType>("daily");
     const [reportDate, setReportDate] = useState(getTodayLocalDateString());
@@ -125,11 +179,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     ]);
     const [dischargeAllowedRegions, setDischargeAllowedRegions] = useState<string[]>([]);
     const [dischargeLoadError, setDischargeLoadError] = useState<string | null>(null);
+    const [weeklyAllowedRegions, setWeeklyAllowedRegions] = useState<string[]>([]);
     const [availableRegions, setAvailableRegions] = useState<string[]>([]);
-    const [draftAnswers, setDraftAnswers] = useState<Record<number, string>>({});
-    const [newQuestion, setNewQuestion] = useState("");
-    const [editingQuestionId, setEditingQuestionId] = useState<number | null>(null);
-    const [editingQuestionText, setEditingQuestionText] = useState("");
     const [isLoading, setIsLoading] = useState(true);
     const [isExporting, setIsExporting] = useState(false);
     const [isPending, startTransition] = useTransition();
@@ -138,6 +189,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         roundNumber: DAILY_REPORT_ROUNDS[0] || "",
         checklistAnswers: createChecklistDefaults(),
     });
+    const [weeklyForm, setWeeklyForm] = useState<WeeklyFormState>(createWeeklyDefaults());
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
@@ -168,7 +220,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 toast.error(result.message || "Failed to load report questionnaire");
                 setQuestions([]);
                 setManagerAnswers([]);
-                setDraftAnswers({});
                 return;
             }
 
@@ -179,7 +230,37 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 acc[row.questionId] = row.answer;
                 return acc;
             }, {} as Record<number, string>);
-            setDraftAnswers(mappedAnswers);
+
+            if (requestedTab === "weekly") {
+                const allowed = result.data.allowedRegions || [];
+                setWeeklyAllowedRegions(allowed);
+
+                const questionIdMap = getWeeklyQuestionIdMap(result.data.questions);
+                const areaValue = questionIdMap.area ? (mappedAnswers[questionIdMap.area] || "") : "";
+                const areaTypeValue = questionIdMap.areaType ? (mappedAnswers[questionIdMap.areaType] || "") : "";
+                const normalizedAreaType = WEEKLY_AREA_TYPE_OPTIONS.includes(areaTypeValue)
+                    ? areaTypeValue
+                    : (WEEKLY_AREA_TYPE_OPTIONS[0] || "General");
+
+                setWeeklyForm({
+                    area: areaValue,
+                    areaType: normalizedAreaType,
+                    highCritical: questionIdMap.highCritical
+                        ? (mappedAnswers[questionIdMap.highCritical] || "")
+                        : "",
+                    midCritical: questionIdMap.midCritical
+                        ? (mappedAnswers[questionIdMap.midCritical] || "")
+                        : "",
+                    lowCritical: questionIdMap.lowCritical
+                        ? (mappedAnswers[questionIdMap.lowCritical] || "")
+                        : "",
+                    specificWork: questionIdMap.specificWork
+                        ? (mappedAnswers[questionIdMap.specificWork] || "")
+                        : "",
+                });
+            } else {
+                setWeeklyAllowedRegions([]);
+            }
         } catch {
             if (!isLatestLoad(token)) {
                 return;
@@ -188,7 +269,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             toast.error("Failed to load report questionnaire");
             setQuestions([]);
             setManagerAnswers([]);
-            setDraftAnswers({});
+            if (requestedTab === "weekly") {
+                setWeeklyAllowedRegions([]);
+            }
         } finally {
             if (isLatestLoad(token)) {
                 setIsLoading(false);
@@ -318,80 +401,56 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, reportDate]);
 
-    const handleAddQuestion = () => {
-        if (!newQuestion.trim()) {
-            toast.error("Please enter a question first");
+    const handleSubmitWeeklyReport = () => {
+        const questionIdMap = getWeeklyQuestionIdMap(questions);
+        const missingTemplateQuestion = Object.values(questionIdMap).some((id) => id === null);
+        if (missingTemplateQuestion) {
+            toast.error("Weekly report template is not ready. Please refresh and try again.");
             return;
         }
 
-        startTransition(async () => {
-            const result = await addReportQuestion(activeTab, newQuestion);
-            if (!result.success) {
-                toast.error(result.message);
-                return;
-            }
-
-            setNewQuestion("");
-            toast.success("Question added");
-            const token = beginLoad();
-            await loadQuestionnaireData(token, activeTab, reportDate);
-        });
-    };
-
-    const handleSaveEditedQuestion = () => {
-        if (editingQuestionId === null) {
+        if (!weeklyForm.area.trim()) {
+            toast.error("Please select area");
             return;
         }
 
-        startTransition(async () => {
-            const result = await updateReportQuestion(editingQuestionId, editingQuestionText);
-            if (!result.success) {
-                toast.error(result.message);
-                return;
-            }
-
-            toast.success("Question updated");
-            setEditingQuestionId(null);
-            setEditingQuestionText("");
-            const token = beginLoad();
-            await loadQuestionnaireData(token, activeTab, reportDate);
-        });
-    };
-
-    const handleDeleteQuestion = (questionId: number) => {
-        if (!confirm("Delete this question from the active questionnaire?")) {
+        if (!weeklyForm.areaType.trim()) {
+            toast.error("Please select type of area");
             return;
         }
 
+        if (!weeklyForm.specificWork.trim()) {
+            toast.error("Please add specific work done this week");
+            return;
+        }
+
+        if (
+            weeklyAllowedRegions.length > 0 &&
+            !weeklyAllowedRegions.includes(weeklyForm.area.trim())
+        ) {
+            toast.error("Selected area is not assigned to your account");
+            return;
+        }
+
+        const payload = [
+            { questionId: questionIdMap.area as number, answer: weeklyForm.area.trim() },
+            { questionId: questionIdMap.areaType as number, answer: weeklyForm.areaType.trim() },
+            { questionId: questionIdMap.highCritical as number, answer: weeklyForm.highCritical.trim() },
+            { questionId: questionIdMap.midCritical as number, answer: weeklyForm.midCritical.trim() },
+            { questionId: questionIdMap.lowCritical as number, answer: weeklyForm.lowCritical.trim() },
+            { questionId: questionIdMap.specificWork as number, answer: weeklyForm.specificWork.trim() },
+        ];
+
         startTransition(async () => {
-            const result = await deleteReportQuestion(questionId);
+            const result = await submitSupervisorReportAnswers("weekly", reportDate, payload);
             if (!result.success) {
                 toast.error(result.message);
                 return;
             }
 
-            toast.success("Question removed");
+            toast.success("Weekly report submitted");
             const token = beginLoad();
-            await loadQuestionnaireData(token, activeTab, reportDate);
-        });
-    };
-
-    const handleSubmitSupervisorAnswers = () => {
-        const payload = questions.map((question) => ({
-            questionId: question.id,
-            answer: draftAnswers[question.id] || "",
-        }));
-
-        startTransition(async () => {
-            const result = await submitSupervisorReportAnswers(activeTab, reportDate, payload);
-            if (!result.success) {
-                toast.error(result.message);
-                return;
-            }
-
-            toast.success(result.message);
-            const token = beginLoad();
-            await loadQuestionnaireData(token, activeTab, reportDate);
+            await loadQuestionnaireData(token, "weekly", reportDate);
         });
     };
 
@@ -801,8 +860,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         );
     }, [dailySubmissions, isSupervisor]);
 
-    const currentTabLabel = reportTabs.find((tab) => tab.key === activeTab)?.label || "Report";
-
     return (
         <div className="space-y-6 animate-fade-in pb-12">
             <div>
@@ -810,13 +867,15 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 <p className="text-slate-500 text-sm">
                     {activeTab === "daily"
                         ? "Daily report form cloned from the provided Google Form"
+                        : activeTab === "weekly"
+                        ? isManager
+                            ? "Review weekly submissions from supervisors"
+                            : "Submit your weekly report for your assigned area"
                         : activeTab === "discharge"
                         ? isManager
                             ? "Review discharge entries submitted by supervisors"
                             : "Fill the discharge report sheet and submit your rows"
-                        : isManager
-                        ? "Configure report questions and review supervisor answers"
-                        : "Answer manager-defined questions for each report type"}
+                        : "Reports overview"}
                 </p>
             </div>
 
@@ -1339,204 +1398,212 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     )}
 
                     {activeTab === "weekly" && isManager && (
-                        <div className="space-y-6">
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-                                <div>
-                                    <h2 className="text-lg font-semibold text-slate-900">{currentTabLabel} questions</h2>
-                                    <p className="text-sm text-slate-500">
-                                        Add or edit questions that supervisors must answer.
-                                    </p>
-                                </div>
+                        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                            <div>
+                                <h2 className="text-lg font-semibold text-slate-900">Supervisor answers</h2>
+                                <p className="text-sm text-slate-500">
+                                    Weekly responses submitted for {reportDate}.
+                                </p>
+                            </div>
 
-                                <div className="flex flex-col md:flex-row gap-2">
-                                    <input
-                                        type="text"
-                                        value={newQuestion}
-                                        onChange={(e) => setNewQuestion(e.target.value)}
-                                        placeholder={`Add a new ${activeTab} question`}
-                                        className="flex-1 px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={handleAddQuestion}
-                                        disabled={isPending}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
-                                    >
-                                        Add question
-                                    </button>
-                                </div>
-
-                                <div className="space-y-2">
-                                    {questions.length === 0 && (
-                                        <p className="text-sm text-slate-500">No questions configured yet.</p>
-                                    )}
-                                    {questions.map((question, index) => (
-                                        <div
-                                            key={question.id}
-                                            className="border border-slate-200 rounded-lg p-3 flex flex-col md:flex-row md:items-center gap-3"
-                                        >
-                                            <span className="text-xs font-semibold text-slate-400 min-w-8">
-                                                Q{index + 1}
-                                            </span>
-                                            <div className="flex-1">
-                                                {editingQuestionId === question.id ? (
-                                                    <input
-                                                        type="text"
-                                                        value={editingQuestionText}
-                                                        onChange={(e) => setEditingQuestionText(e.target.value)}
-                                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                    />
-                                                ) : (
-                                                    <p className="text-sm text-slate-800">{question.question}</p>
-                                                )}
+                            {groupedManagerAnswers.length === 0 ? (
+                                <p className="text-sm text-slate-500">No responses submitted yet.</p>
+                            ) : (
+                                <div className="space-y-4">
+                                    {groupedManagerAnswers.map((group) => (
+                                        <div key={group.supervisorId} className="border border-slate-200 rounded-lg overflow-hidden">
+                                            <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+                                                <p className="text-sm font-semibold text-slate-800">
+                                                    {group.supervisorName}
+                                                </p>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleDeleteSupervisorReport(
+                                                            group.supervisorId,
+                                                            group.supervisorName
+                                                        )
+                                                    }
+                                                    disabled={isPending}
+                                                    className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                >
+                                                    Delete report
+                                                </button>
                                             </div>
-                                            <div className="flex gap-2">
-                                                {editingQuestionId === question.id ? (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleSaveEditedQuestion}
-                                                            disabled={isPending}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-60"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setEditingQuestionId(null);
-                                                                setEditingQuestionText("");
-                                                            }}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setEditingQuestionId(question.id);
-                                                                setEditingQuestionText(question.question);
-                                                            }}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200"
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteQuestion(question.id)}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100"
-                                                        >
-                                                            Remove
-                                                        </button>
-                                                    </>
-                                                )}
+                                            <div className="divide-y divide-slate-100">
+                                                {group.answers.map((answer) => (
+                                                    <div key={answer.id} className="px-4 py-3">
+                                                        <p className="text-xs font-semibold text-slate-500 mb-1">
+                                                            {answer.question}
+                                                        </p>
+                                                        <p className="text-sm text-slate-800 whitespace-pre-wrap">
+                                                            {answer.answer}
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-400 mt-2">
+                                                            Updated: {new Date(answer.updatedAt).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
                                     ))}
                                 </div>
-                            </div>
-
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-                                <div>
-                                    <h2 className="text-lg font-semibold text-slate-900">Supervisor answers</h2>
-                                    <p className="text-sm text-slate-500">
-                                        Responses submitted for {reportDate} ({currentTabLabel.toLowerCase()}).
-                                    </p>
-                                </div>
-
-                                {groupedManagerAnswers.length === 0 ? (
-                                    <p className="text-sm text-slate-500">No responses submitted yet.</p>
-                                ) : (
-                                    <div className="space-y-4">
-                                        {groupedManagerAnswers.map((group) => (
-                                            <div key={group.supervisorId} className="border border-slate-200 rounded-lg overflow-hidden">
-                                                <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
-                                                    <p className="text-sm font-semibold text-slate-800">
-                                                        {group.supervisorName}
-                                                    </p>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            handleDeleteSupervisorReport(
-                                                                group.supervisorId,
-                                                                group.supervisorName
-                                                            )
-                                                        }
-                                                        disabled={isPending}
-                                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                                    >
-                                                        Delete report
-                                                    </button>
-                                                </div>
-                                                <div className="divide-y divide-slate-100">
-                                                    {group.answers.map((answer) => (
-                                                        <div key={answer.id} className="px-4 py-3">
-                                                            <p className="text-xs font-semibold text-slate-500 mb-1">
-                                                                {answer.question}
-                                                            </p>
-                                                            <p className="text-sm text-slate-800 whitespace-pre-wrap">
-                                                                {answer.answer}
-                                                            </p>
-                                                            <p className="text-[11px] text-slate-400 mt-2">
-                                                                Updated: {new Date(answer.updatedAt).toLocaleString()}
-                                                            </p>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                            )}
                         </div>
                     )}
 
                     {activeTab === "weekly" && isSupervisor && (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
                             <div>
-                                <h2 className="text-lg font-semibold text-slate-900">{currentTabLabel} questionnaire</h2>
+                                <h2 className="text-lg font-semibold text-slate-900">Weekly report</h2>
                                 <p className="text-sm text-slate-500">
-                                    Insert your answers and submit for manager review.
+                                    Fill your weekly report and submit for manager review.
                                 </p>
                             </div>
 
-                            {questions.length === 0 ? (
-                                <p className="text-sm text-slate-500">No questions are configured for this report type yet.</p>
-                            ) : (
-                                <div className="space-y-4">
-                                    {questions.map((question, index) => (
-                                        <div key={question.id} className="space-y-2">
-                                            <label className="text-sm font-semibold text-slate-800 block">
-                                                Q{index + 1}. {question.question}
-                                            </label>
-                                            <textarea
-                                                value={draftAnswers[question.id] || ""}
-                                                onChange={(e) =>
-                                                    setDraftAnswers((prev) => ({
-                                                        ...prev,
-                                                        [question.id]: e.target.value,
-                                                    }))
-                                                }
-                                                rows={3}
-                                                className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                placeholder="Type your answer..."
-                                            />
-                                        </div>
-                                    ))}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Supervisor</label>
+                                    <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
+                                        {userName || "Supervisor"}
+                                    </div>
                                 </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Date</label>
+                                    <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
+                                        {reportDate}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {weeklyAllowedRegions.length === 0 && (
+                                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                    No areas are assigned to your account currently.
+                                </p>
                             )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Area</label>
+                                    <select
+                                        value={weeklyForm.area}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                area: e.target.value,
+                                            }))
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        disabled={weeklyAllowedRegions.length === 0}
+                                    >
+                                        <option value="">Select area</option>
+                                        {weeklyAllowedRegions.map((region) => (
+                                            <option key={region} value={region}>
+                                                {region}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Type of area</label>
+                                    <select
+                                        value={weeklyForm.areaType}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                areaType: e.target.value,
+                                            }))
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    >
+                                        {WEEKLY_AREA_TYPE_OPTIONS.map((option) => (
+                                            <option key={option} value={option}>
+                                                {option}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">High critical</label>
+                                    <textarea
+                                        value={weeklyForm.highCritical}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                highCritical: e.target.value,
+                                            }))
+                                        }
+                                        rows={4}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        placeholder="Write high critical updates"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Mid critical</label>
+                                    <textarea
+                                        value={weeklyForm.midCritical}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                midCritical: e.target.value,
+                                            }))
+                                        }
+                                        rows={4}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        placeholder="Write mid critical updates"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-sm font-medium text-slate-700">Low critical</label>
+                                    <textarea
+                                        value={weeklyForm.lowCritical}
+                                        onChange={(e) =>
+                                            setWeeklyForm((prev) => ({
+                                                ...prev,
+                                                lowCritical: e.target.value,
+                                            }))
+                                        }
+                                        rows={4}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                        placeholder="Write low critical updates"
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-sm font-medium text-slate-700">
+                                    Specific work completed this week
+                                </label>
+                                <textarea
+                                    value={weeklyForm.specificWork}
+                                    onChange={(e) =>
+                                        setWeeklyForm((prev) => ({
+                                            ...prev,
+                                            specificWork: e.target.value,
+                                        }))
+                                    }
+                                    rows={5}
+                                    className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    placeholder="Write the specific work done this week"
+                                />
+                            </div>
 
                             <div className="pt-2 flex justify-end">
                                 <button
                                     type="button"
-                                    onClick={handleSubmitSupervisorAnswers}
-                                    disabled={isPending || questions.length === 0}
+                                    onClick={handleSubmitWeeklyReport}
+                                    disabled={
+                                        isPending ||
+                                        questions.length === 0 ||
+                                        weeklyAllowedRegions.length === 0
+                                    }
                                     className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                 >
-                                    {isPending ? "Submitting..." : "Submit answers"}
+                                    {isPending ? "Submitting..." : "Submit weekly report"}
                                 </button>
                             </div>
                         </div>
