@@ -1,23 +1,19 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
-
-/* =========================================================================
-   Types
-========================================================================= */
+import { prisma } from "@/lib/prisma";
 
 export interface ChecklistItem {
-    id: string; // "1", "2"...
+    id: string;
     text: string;
     checked: boolean;
 }
 
 export interface ChecklistSection {
-    id: string; // "uniforms", "bathrooms"...
+    id: string;
     title: string;
     items: ChecklistItem[];
-    photos: string[]; // URLs
+    photos: string[];
 }
 
 export interface DailyReportData {
@@ -35,53 +31,97 @@ export interface DailyReportResponse {
     id?: string;
 }
 
-/* =========================================================================
-   Server Actions
-========================================================================= */
+function normalizeReportDate(dateStr?: string): Date {
+    if (dateStr) {
+        const [year, month, day] = dateStr.split("-").map(Number);
+        if (
+            Number.isInteger(year) &&
+            Number.isInteger(month) &&
+            Number.isInteger(day) &&
+            year > 1900 &&
+            month >= 1 &&
+            month <= 12 &&
+            day >= 1 &&
+            day <= 31
+        ) {
+            return new Date(Date.UTC(year, month - 1, day));
+        }
+    }
+
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function buildChecklistAnswers(sections: ChecklistSection[]): Record<string, string[]> {
+    const answers: Record<string, string[]> = {};
+
+    for (const section of sections) {
+        const checkedItems = (section.items || [])
+            .filter((item) => item.checked)
+            .map((item) => item.text.trim())
+            .filter((item) => item.length > 0);
+
+        answers[section.id] = Array.from(new Set(checkedItems));
+    }
+
+    return answers;
+}
 
 /**
- * Submit a new Daily Report
+ * Submit a daily report row into the existing daily_report_submissions table.
  */
 export async function submitDailyReport(data: DailyReportData): Promise<DailyReportResponse> {
     try {
-        console.log("Submitting Daily Report:", data);
+        const supervisorName = data.supervisorName?.trim();
+        const region = data.region?.trim();
+        const roundNumber = String(data.roundNumber || "").trim();
 
-        // Transaction to ensure atomicity
-        const report = await prisma.$transaction(async (tx) => {
-            // 1. Create the main round entry
-            const round = await tx.dailyRound.create({
-                data: {
-                    date: new Date(),
-                    roundNumber: data.roundNumber,
-                    region: data.region,
-                    supervisor: data.supervisorName,
+        if (!supervisorName) {
+            return { success: false, message: "Supervisor name is required" };
+        }
+
+        if (!region) {
+            return { success: false, message: "Region is required" };
+        }
+
+        if (!roundNumber) {
+            return { success: false, message: "Round number is required" };
+        }
+
+        const reportDate = normalizeReportDate();
+        const checklistAnswers = buildChecklistAnswers(data.sections || []);
+
+        const report = await prisma.dailyReportSubmission.upsert({
+            where: {
+                reportDate_supervisorId_roundNumber: {
+                    reportDate,
                     supervisorId: data.supervisorId,
-                    shiftId: data.shiftId,
-                }
-            });
-
-            // 2. Create checklist entries for each section
-            for (const section of data.sections) {
-                await tx.roundChecklist.create({
-                    data: {
-                        roundId: round.id,
-                        section: section.id,
-                        // Store items as JSON. We could store structure or just results
-                        // Storing full structure is safer for rendering history
-                        items: section.items as any,
-                        photos: section.photos
-                    }
-                });
-            }
-
-            return round;
+                    roundNumber,
+                },
+            },
+            update: {
+                supervisorName,
+                region,
+                checklistAnswers,
+            },
+            create: {
+                reportDate,
+                supervisorId: data.supervisorId,
+                supervisorName,
+                region,
+                roundNumber,
+                checklistAnswers,
+            },
         });
 
         revalidatePath("/reports");
         revalidatePath("/dashboard");
 
-        return { success: true, message: "Daily Report submitted successfully", id: report.id };
-
+        return {
+            success: true,
+            message: "Daily report submitted successfully",
+            id: String(report.id),
+        };
     } catch (error) {
         console.error("Error submitting daily report:", error);
         return { success: false, message: "Failed to submit daily report" };
@@ -89,42 +129,21 @@ export async function submitDailyReport(data: DailyReportData): Promise<DailyRep
 }
 
 /**
- * Fetch Daily Reports with filters
+ * Fetch daily reports from daily_report_submissions table.
  */
-export async function getDailyReports(
-    dateStr?: string,
-    region?: string
-) {
+export async function getDailyReports(dateStr?: string, region?: string) {
     try {
-        const date = dateStr ? new Date(dateStr) : new Date();
-        const startOfDay = new Date(date.setHours(0, 0, 0, 0));
-        const endOfDay = new Date(date.setHours(23, 59, 59, 999));
+        const reportDate = normalizeReportDate(dateStr);
 
-        const where: any = {
-            date: {
-                gte: startOfDay,
-                lte: endOfDay
-            }
-        };
-
-        if (region && region !== "All") {
-            where.region = region;
-        }
-
-        const reports = await prisma.dailyRound.findMany({
-            where,
-            include: {
-                checklists: true,
-                shift: true
+        const reports = await prisma.dailyReportSubmission.findMany({
+            where: {
+                reportDate,
+                ...(region && region !== "All" ? { region } : {}),
             },
-            orderBy: {
-                createdAt: 'desc'
-            }
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
         });
 
-        // Transform if needed, but returning raw structure is usually fine for UI to parse
         return { success: true, data: reports };
-
     } catch (error) {
         console.error("Error fetching daily reports:", error);
         return { success: false, data: [] };
@@ -132,22 +151,13 @@ export async function getDailyReports(
 }
 
 /**
- * Mock Photo Upload (In real app, upload to Vercel Clob / S3)
- * For this prototypes, we'll return a placeholder URL or base64 if small
+ * Placeholder upload implementation.
  */
 export async function uploadReportPhoto(formData: FormData): Promise<string | null> {
-    const file = formData.get("file") as File;
-    if (!file) return null;
+    const file = formData.get("file") as File | null;
+    if (!file) {
+        return null;
+    }
 
-    // In a real app:
-    // const blob = await put(file.name, file, { access: 'public' });
-    // return blob.url;
-
-    console.log(`Mock uploading file: ${file.name} (${file.size} bytes)`);
-
-    // Return a fake URL for now to simulate success
-    // We can use a service like Cloudinary or just return a static placeholder for demo
-    // Or if we want to be fancy, we could convert to base64 but that blows up DB size.
-    // Let's use a placeholder that indicates "Photo Uploaded"
     return `https://placehold.co/600x400?text=${encodeURIComponent(file.name)}`;
 }
