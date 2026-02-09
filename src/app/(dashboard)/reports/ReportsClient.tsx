@@ -21,6 +21,7 @@ import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
 } from "@/lib/dailyReportTemplate";
+import { DischargeSpreadsheet } from "@/components/reports/DischargeSpreadsheet";
 
 interface ReportsClientProps {
     userRole: string;
@@ -163,10 +164,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dischargeRows, setDischargeRows] = useState<DischargeEntryInput[]>([
         createEmptyDischargeRow(),
     ]);
-    const [dischargeFillDrag, setDischargeFillDrag] = useState<{
-        startIndex: number;
-        source: DischargeEntryInput;
-    } | null>(null);
     const [dischargeAllowedRegions, setDischargeAllowedRegions] = useState<string[]>([]);
     const [dischargeLoadError, setDischargeLoadError] = useState<string | null>(null);
     const [weeklyAllowedRegions, setWeeklyAllowedRegions] = useState<string[]>([]);
@@ -340,13 +337,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 }));
 
                 setDischargeRows(
-                    dischargeRowHasValue(
-                        rowsFromServer[rowsFromServer.length - 1] || createEmptyDischargeRow()
-                    )
-                        ? [...rowsFromServer, createEmptyDischargeRow()]
-                        : rowsFromServer.length > 0
-                            ? rowsFromServer
-                            : [createEmptyDischargeRow()]
+                    rowsFromServer.length > 0
+                        ? rowsFromServer
+                        : [createEmptyDischargeRow()]
                 );
             } else {
                 setDischargeRows([createEmptyDischargeRow()]);
@@ -381,18 +374,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, reportDate]);
-
-    useEffect(() => {
-        if (!dischargeFillDrag) {
-            return;
-        }
-
-        const stopDischargeFill = () => setDischargeFillDrag(null);
-        window.addEventListener("mouseup", stopDischargeFill);
-        return () => {
-            window.removeEventListener("mouseup", stopDischargeFill);
-        };
-    }, [dischargeFillDrag]);
 
     const handleSubmitWeeklyReport = () => {
         const questionIdMap = getWeeklyQuestionIdMap(questions);
@@ -520,99 +501,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             toast.success(result.message);
             const token = beginLoad();
             await loadDailyData(token, reportDate);
-        });
-    };
-
-    const updateDischargeRow = (
-        index: number,
-        field: keyof DischargeEntryInput,
-        value: string
-    ) => {
-        setDischargeRows((prev) => {
-            const next = [...prev];
-            const current = next[index] || createEmptyDischargeRow();
-            next[index] = {
-                ...current,
-                [field]: value,
-            };
-
-            if (next.length === 0) {
-                return [createEmptyDischargeRow()];
-            }
-
-            if (dischargeRowHasValue(next[next.length - 1])) {
-                next.push(createEmptyDischargeRow());
-            }
-
-            return next;
-        });
-    };
-
-    const addDischargeRow = () => {
-        setDischargeRows((prev) => [...prev, createEmptyDischargeRow()]);
-    };
-
-    const removeDischargeRow = (index: number) => {
-        setDischargeRows((prev) => {
-            const next = prev.filter((_, rowIndex) => rowIndex !== index);
-
-            if (next.length === 0) {
-                return [createEmptyDischargeRow()];
-            }
-
-            if (dischargeRowHasValue(next[next.length - 1])) {
-                next.push(createEmptyDischargeRow());
-            }
-
-            return next;
-        });
-    };
-
-    const startDischargeRowFill = (index: number) => {
-        const sourceRow = dischargeRows[index];
-        if (!sourceRow) {
-            return;
-        }
-
-        setDischargeFillDrag({
-            startIndex: index,
-            source: { ...sourceRow },
-        });
-    };
-
-    const applyDischargeRowFill = (targetIndex: number) => {
-        if (!dischargeFillDrag) {
-            return;
-        }
-
-        setDischargeRows((prev) => {
-            const next = [...prev];
-            const from = Math.min(dischargeFillDrag.startIndex, targetIndex);
-            const to = Math.max(dischargeFillDrag.startIndex, targetIndex);
-
-            for (let rowIndex = from; rowIndex <= to; rowIndex += 1) {
-                if (rowIndex === dischargeFillDrag.startIndex) {
-                    continue;
-                }
-
-                const current = next[rowIndex] || createEmptyDischargeRow();
-                next[rowIndex] = {
-                    ...current,
-                    roomNumber: dischargeFillDrag.source.roomNumber,
-                    roomType: dischargeFillDrag.source.roomType,
-                    area: dischargeFillDrag.source.area,
-                };
-            }
-
-            if (next.length === 0) {
-                return [createEmptyDischargeRow()];
-            }
-
-            if (dischargeRowHasValue(next[next.length - 1])) {
-                next.push(createEmptyDischargeRow());
-            }
-
-            return next;
         });
     };
 
@@ -1251,147 +1139,22 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     ) : null}
 
                                     <p className="text-xs text-slate-500">
-                                        Spreadsheet mode: hold `Fill` on a row, then drag over other rows to copy values.
+                                        Full spreadsheet mode enabled: select cells, paste ranges, use autofill handle,
+                                        insert/remove rows from the context menu, and use undo/redo shortcuts.
                                     </p>
 
-                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
-                                        <table className="min-w-full text-sm">
-                                            <thead className="bg-slate-50">
-                                                <tr>
-                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
-                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
-                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
-                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Fill</th>
-                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Action</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-100">
-                                                {dischargeRows.map((row, index) => (
-                                                    <tr
-                                                        key={`discharge-row-${index}`}
-                                                        onMouseEnter={() => applyDischargeRowFill(index)}
-                                                        className={
-                                                            dischargeFillDrag?.startIndex === index
-                                                                ? "bg-blue-50/40"
-                                                                : undefined
-                                                        }
-                                                    >
-                                                        <td className="px-3 py-2">
-                                                            <input
-                                                                type="text"
-                                                                value={row.roomNumber}
-                                                                onChange={(e) =>
-                                                                    updateDischargeRow(
-                                                                        index,
-                                                                        "roomNumber",
-                                                                        e.target.value
-                                                                    )
-                                                                }
-                                                                placeholder="e.g. 1203"
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                                disabled={
-                                                                    dischargeAllowedRegions.length === 0 ||
-                                                                    Boolean(dischargeLoadError)
-                                                                }
-                                                            />
-                                                        </td>
-                                                        <td className="px-3 py-2">
-                                                            <select
-                                                                value={row.roomType}
-                                                                onChange={(e) =>
-                                                                    updateDischargeRow(
-                                                                        index,
-                                                                        "roomType",
-                                                                        e.target.value
-                                                                    )
-                                                                }
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                                disabled={
-                                                                    dischargeAllowedRegions.length === 0 ||
-                                                                    Boolean(dischargeLoadError)
-                                                                }
-                                                            >
-                                                                <option value="normal_patient">Normal patient</option>
-                                                                <option value="isolation">Isolation</option>
-                                                            </select>
-                                                        </td>
-                                                        <td className="px-3 py-2">
-                                                            <select
-                                                                value={row.area}
-                                                                onChange={(e) =>
-                                                                    updateDischargeRow(
-                                                                        index,
-                                                                        "area",
-                                                                        e.target.value
-                                                                    )
-                                                                }
-                                                                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                                                                disabled={
-                                                                    dischargeAllowedRegions.length === 0 ||
-                                                                    Boolean(dischargeLoadError)
-                                                                }
-                                                            >
-                                                                <option value="">Select area</option>
-                                                                {dischargeAllowedRegions.map((region) => (
-                                                                    <option key={region} value={region}>
-                                                                        {region}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                        <td className="px-3 py-2">
-                                                            <button
-                                                                type="button"
-                                                                onMouseDown={(e) => {
-                                                                    e.preventDefault();
-                                                                    startDischargeRowFill(index);
-                                                                }}
-                                                                className={`px-2 py-1.5 text-xs font-medium rounded-md border ${dischargeFillDrag?.startIndex === index
-                                                                    ? "bg-blue-600 text-white border-blue-600"
-                                                                    : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
-                                                                    }`}
-                                                                disabled={
-                                                                    dischargeAllowedRegions.length === 0 ||
-                                                                    Boolean(dischargeLoadError)
-                                                                }
-                                                            >
-                                                                Fill
-                                                            </button>
-                                                        </td>
-                                                        <td className="px-3 py-2">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => removeDischargeRow(index)}
-                                                                className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-60"
-                                                                disabled={dischargeRows.length <= 1}
-                                                            >
-                                                                Remove
-                                                            </button>
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                    <DischargeSpreadsheet
+                                        rows={dischargeRows}
+                                        allowedRegions={dischargeAllowedRegions}
+                                        disabled={
+                                            dischargeAllowedRegions.length === 0 ||
+                                            Boolean(dischargeLoadError) ||
+                                            isPending
+                                        }
+                                        onRowsChange={setDischargeRows}
+                                    />
 
-                                    {dischargeFillDrag && (
-                                        <p className="text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
-                                            Fill mode is active. Drag over rows, then release mouse to stop filling.
-                                        </p>
-                                    )}
-
-                                    <div className="flex items-center justify-between gap-3">
-                                        <button
-                                            type="button"
-                                            onClick={addDischargeRow}
-                                            disabled={
-                                                dischargeAllowedRegions.length === 0 ||
-                                                Boolean(dischargeLoadError)
-                                            }
-                                            className="px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-60"
-                                        >
-                                            Add row
-                                        </button>
+                                    <div className="flex items-center justify-end gap-3">
                                         <button
                                             type="button"
                                             onClick={handleSubmitDischargeReport}

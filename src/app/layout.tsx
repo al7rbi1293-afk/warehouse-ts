@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cairo } from "next/font/google";
 import "./globals.css";
+import "handsontable/dist/handsontable.full.min.css";
 import { Providers } from "@/components/Providers";
 import { Toaster } from "sonner";
 import { SpeedInsights } from "@vercel/speed-insights/next";
