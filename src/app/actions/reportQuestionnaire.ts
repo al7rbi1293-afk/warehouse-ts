@@ -44,6 +44,14 @@ export interface DailySubmissionInput {
     checklistAnswers: Record<string, string[]>;
 }
 
+export type DischargeRoomType = "normal_patient" | "isolation";
+
+export interface DischargeEntryInput {
+    roomNumber: string;
+    roomType: DischargeRoomType;
+    area: string;
+}
+
 interface DailySubmissionDto {
     id: number;
     reportDate: string;
@@ -54,9 +62,21 @@ interface DailySubmissionDto {
     updatedAt: string;
 }
 
+interface DischargeEntryDto {
+    id: number;
+    reportDate: string;
+    supervisorId: number;
+    supervisorName: string;
+    area: string;
+    roomNumber: string;
+    roomType: DischargeRoomType;
+    updatedAt: string;
+}
+
 const REPORT_TYPES: ReportType[] = ["daily", "weekly", "discharge"];
 const MANAGER_ROLES = new Set(["manager", "admin"]);
 const SUPERVISOR_ROLES = new Set(["supervisor", "night_supervisor"]);
+const DISCHARGE_ROOM_TYPES: DischargeRoomType[] = ["normal_patient", "isolation"];
 
 const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
     daily: [
@@ -78,6 +98,10 @@ const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
 
 function isReportType(value: string): value is ReportType {
     return REPORT_TYPES.includes(value as ReportType);
+}
+
+function isDischargeRoomType(value: string): value is DischargeRoomType {
+    return DISCHARGE_ROOM_TYPES.includes(value as DischargeRoomType);
 }
 
 function normalizeReportDate(dateStr?: string): Date {
@@ -613,6 +637,95 @@ export async function getDailyReportSubmissions(
     };
 }
 
+export async function getDischargeReportData(
+    reportDate: string
+): Promise<
+    ActionResult<{
+        mode: "manager" | "supervisor";
+        entries: DischargeEntryDto[];
+        allowedRegions: string[];
+    }>
+> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const normalizedDate = normalizeReportDate(reportDate);
+    const isManager = MANAGER_ROLES.has(role);
+
+    if (isManager) {
+        const records = await prisma.dischargeReportEntry.findMany({
+            where: { reportDate: normalizedDate },
+            orderBy: [
+                { supervisorName: "asc" },
+                { sortOrder: "asc" },
+                { id: "asc" },
+            ],
+        });
+
+        return {
+            success: true,
+            message: "OK",
+            data: {
+                mode: "manager",
+                allowedRegions: [],
+                entries: records.map((record) => ({
+                    id: record.id,
+                    reportDate: record.reportDate.toISOString(),
+                    supervisorId: record.supervisorId,
+                    supervisorName: record.supervisorName,
+                    area: record.area,
+                    roomNumber: record.roomNumber,
+                    roomType: isDischargeRoomType(record.roomType)
+                        ? record.roomType
+                        : "normal_patient",
+                    updatedAt: record.updatedAt.toISOString(),
+                })),
+            },
+        };
+    }
+
+    const supervisorId = Number(session.user.id);
+    if (!Number.isFinite(supervisorId)) {
+        return { success: false, message: "Invalid supervisor session" };
+    }
+
+    const [records, allowedRegions] = await Promise.all([
+        prisma.dischargeReportEntry.findMany({
+            where: {
+                reportDate: normalizedDate,
+                supervisorId,
+            },
+            orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+        }),
+        getSupervisorAllowedRegions(supervisorId, normalizedDate),
+    ]);
+
+    return {
+        success: true,
+        message: "OK",
+        data: {
+            mode: "supervisor",
+            allowedRegions,
+            entries: records.map((record) => ({
+                id: record.id,
+                reportDate: record.reportDate.toISOString(),
+                supervisorId: record.supervisorId,
+                supervisorName: record.supervisorName,
+                area: record.area,
+                roomNumber: record.roomNumber,
+                roomType: isDischargeRoomType(record.roomType)
+                    ? record.roomType
+                    : "normal_patient",
+                updatedAt: record.updatedAt.toISOString(),
+            })),
+        },
+    };
+}
+
 export async function submitDailyReportForm(
     reportDate: string,
     payload: DailySubmissionInput
@@ -690,6 +803,122 @@ export async function submitDailyReportForm(
     return { success: true, message: "Daily report submitted successfully" };
 }
 
+export async function submitDischargeReport(
+    reportDate: string,
+    rows: DischargeEntryInput[]
+): Promise<ActionResult<{ submitted: number }>> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !SUPERVISOR_ROLES.has(role)) {
+        return { success: false, message: "Only supervisors can submit discharge reports" };
+    }
+
+    const supervisorId = Number(session.user.id);
+    if (!Number.isFinite(supervisorId)) {
+        return { success: false, message: "Invalid supervisor session" };
+    }
+
+    const normalizedDate = normalizeReportDate(reportDate);
+    const supervisorName = (session.user.name || session.user.username || "").trim();
+    if (!supervisorName) {
+        return { success: false, message: "Supervisor profile name is required" };
+    }
+
+    const allowedRegions = await getSupervisorAllowedRegions(supervisorId, normalizedDate);
+    const regionByKey = new Map(
+        allowedRegions.map((region) => [region.trim().toUpperCase(), region])
+    );
+
+    const cleaned: Array<{
+        roomNumber: string;
+        roomType: DischargeRoomType;
+        area: string;
+        sortOrder: number;
+    }> = [];
+
+    for (const [index, row] of rows.entries()) {
+        const roomNumber = row?.roomNumber?.trim() || "";
+        const roomType = row?.roomType?.trim() || "";
+        const area = row?.area?.trim() || "";
+
+        const hasAnyValue = roomNumber.length > 0 || area.length > 0;
+        if (!hasAnyValue) {
+            continue;
+        }
+
+        if (roomNumber.length === 0) {
+            return {
+                success: false,
+                message: `Room number is required in row ${index + 1}`,
+            };
+        }
+
+        if (!isDischargeRoomType(roomType)) {
+            return {
+                success: false,
+                message: `Room type is invalid in row ${index + 1}`,
+            };
+        }
+
+        if (area.length === 0) {
+            return {
+                success: false,
+                message: `Area is required in row ${index + 1}`,
+            };
+        }
+
+        const normalizedArea =
+            regionByKey.get(area.toUpperCase()) || area;
+
+        if (allowedRegions.length > 0 && !regionByKey.has(area.toUpperCase())) {
+            return {
+                success: false,
+                message: `Area is not assigned to your account in row ${index + 1}`,
+            };
+        }
+
+        cleaned.push({
+            roomNumber,
+            roomType,
+            area: normalizedArea,
+            sortOrder: cleaned.length,
+        });
+    }
+
+    await prisma.$transaction(async (tx) => {
+        await tx.dischargeReportEntry.deleteMany({
+            where: {
+                reportDate: normalizedDate,
+                supervisorId,
+            },
+        });
+
+        if (cleaned.length === 0) {
+            return;
+        }
+
+        await tx.dischargeReportEntry.createMany({
+            data: cleaned.map((entry) => ({
+                reportDate: normalizedDate,
+                supervisorId,
+                supervisorName,
+                area: entry.area,
+                roomNumber: entry.roomNumber,
+                roomType: entry.roomType,
+                sortOrder: entry.sortOrder,
+            })),
+        });
+    });
+
+    revalidatePath("/reports");
+    return {
+        success: true,
+        message: "Discharge report submitted successfully",
+        data: { submitted: cleaned.length },
+    };
+}
+
 export async function deleteDailyReportSubmission(
     submissionId: number
 ): Promise<ActionResult> {
@@ -714,4 +943,36 @@ export async function deleteDailyReportSubmission(
 
     revalidatePath("/reports");
     return { success: true, message: "Daily report deleted" };
+}
+
+export async function deleteDischargeSupervisorReport(
+    reportDate: string,
+    supervisorId: number
+): Promise<ActionResult<{ deleted: number }>> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    if (!Number.isFinite(supervisorId) || supervisorId <= 0) {
+        return { success: false, message: "Invalid supervisor id" };
+    }
+
+    const normalizedDate = normalizeReportDate(reportDate);
+
+    const deleted = await prisma.dischargeReportEntry.deleteMany({
+        where: {
+            reportDate: normalizedDate,
+            supervisorId,
+        },
+    });
+
+    revalidatePath("/reports");
+    return {
+        success: true,
+        message: deleted.count > 0 ? "Discharge report deleted" : "No discharge report found to delete",
+        data: { deleted: deleted.count },
+    };
 }

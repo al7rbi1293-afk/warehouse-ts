@@ -4,14 +4,19 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
     addReportQuestion,
+    deleteDischargeSupervisorReport,
     deleteDailyReportSubmission,
     deleteReportQuestion,
     deleteSupervisorReportAnswers,
+    getDischargeReportData,
     getDailyReportSubmissions,
     getReportQuestionnaireData,
+    submitDischargeReport,
     submitDailyReportForm,
     submitSupervisorReportAnswers,
     updateReportQuestion,
+    type DischargeEntryInput,
+    type DischargeRoomType,
     type DailySubmissionInput,
     type ReportType,
 } from "@/app/actions/reportQuestionnaire";
@@ -51,6 +56,17 @@ interface DailySubmissionItem {
     updatedAt: string;
 }
 
+interface DischargeEntryItem {
+    id: number;
+    reportDate: string;
+    supervisorId: number;
+    supervisorName: string;
+    area: string;
+    roomNumber: string;
+    roomType: DischargeRoomType;
+    updatedAt: string;
+}
+
 interface DailyFormState {
     region: string;
     roundNumber: string;
@@ -81,12 +97,33 @@ function createChecklistDefaults() {
     }, {} as Record<string, string[]>);
 }
 
+function createEmptyDischargeRow(): DischargeEntryInput {
+    return {
+        roomNumber: "",
+        roomType: "normal_patient",
+        area: "",
+    };
+}
+
+function dischargeRowHasValue(row: DischargeEntryInput) {
+    return row.roomNumber.trim().length > 0 || row.area.trim().length > 0;
+}
+
+function getDischargeRoomTypeLabel(roomType: DischargeRoomType) {
+    return roomType === "isolation" ? "Isolation" : "Normal patient";
+}
+
 export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [activeTab, setActiveTab] = useState<ReportType>("daily");
     const [reportDate, setReportDate] = useState(getTodayLocalDateString());
     const [questions, setQuestions] = useState<ReportQuestionItem[]>([]);
     const [managerAnswers, setManagerAnswers] = useState<ManagerAnswerItem[]>([]);
     const [dailySubmissions, setDailySubmissions] = useState<DailySubmissionItem[]>([]);
+    const [dischargeEntries, setDischargeEntries] = useState<DischargeEntryItem[]>([]);
+    const [dischargeRows, setDischargeRows] = useState<DischargeEntryInput[]>([
+        createEmptyDischargeRow(),
+    ]);
+    const [dischargeAllowedRegions, setDischargeAllowedRegions] = useState<string[]>([]);
     const [availableRegions, setAvailableRegions] = useState<string[]>([]);
     const [draftAnswers, setDraftAnswers] = useState<Record<number, string>>({});
     const [newQuestion, setNewQuestion] = useState("");
@@ -125,6 +162,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }, {} as Record<number, string>);
         setDraftAnswers(mappedAnswers);
         setDailySubmissions([]);
+        setDischargeEntries([]);
+        setDischargeRows([createEmptyDischargeRow()]);
+        setDischargeAllowedRegions([]);
         setAvailableRegions([]);
         setIsLoading(false);
     };
@@ -139,6 +179,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             setQuestions([]);
             setManagerAnswers([]);
             setDraftAnswers({});
+            setDischargeEntries([]);
+            setDischargeRows([createEmptyDischargeRow()]);
+            setDischargeAllowedRegions([]);
             setIsLoading(false);
             return;
         }
@@ -148,6 +191,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         setQuestions([]);
         setManagerAnswers([]);
         setDraftAnswers({});
+        setDischargeEntries([]);
+        setDischargeRows([createEmptyDischargeRow()]);
+        setDischargeAllowedRegions([]);
 
         if (isSupervisor) {
             const latest = result.data.submissions[0];
@@ -172,9 +218,60 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         setIsLoading(false);
     };
 
+    const loadDischargeData = async () => {
+        setIsLoading(true);
+        const result = await getDischargeReportData(reportDate);
+
+        if (!result.success || !result.data) {
+            toast.error(result.message || "Failed to load discharge reports");
+            setDischargeEntries([]);
+            setDischargeRows([createEmptyDischargeRow()]);
+            setDischargeAllowedRegions([]);
+            setQuestions([]);
+            setManagerAnswers([]);
+            setDraftAnswers({});
+            setDailySubmissions([]);
+            setAvailableRegions([]);
+            setIsLoading(false);
+            return;
+        }
+
+        setDischargeEntries(result.data.entries);
+        setDischargeAllowedRegions(result.data.allowedRegions || []);
+        setQuestions([]);
+        setManagerAnswers([]);
+        setDraftAnswers({});
+        setDailySubmissions([]);
+        setAvailableRegions([]);
+
+        if (isSupervisor) {
+            const rowsFromServer = result.data.entries.map((entry) => ({
+                roomNumber: entry.roomNumber,
+                roomType: entry.roomType,
+                area: entry.area,
+            }));
+
+            setDischargeRows(
+                dischargeRowHasValue(
+                    rowsFromServer[rowsFromServer.length - 1] || createEmptyDischargeRow()
+                )
+                    ? [...rowsFromServer, createEmptyDischargeRow()]
+                    : rowsFromServer.length > 0
+                        ? rowsFromServer
+                        : [createEmptyDischargeRow()]
+            );
+        } else {
+            setDischargeRows([createEmptyDischargeRow()]);
+        }
+
+        setIsLoading(false);
+    };
+
     useEffect(() => {
         if (activeTab === "daily") {
             loadDailyData();
+        } else if (activeTab === "discharge") {
+            loadDischargeData();
         } else {
             loadQuestionnaireData();
         }
@@ -332,6 +429,82 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
     };
 
+    const updateDischargeRow = (
+        index: number,
+        field: keyof DischargeEntryInput,
+        value: string
+    ) => {
+        setDischargeRows((prev) => {
+            const next = [...prev];
+            const current = next[index] || createEmptyDischargeRow();
+            next[index] = {
+                ...current,
+                [field]: value,
+            };
+
+            if (next.length === 0) {
+                return [createEmptyDischargeRow()];
+            }
+
+            if (dischargeRowHasValue(next[next.length - 1])) {
+                next.push(createEmptyDischargeRow());
+            }
+
+            return next;
+        });
+    };
+
+    const addDischargeRow = () => {
+        setDischargeRows((prev) => [...prev, createEmptyDischargeRow()]);
+    };
+
+    const removeDischargeRow = (index: number) => {
+        setDischargeRows((prev) => {
+            const next = prev.filter((_, rowIndex) => rowIndex !== index);
+
+            if (next.length === 0) {
+                return [createEmptyDischargeRow()];
+            }
+
+            if (dischargeRowHasValue(next[next.length - 1])) {
+                next.push(createEmptyDischargeRow());
+            }
+
+            return next;
+        });
+    };
+
+    const handleSubmitDischargeReport = () => {
+        if (dischargeAllowedRegions.length === 0) {
+            toast.error("No assigned areas found for your account");
+            return;
+        }
+
+        const payload = dischargeRows
+            .filter((row) => dischargeRowHasValue(row))
+            .map((row) => ({
+                roomNumber: row.roomNumber.trim(),
+                roomType: row.roomType,
+                area: row.area.trim(),
+            }));
+
+        if (payload.length === 0) {
+            toast.error("Please add at least one room entry");
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await submitDischargeReport(reportDate, payload);
+            if (!result.success) {
+                toast.error(result.message);
+                return;
+            }
+
+            toast.success(result.message);
+            await loadDischargeData();
+        });
+    };
+
     const handleDeleteDailySubmission = (submissionId: number, supervisorName: string) => {
         if (!confirm(`Delete this daily report for ${supervisorName}?`)) {
             return;
@@ -346,6 +519,23 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             toast.success(result.message);
             await loadDailyData();
+        });
+    };
+
+    const handleDeleteDischargeReport = (supervisorId: number, supervisorName: string) => {
+        if (!confirm(`Delete discharge report for ${supervisorName} on ${reportDate}?`)) {
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await deleteDischargeSupervisorReport(reportDate, supervisorId);
+            if (!result.success) {
+                toast.error(result.message);
+                return;
+            }
+
+            toast.success(result.message);
+            await loadDischargeData();
         });
     };
 
@@ -395,6 +585,31 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         );
     }, [managerAnswers]);
 
+    const groupedDischargeEntries = useMemo(() => {
+        const groups = new Map<
+            number,
+            { supervisorId: number; supervisorName: string; rows: DischargeEntryItem[] }
+        >();
+
+        for (const entry of dischargeEntries) {
+            const existing = groups.get(entry.supervisorId);
+            if (existing) {
+                existing.rows.push(entry);
+                continue;
+            }
+
+            groups.set(entry.supervisorId, {
+                supervisorId: entry.supervisorId,
+                supervisorName: entry.supervisorName,
+                rows: [entry],
+            });
+        }
+
+        return Array.from(groups.values()).sort((a, b) =>
+            a.supervisorName.localeCompare(b.supervisorName, "ar")
+        );
+    }, [dischargeEntries]);
+
     const myDailySubmissions = useMemo(() => {
         if (!isSupervisor) {
             return [];
@@ -414,6 +629,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 <p className="text-slate-500 text-sm">
                     {activeTab === "daily"
                         ? "Daily report form cloned from the provided Google Form"
+                        : activeTab === "discharge"
+                        ? isManager
+                            ? "Review discharge entries submitted by supervisors"
+                            : "Fill the discharge report sheet and submit your rows"
                         : isManager
                         ? "Configure report questions and review supervisor answers"
                         : "Answer manager-defined questions for each report type"}
@@ -696,7 +915,216 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         </div>
                     )}
 
-                    {activeTab !== "daily" && isManager && (
+                    {activeTab === "discharge" && (
+                        <div className="space-y-6">
+                            {isSupervisor && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-slate-900">Discharge Report Sheet</h2>
+                                        <p className="text-sm text-slate-500">
+                                            Add rows like an Excel sheet, then submit once you finish.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-slate-700">Supervisor</label>
+                                            <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
+                                                {userName || "Supervisor"}
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-sm font-medium text-slate-700">Date</label>
+                                            <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
+                                                {reportDate}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {dischargeAllowedRegions.length === 0 && (
+                                        <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                                            No areas are assigned to your account currently.
+                                        </p>
+                                    )}
+
+                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                        <table className="min-w-full text-sm">
+                                            <thead className="bg-slate-50">
+                                                <tr>
+                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
+                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
+                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
+                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-100">
+                                                {dischargeRows.map((row, index) => (
+                                                    <tr key={`discharge-row-${index}`}>
+                                                        <td className="px-3 py-2">
+                                                            <input
+                                                                type="text"
+                                                                value={row.roomNumber}
+                                                                onChange={(e) =>
+                                                                    updateDischargeRow(
+                                                                        index,
+                                                                        "roomNumber",
+                                                                        e.target.value
+                                                                    )
+                                                                }
+                                                                placeholder="e.g. 1203"
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                                disabled={dischargeAllowedRegions.length === 0}
+                                                            />
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <select
+                                                                value={row.roomType}
+                                                                onChange={(e) =>
+                                                                    updateDischargeRow(
+                                                                        index,
+                                                                        "roomType",
+                                                                        e.target.value
+                                                                    )
+                                                                }
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                                disabled={dischargeAllowedRegions.length === 0}
+                                                            >
+                                                                <option value="normal_patient">Normal patient</option>
+                                                                <option value="isolation">Isolation</option>
+                                                            </select>
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <select
+                                                                value={row.area}
+                                                                onChange={(e) =>
+                                                                    updateDischargeRow(
+                                                                        index,
+                                                                        "area",
+                                                                        e.target.value
+                                                                    )
+                                                                }
+                                                                className="w-full px-3 py-2 border border-slate-200 rounded-md bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                                                disabled={dischargeAllowedRegions.length === 0}
+                                                            >
+                                                                <option value="">Select area</option>
+                                                                {dischargeAllowedRegions.map((region) => (
+                                                                    <option key={region} value={region}>
+                                                                        {region}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </td>
+                                                        <td className="px-3 py-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeDischargeRow(index)}
+                                                                className="px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 disabled:opacity-60"
+                                                                disabled={dischargeRows.length <= 1}
+                                                            >
+                                                                Remove
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="flex items-center justify-between gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={addDischargeRow}
+                                            disabled={dischargeAllowedRegions.length === 0}
+                                            className="px-4 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 disabled:opacity-60"
+                                        >
+                                            Add row
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleSubmitDischargeReport}
+                                            disabled={isPending || dischargeAllowedRegions.length === 0}
+                                            className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                                        >
+                                            {isPending ? "Submitting..." : "Submit discharge report"}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {isManager && (
+                                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
+                                    <div>
+                                        <h2 className="text-lg font-semibold text-slate-900">Discharge Entries</h2>
+                                        <p className="text-sm text-slate-500">
+                                            Date | Room number | Type of room | Supervisor name | Area
+                                        </p>
+                                    </div>
+
+                                    {groupedDischargeEntries.length === 0 ? (
+                                        <p className="text-sm text-slate-500">No discharge report entries submitted yet.</p>
+                                    ) : (
+                                        <div className="space-y-4">
+                                            {groupedDischargeEntries.map((group) => (
+                                                <div
+                                                    key={group.supervisorId}
+                                                    className="border border-slate-200 rounded-lg overflow-hidden"
+                                                >
+                                                    <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+                                                        <p className="text-sm font-semibold text-slate-800">
+                                                            {group.supervisorName}
+                                                        </p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                handleDeleteDischargeReport(
+                                                                    group.supervisorId,
+                                                                    group.supervisorName
+                                                                )
+                                                            }
+                                                            disabled={isPending}
+                                                            className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                        >
+                                                            Delete report
+                                                        </button>
+                                                    </div>
+                                                    <div className="overflow-x-auto">
+                                                        <table className="min-w-full text-sm">
+                                                            <thead className="bg-slate-50/70 border-b border-slate-200">
+                                                                <tr>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Date</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Supervisor name</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody className="divide-y divide-slate-100">
+                                                                {group.rows.map((entry) => (
+                                                                    <tr key={entry.id}>
+                                                                        <td className="px-3 py-2 text-slate-700">
+                                                                            {entry.reportDate.slice(0, 10)}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-slate-700">{entry.roomNumber}</td>
+                                                                        <td className="px-3 py-2 text-slate-700">
+                                                                            {getDischargeRoomTypeLabel(entry.roomType)}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-slate-700">{entry.supervisorName}</td>
+                                                                        <td className="px-3 py-2 text-slate-700">{entry.area}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {activeTab === "weekly" && isManager && (
                         <div className="space-y-6">
                             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
                                 <div>
@@ -852,7 +1280,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         </div>
                     )}
 
-                    {activeTab !== "daily" && isSupervisor && (
+                    {activeTab === "weekly" && isSupervisor && (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
                             <div>
                                 <h2 className="text-lg font-semibold text-slate-900">{currentTabLabel} questionnaire</h2>

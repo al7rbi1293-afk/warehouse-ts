@@ -26,6 +26,7 @@ model User {
   covering   StaffAttendance[] @relation("CoveringUser")
   reportAnswers ReportAnswer[]
   dailyReportSubmissions DailyReportSubmission[]
+  dischargeReportEntries DischargeReportEntry[]
 
   @@map("users")
 }
@@ -254,4 +255,23 @@ model DailyReportSubmission {
   @@index([reportDate])
   @@index([supervisorId])
   @@map("daily_report_submissions")
+}
+
+model DischargeReportEntry {
+  id             Int      @id @default(autoincrement())
+  reportDate     DateTime @map("report_date") @db.Date
+  supervisorId   Int      @map("supervisor_id")
+  supervisorName String   @map("supervisor_name")
+  area           String
+  roomNumber     String   @map("room_number")
+  roomType       String   @map("room_type")
+  sortOrder      Int      @default(0) @map("sort_order")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  supervisor     User     @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+
+  @@index([reportDate])
+  @@index([supervisorId])
+  @@index([reportDate, supervisorId])
+  @@map("discharge_report_entries")
 }
