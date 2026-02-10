@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import type Handsontable from "handsontable";
+import { useMemo } from "react";
 import type {
     DischargeEntryInput,
     DischargeRoomType,
@@ -27,36 +26,12 @@ const ROOM_TYPE_LABEL_BY_VALUE = new Map(
     ROOM_TYPE_OPTIONS.map((option) => [option.value, option.label])
 );
 
-function serializeRows(rows: DischargeEntryInput[]) {
-    return JSON.stringify(
-        rows.map((row) => ({
-            roomNumber: row.roomNumber || "",
-            roomType: row.roomType || "normal_patient",
-            area: row.area || "",
-        }))
-    );
-}
-
-function toSheetRows(rows: DischargeEntryInput[]) {
-    return rows.map((row) => [
-        row.roomNumber || "",
-        ROOM_TYPE_LABEL_BY_VALUE.get(row.roomType) || "Normal patient",
-        row.area || "",
-    ]);
-}
-
-function fromSheetRows(rawRows: unknown[][]): DischargeEntryInput[] {
-    return rawRows.map((rawRow) => {
-        const roomNumber = String(rawRow?.[0] ?? "");
-        const roomTypeLabel = String(rawRow?.[1] ?? "Normal patient");
-        const area = String(rawRow?.[2] ?? "");
-
-        return {
-            roomNumber,
-            roomType: ROOM_TYPE_VALUE_BY_LABEL.get(roomTypeLabel) || "normal_patient",
-            area,
-        };
-    });
+function createEmptyRow(): DischargeEntryInput {
+    return {
+        roomNumber: "",
+        roomType: "normal_patient",
+        area: "",
+    };
 }
 
 export function DischargeSpreadsheet({
@@ -65,13 +40,10 @@ export function DischargeSpreadsheet({
     disabled = false,
     onRowsChange,
 }: DischargeSpreadsheetProps) {
-    const containerRef = useRef<HTMLDivElement | null>(null);
-    const hotRef = useRef<Handsontable | null>(null);
-    const onRowsChangeRef = useRef(onRowsChange);
-    const lastSerializedRowsRef = useRef(serializeRows(rows));
-    const isProgrammaticSyncRef = useRef(false);
-
-    onRowsChangeRef.current = onRowsChange;
+    const normalizedRows = useMemo(
+        () => (rows.length > 0 ? rows : [createEmptyRow()]),
+        [rows]
+    );
 
     const areaOptions = useMemo(() => {
         const dedup = new Map<string, string>();
@@ -82,125 +54,134 @@ export function DischargeSpreadsheet({
             }
             dedup.set(cleaned.toUpperCase(), cleaned);
         }
-        return Array.from(dedup.values());
-    }, [allowedRegions]);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        const mount = async () => {
-            const handsontableModule = await import("handsontable");
-            const HandsontableCtor = handsontableModule.default;
-            if (cancelled || !containerRef.current) {
-                return;
+        for (const row of normalizedRows) {
+            const cleaned = row.area.trim();
+            if (!cleaned) {
+                continue;
             }
+            if (!dedup.has(cleaned.toUpperCase())) {
+                dedup.set(cleaned.toUpperCase(), cleaned);
+            }
+        }
+        return Array.from(dedup.values());
+    }, [allowedRegions, normalizedRows]);
 
-            hotRef.current = new HandsontableCtor(containerRef.current, {
-                data: [],
-                colHeaders: ["Room number", "Type of room", "Area"],
-                rowHeaders: true,
-                height: "auto",
-                stretchH: "all",
-                minSpareRows: 1,
-                autoWrapRow: true,
-                autoWrapCol: true,
-                copyPaste: true,
-                contextMenu: true,
-                fillHandle: true,
-                manualRowResize: true,
-                manualColumnResize: true,
-                undo: true,
-                readOnly: false,
-                columns: [
-                    {
-                        type: "text",
-                    },
-                    {
-                        type: "dropdown",
-                        source: ROOM_TYPE_OPTIONS.map((option) => option.label),
-                        strict: true,
-                        allowInvalid: false,
-                    },
-                    {
-                        type: "dropdown",
-                        source: [],
-                        strict: true,
-                        allowInvalid: false,
-                    },
-                ],
-                licenseKey: "non-commercial-and-evaluation",
-                afterChange: (changes, source) => {
-                    if (!changes || isProgrammaticSyncRef.current || source === "loadData") {
-                        return;
+    const updateRow = (index: number, patch: Partial<DischargeEntryInput>) => {
+        onRowsChange(
+            normalizedRows.map((row, rowIndex) =>
+                rowIndex === index
+                    ? {
+                        ...row,
+                        ...patch,
                     }
+                    : row
+            )
+        );
+    };
 
-                    const instance = hotRef.current;
-                    if (!instance) {
-                        return;
-                    }
-
-                    const mappedRows = fromSheetRows(
-                        instance.getData() as unknown[][]
-                    );
-                    lastSerializedRowsRef.current = serializeRows(mappedRows);
-                    onRowsChangeRef.current(mappedRows);
-                },
-            });
-        };
-
-        void mount();
-
-        return () => {
-            cancelled = true;
-            hotRef.current?.destroy();
-            hotRef.current = null;
-        };
-    }, []);
-
-    useEffect(() => {
-        const instance = hotRef.current;
-        if (!instance) {
+    const removeRow = (index: number) => {
+        if (normalizedRows.length <= 1) {
+            onRowsChange([createEmptyRow()]);
             return;
         }
 
-        instance.updateSettings({
-            readOnly: disabled,
-            columns: [
-                {
-                    type: "text",
-                },
-                {
-                    type: "dropdown",
-                    source: ROOM_TYPE_OPTIONS.map((option) => option.label),
-                    strict: true,
-                    allowInvalid: false,
-                },
-                {
-                    type: "dropdown",
-                    source: areaOptions,
-                    strict: true,
-                    allowInvalid: false,
-                },
-            ],
-        });
-    }, [areaOptions, disabled]);
+        onRowsChange(normalizedRows.filter((_, rowIndex) => rowIndex !== index));
+    };
 
-    useEffect(() => {
-        const instance = hotRef.current;
-        if (!instance) {
-            return;
-        }
+    const addRow = () => {
+        onRowsChange([...normalizedRows, createEmptyRow()]);
+    };
 
-        const nextSerialized = serializeRows(rows);
-        if (nextSerialized === lastSerializedRowsRef.current) {
-            return;
-        }
+    return (
+        <div className="space-y-3">
+            <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
+                <table className="min-w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th className="w-12 px-3 py-2 text-left font-semibold text-slate-700">#</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
+                            <th className="w-24 px-3 py-2 text-left font-semibold text-slate-700">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                        {normalizedRows.map((row, index) => (
+                            <tr key={index}>
+                                <td className="px-3 py-2 text-slate-500">{index + 1}</td>
+                                <td className="px-3 py-2">
+                                    <input
+                                        type="text"
+                                        value={row.roomNumber}
+                                        onChange={(event) =>
+                                            updateRow(index, { roomNumber: event.target.value })
+                                        }
+                                        placeholder="Enter room number"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        disabled={disabled}
+                                    />
+                                </td>
+                                <td className="px-3 py-2">
+                                    <select
+                                        value={ROOM_TYPE_LABEL_BY_VALUE.get(row.roomType) || "Normal patient"}
+                                        onChange={(event) =>
+                                            updateRow(index, {
+                                                roomType:
+                                                    ROOM_TYPE_VALUE_BY_LABEL.get(event.target.value) ||
+                                                    "normal_patient",
+                                            })
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        disabled={disabled}
+                                    >
+                                        {ROOM_TYPE_OPTIONS.map((option) => (
+                                            <option key={option.value} value={option.label}>
+                                                {option.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </td>
+                                <td className="px-3 py-2">
+                                    <select
+                                        value={row.area}
+                                        onChange={(event) => updateRow(index, { area: event.target.value })}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        disabled={disabled || areaOptions.length === 0}
+                                    >
+                                        <option value="">Select area</option>
+                                        {areaOptions.map((option) => (
+                                            <option key={option} value={option}>
+                                                {option}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </td>
+                                <td className="px-3 py-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => removeRow(index)}
+                                        disabled={disabled}
+                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                    >
+                                        Remove
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
 
-        isProgrammaticSyncRef.current = true;
-        instance.loadData(toSheetRows(rows));
-        isProgrammaticSyncRef.current = false;
-        lastSerializedRowsRef.current = nextSerialized;
-    }, [rows]);
-
-    return <div ref={containerRef} className="w-full overflow-hidden rounded-lg border border-slate-200" />;
+            <div className="flex justify-end">
+                <button
+                    type="button"
+                    onClick={addRow}
+                    disabled={disabled}
+                    className="px-3 py-2 text-sm font-medium bg-slate-100 text-slate-700 rounded-lg border border-slate-200 hover:bg-slate-200 disabled:opacity-60"
+                >
+                    Add row
+                </button>
+            </div>
+        </div>
+    );
 }

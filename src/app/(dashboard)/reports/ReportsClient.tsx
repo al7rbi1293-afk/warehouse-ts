@@ -1139,8 +1139,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     ) : null}
 
                                     <p className="text-xs text-slate-500">
-                                        Full spreadsheet mode enabled: select cells, paste ranges, use autofill handle,
-                                        insert/remove rows from the context menu, and use undo/redo shortcuts.
+                                        Fill rows normally: write Room number, then choose Type of room and Area from
+                                        dropdown lists.
                                     </p>
 
                                     <DischargeSpreadsheet
