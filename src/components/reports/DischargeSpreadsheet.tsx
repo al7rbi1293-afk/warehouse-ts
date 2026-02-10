@@ -82,19 +82,8 @@ export function DischargeSpreadsheet({
             }
             dedup.set(cleaned.toUpperCase(), cleaned);
         }
-
-        for (const row of rows) {
-            const cleaned = row.area.trim();
-            if (!cleaned) {
-                continue;
-            }
-            if (!dedup.has(cleaned.toUpperCase())) {
-                dedup.set(cleaned.toUpperCase(), cleaned);
-            }
-        }
-
         return Array.from(dedup.values());
-    }, [allowedRegions, rows]);
+    }, [allowedRegions]);
 
     useEffect(() => {
         let cancelled = false;
@@ -135,8 +124,8 @@ export function DischargeSpreadsheet({
                     {
                         type: "dropdown",
                         source: [],
-                        strict: false,
-                        allowInvalid: true,
+                        strict: true,
+                        allowInvalid: false,
                     },
                 ],
                 licenseKey: "non-commercial-and-evaluation",
@@ -189,8 +178,8 @@ export function DischargeSpreadsheet({
                 {
                     type: "dropdown",
                     source: areaOptions,
-                    strict: areaOptions.length > 0,
-                    allowInvalid: areaOptions.length === 0,
+                    strict: true,
+                    allowInvalid: false,
                 },
             ],
         });
