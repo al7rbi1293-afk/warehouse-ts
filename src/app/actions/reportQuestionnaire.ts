@@ -17,6 +17,11 @@ interface ActionResult<T = undefined> {
     data?: T;
 }
 
+interface ActionError {
+    success: false;
+    message: string;
+}
+
 interface ReportQuestionDto {
     id: number;
     question: string;
@@ -181,6 +186,52 @@ function parseDateInput(dateStr?: string): Date | null {
 
 function getRole(session: { user?: { role?: string } } | null | undefined) {
     return session?.user?.role || "";
+}
+
+async function ensureDischargeDateSchema(): Promise<ActionError | null> {
+    try {
+        const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'discharge_report_entries'
+                  AND column_name = 'discharge_date'
+            ) AS "exists"
+        `;
+
+        const hasColumn = rows[0]?.exists === true;
+        if (hasColumn) {
+            return null;
+        }
+
+        await prisma.$executeRawUnsafe(`
+            ALTER TABLE discharge_report_entries
+            ADD COLUMN IF NOT EXISTS discharge_date DATE
+        `);
+        await prisma.$executeRawUnsafe(`
+            UPDATE discharge_report_entries
+            SET discharge_date = report_date
+            WHERE discharge_date IS NULL
+        `);
+        await prisma.$executeRawUnsafe(`
+            ALTER TABLE discharge_report_entries
+            ALTER COLUMN discharge_date SET NOT NULL
+        `);
+        await prisma.$executeRawUnsafe(`
+            CREATE INDEX IF NOT EXISTS discharge_report_entries_discharge_date_idx
+            ON discharge_report_entries(discharge_date)
+        `);
+
+        return null;
+    } catch {
+        return {
+            success: false,
+            message:
+                "Database update is required for discharge reports (missing discharge_date column). " +
+                "Please run the latest SQL migration and refresh.",
+        };
+    }
 }
 
 async function ensureDefaultQuestions(reportType: ReportType, createdBy: string) {
@@ -800,6 +851,11 @@ export async function getDischargeReportData(
         return { success: false, message: "Unauthorized" };
     }
 
+    const schemaCheck = await ensureDischargeDateSchema();
+    if (schemaCheck) {
+        return schemaCheck;
+    }
+
     const normalizedDate = normalizeReportDate(reportDate);
     const isManager = MANAGER_ROLES.has(role);
 
@@ -961,6 +1017,11 @@ export async function submitDischargeReport(
 
     if (!session || !SUPERVISOR_ROLES.has(role)) {
         return { success: false, message: "Only supervisors can submit discharge reports" };
+    }
+
+    const schemaCheck = await ensureDischargeDateSchema();
+    if (schemaCheck) {
+        return schemaCheck;
     }
 
     const supervisorId = Number(session.user.id);
