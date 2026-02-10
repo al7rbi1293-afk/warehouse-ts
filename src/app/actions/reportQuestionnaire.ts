@@ -53,6 +53,7 @@ export interface WeeklyReportInput {
 export type DischargeRoomType = "normal_patient" | "isolation";
 
 export interface DischargeEntryInput {
+    dischargeDate: string;
     roomNumber: string;
     roomType: DischargeRoomType;
     area: string;
@@ -71,6 +72,7 @@ interface DailySubmissionDto {
 interface DischargeEntryDto {
     id: number;
     reportDate: string;
+    dischargeDate: string;
     supervisorId: number;
     supervisorName: string;
     area: string;
@@ -139,6 +141,42 @@ function normalizeReportDate(dateStr?: string): Date {
 
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function parseDateInput(dateStr?: string): Date | null {
+    if (!dateStr) {
+        return null;
+    }
+
+    const trimmed = dateStr.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return null;
+    }
+
+    const [year, month, day] = trimmed.split("-").map(Number);
+    if (
+        !Number.isInteger(year) ||
+        !Number.isInteger(month) ||
+        !Number.isInteger(day) ||
+        year <= 1900 ||
+        month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > 31
+    ) {
+        return null;
+    }
+
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    if (
+        parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() !== month - 1 ||
+        parsed.getUTCDate() !== day
+    ) {
+        return null;
+    }
+
+    return parsed;
 }
 
 function getRole(session: { user?: { role?: string } } | null | undefined) {
@@ -784,6 +822,7 @@ export async function getDischargeReportData(
                 entries: records.map((record) => ({
                     id: record.id,
                     reportDate: record.reportDate.toISOString(),
+                    dischargeDate: record.dischargeDate.toISOString(),
                     supervisorId: record.supervisorId,
                     supervisorName: record.supervisorName,
                     area: record.area,
@@ -822,6 +861,7 @@ export async function getDischargeReportData(
             entries: records.map((record) => ({
                 id: record.id,
                 reportDate: record.reportDate.toISOString(),
+                dischargeDate: record.dischargeDate.toISOString(),
                 supervisorId: record.supervisorId,
                 supervisorName: record.supervisorName,
                 area: record.area,
@@ -940,6 +980,7 @@ export async function submitDischargeReport(
     );
 
     const cleaned: Array<{
+        dischargeDate: Date;
         roomNumber: string;
         roomType: DischargeRoomType;
         area: string;
@@ -947,13 +988,32 @@ export async function submitDischargeReport(
     }> = [];
 
     for (const [index, row] of rows.entries()) {
+        const dischargeDateInput = row?.dischargeDate?.trim() || "";
         const roomNumber = row?.roomNumber?.trim() || "";
         const roomType = row?.roomType?.trim() || "";
         const area = row?.area?.trim() || "";
 
-        const hasAnyValue = roomNumber.length > 0 || area.length > 0;
+        const hasAnyValue =
+            dischargeDateInput.length > 0 ||
+            roomNumber.length > 0 ||
+            area.length > 0;
         if (!hasAnyValue) {
             continue;
+        }
+
+        if (dischargeDateInput.length === 0) {
+            return {
+                success: false,
+                message: `Discharge date is required in row ${index + 1}`,
+            };
+        }
+
+        const dischargeDate = parseDateInput(dischargeDateInput);
+        if (!dischargeDate) {
+            return {
+                success: false,
+                message: `Discharge date is invalid in row ${index + 1}`,
+            };
         }
 
         if (roomNumber.length === 0) {
@@ -988,6 +1048,7 @@ export async function submitDischargeReport(
         }
 
         cleaned.push({
+            dischargeDate,
             roomNumber,
             roomType,
             area: normalizedArea,
@@ -1010,6 +1071,7 @@ export async function submitDischargeReport(
         await tx.dischargeReportEntry.createMany({
             data: cleaned.map((entry) => ({
                 reportDate: normalizedDate,
+                dischargeDate: entry.dischargeDate,
                 supervisorId,
                 supervisorName,
                 area: entry.area,

@@ -4,6 +4,7 @@
 CREATE TABLE IF NOT EXISTS discharge_report_entries (
     id SERIAL PRIMARY KEY,
     report_date DATE NOT NULL,
+    discharge_date DATE NOT NULL,
     supervisor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     supervisor_name TEXT NOT NULL,
     area TEXT NOT NULL,
@@ -22,3 +23,6 @@ CREATE INDEX IF NOT EXISTS discharge_report_entries_supervisor_id_idx
 
 CREATE INDEX IF NOT EXISTS discharge_report_entries_report_date_supervisor_id_idx
     ON discharge_report_entries(report_date, supervisor_id);
+
+CREATE INDEX IF NOT EXISTS discharge_report_entries_discharge_date_idx
+    ON discharge_report_entries(discharge_date);

@@ -57,6 +57,7 @@ interface DailySubmissionItem {
 interface DischargeEntryItem {
     id: number;
     reportDate: string;
+    dischargeDate: string;
     supervisorId: number;
     supervisorName: string;
     area: string;
@@ -115,6 +116,7 @@ function createChecklistDefaults() {
 
 function createEmptyDischargeRow(): DischargeEntryInput {
     return {
+        dischargeDate: "",
         roomNumber: "",
         roomType: "normal_patient",
         area: "",
@@ -122,7 +124,11 @@ function createEmptyDischargeRow(): DischargeEntryInput {
 }
 
 function dischargeRowHasValue(row: DischargeEntryInput) {
-    return row.roomNumber.trim().length > 0 || row.area.trim().length > 0;
+    return (
+        row.dischargeDate.trim().length > 0 ||
+        row.roomNumber.trim().length > 0 ||
+        row.area.trim().length > 0
+    );
 }
 
 function getDischargeRoomTypeLabel(roomType: DischargeRoomType) {
@@ -331,6 +337,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             if (isSupervisor) {
                 const rowsFromServer = result.data.entries.map((entry) => ({
+                    dischargeDate: entry.dischargeDate.slice(0, 10),
                     roomNumber: entry.roomNumber,
                     roomType: entry.roomType,
                     area: entry.area,
@@ -518,6 +525,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         const payload = dischargeRows
             .filter((row) => dischargeRowHasValue(row))
             .map((row) => ({
+                dischargeDate: row.dischargeDate.trim(),
                 roomNumber: row.roomNumber.trim(),
                 roomType: row.roomType,
                 area: row.area.trim(),
@@ -560,7 +568,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     };
 
     const handleDeleteDischargeReport = (supervisorId: number, supervisorName: string) => {
-        if (!confirm(`Delete discharge report for ${supervisorName} on ${reportDate}?`)) {
+        if (!confirm(`Delete discharge report for ${supervisorName} on submission date ${reportDate}?`)) {
             return;
         }
 
@@ -702,7 +710,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             const dischargeRows = dischargeResult.data.entries.length > 0
                 ? dischargeResult.data.entries.map((entry) => ({
-                    Date: entry.reportDate.slice(0, 10),
+                    SubmissionDate: entry.reportDate.slice(0, 10),
+                    DischargeDate: entry.dischargeDate.slice(0, 10),
                     RoomNumber: entry.roomNumber,
                     RoomType: getDischargeRoomTypeLabel(entry.roomType),
                     Supervisor: entry.supervisorName,
@@ -711,7 +720,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 }))
                 : [
                     {
-                        Date: reportDate,
+                        SubmissionDate: reportDate,
+                        DischargeDate: "",
                         RoomNumber: "",
                         RoomType: "",
                         Supervisor: "",
@@ -834,7 +844,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                 <div className="flex items-center gap-2 flex-wrap">
                     <label htmlFor="report-date" className="text-sm font-medium text-slate-700">
-                        Report date
+                        {activeTab === "discharge" ? "Submission date" : "Report date"}
                     </label>
                     <input
                         id="report-date"
@@ -1109,7 +1119,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     <div>
                                         <h2 className="text-lg font-semibold text-slate-900">Discharge Report Sheet</h2>
                                         <p className="text-sm text-slate-500">
-                                            Add rows like an Excel sheet, then submit once you finish.
+                                            Add rows, fill discharge details, then submit once you finish.
                                         </p>
                                     </div>
 
@@ -1121,7 +1131,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             </div>
                                         </div>
                                         <div className="space-y-1">
-                                            <label className="text-sm font-medium text-slate-700">Date</label>
+                                            <label className="text-sm font-medium text-slate-700">Submission date</label>
                                             <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
                                                 {reportDate}
                                             </div>
@@ -1139,8 +1149,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     ) : null}
 
                                     <p className="text-xs text-slate-500">
-                                        Fill rows normally: write Room number, then choose Type of room and Area from
-                                        dropdown lists.
+                                        Fill rows normally: choose Discharge date, write Room number, then choose Type
+                                        of room and Area from dropdown lists.
                                     </p>
 
                                     <DischargeSpreadsheet
@@ -1176,7 +1186,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     <div>
                                         <h2 className="text-lg font-semibold text-slate-900">Discharge Entries</h2>
                                         <p className="text-sm text-slate-500">
-                                            Date | Room number | Type of room | Supervisor name | Area
+                                            Submission date | Discharge date | Room number | Type of room | Supervisor
+                                            name | Area
                                         </p>
                                     </div>
 
@@ -1211,7 +1222,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         <table className="min-w-full text-sm">
                                                             <thead className="bg-slate-50/70 border-b border-slate-200">
                                                                 <tr>
-                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Date</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Submission date</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Discharge date</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Supervisor name</th>
@@ -1223,6 +1235,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                     <tr key={entry.id}>
                                                                         <td className="px-3 py-2 text-slate-700">
                                                                             {entry.reportDate.slice(0, 10)}
+                                                                        </td>
+                                                                        <td className="px-3 py-2 text-slate-700">
+                                                                            {entry.dischargeDate.slice(0, 10)}
                                                                         </td>
                                                                         <td className="px-3 py-2 text-slate-700">{entry.roomNumber}</td>
                                                                         <td className="px-3 py-2 text-slate-700">

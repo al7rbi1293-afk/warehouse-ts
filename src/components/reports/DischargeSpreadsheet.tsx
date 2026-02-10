@@ -28,6 +28,7 @@ const ROOM_TYPE_LABEL_BY_VALUE = new Map(
 
 function createEmptyRow(): DischargeEntryInput {
     return {
+        dischargeDate: "",
         roomNumber: "",
         roomType: "normal_patient",
         area: "",
@@ -99,6 +100,7 @@ export function DischargeSpreadsheet({
                     <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
                             <th className="w-12 px-3 py-2 text-left font-semibold text-slate-700">#</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Discharge date</th>
                             <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
                             <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
                             <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
@@ -109,6 +111,17 @@ export function DischargeSpreadsheet({
                         {normalizedRows.map((row, index) => (
                             <tr key={index}>
                                 <td className="px-3 py-2 text-slate-500">{index + 1}</td>
+                                <td className="px-3 py-2">
+                                    <input
+                                        type="date"
+                                        value={row.dischargeDate}
+                                        onChange={(event) =>
+                                            updateRow(index, { dischargeDate: event.target.value })
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                                        disabled={disabled}
+                                    />
+                                </td>
                                 <td className="px-3 py-2">
                                     <input
                                         type="text"
