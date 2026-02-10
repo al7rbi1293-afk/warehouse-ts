@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/app/actions/audit";
+import { logServerError, logServerInfo } from "@/lib/observability";
 import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
@@ -223,8 +225,17 @@ async function ensureDischargeDateSchema(): Promise<ActionError | null> {
             ON discharge_report_entries(discharge_date)
         `);
 
+        logServerInfo("discharge_schema_auto_migrated", {
+            table: "discharge_report_entries",
+            column: "discharge_date",
+        });
+
         return null;
-    } catch {
+    } catch (error) {
+        logServerError("discharge_schema_auto_migration_failed", error, {
+            table: "discharge_report_entries",
+            column: "discharge_date",
+        });
         return {
             success: false,
             message:
@@ -730,6 +741,18 @@ export async function submitSupervisorReportAnswers(
     });
 
     revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Supervisor",
+        "Submit Report Answers",
+        `${reportType} report submitted (${cleanedAnswers.length} answers) for ${reportDate}`,
+        "Reports"
+    );
+    logServerInfo("report_answers_submitted", {
+        reportType,
+        reportDate,
+        supervisorId,
+        submitted: cleanedAnswers.length,
+    });
     return {
         success: true,
         message: "Answers submitted",
@@ -770,6 +793,18 @@ export async function deleteSupervisorReportAnswers(
     });
 
     revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Manager",
+        "Delete Supervisor Report",
+        `Deleted ${reportType} report answers for supervisor ${supervisorId} on ${reportDate}`,
+        "Reports"
+    );
+    logServerInfo("supervisor_report_deleted", {
+        reportType,
+        reportDate,
+        supervisorId,
+        deleted: deleted.count,
+    });
     return {
         success: true,
         message: deleted.count > 0 ? "Report deleted" : "No report was found to delete",
@@ -1005,6 +1040,18 @@ export async function submitDailyReportForm(
     });
 
     revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Supervisor",
+        "Submit Daily Report",
+        `Submitted daily report for ${reportDate}, round ${roundNumber}, area ${region}`,
+        "Reports"
+    );
+    logServerInfo("daily_report_submitted", {
+        reportDate,
+        supervisorId,
+        roundNumber,
+        region,
+    });
     return { success: true, message: "Daily report submitted successfully" };
 }
 
@@ -1144,6 +1191,17 @@ export async function submitDischargeReport(
     });
 
     revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Supervisor",
+        "Submit Discharge Report",
+        `Submitted discharge report for submission date ${reportDate} (${cleaned.length} rows)`,
+        "Reports"
+    );
+    logServerInfo("discharge_report_submitted", {
+        reportDate,
+        supervisorId,
+        submitted: cleaned.length,
+    });
     return {
         success: true,
         message: "Discharge report submitted successfully",
@@ -1174,6 +1232,15 @@ export async function deleteDailyReportSubmission(
     }
 
     revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Manager",
+        "Delete Daily Report",
+        `Deleted daily report submission ${submissionId}`,
+        "Reports"
+    );
+    logServerInfo("daily_report_deleted", {
+        submissionId,
+    });
     return { success: true, message: "Daily report deleted" };
 }
 
@@ -1202,6 +1269,17 @@ export async function deleteDischargeSupervisorReport(
     });
 
     revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Manager",
+        "Delete Discharge Report",
+        `Deleted discharge report entries for supervisor ${supervisorId} on ${reportDate}`,
+        "Reports"
+    );
+    logServerInfo("discharge_report_deleted", {
+        reportDate,
+        supervisorId,
+        deleted: deleted.count,
+    });
     return {
         success: true,
         message: deleted.count > 0 ? "Discharge report deleted" : "No discharge report found to delete",

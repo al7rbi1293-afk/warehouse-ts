@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "npm run db:verify && prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "db:verify": "node scripts/verify-db-schema.mjs",
     "postinstall": "prisma generate"
   },
   "prisma": {

@@ -9,6 +9,7 @@ import type {
 interface DischargeSpreadsheetProps {
     rows: DischargeEntryInput[];
     allowedRegions: string[];
+    rowErrors?: Record<number, Partial<Record<"dischargeDate" | "roomNumber" | "area", string>>>;
     disabled?: boolean;
     onRowsChange: (rows: DischargeEntryInput[]) => void;
 }
@@ -38,6 +39,7 @@ function createEmptyRow(): DischargeEntryInput {
 export function DischargeSpreadsheet({
     rows,
     allowedRegions,
+    rowErrors = {},
     disabled = false,
     onRowsChange,
 }: DischargeSpreadsheetProps) {
@@ -93,10 +95,15 @@ export function DischargeSpreadsheet({
         onRowsChange([...normalizedRows, createEmptyRow()]);
     };
 
+    const getInputClass = (hasError: boolean) =>
+        `w-full px-3 py-2 border rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${
+            hasError ? "border-red-300 bg-red-50/40" : "border-slate-200"
+        }`;
+
     return (
         <div className="space-y-3">
             <div className="w-full overflow-x-auto rounded-lg border border-slate-200">
-                <table className="min-w-full text-sm">
+                <table className="min-w-full text-sm" aria-label="Discharge report rows">
                     <thead className="bg-slate-50 border-b border-slate-200">
                         <tr>
                             <th className="w-12 px-3 py-2 text-left font-semibold text-slate-700">#</th>
@@ -108,79 +115,107 @@ export function DischargeSpreadsheet({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {normalizedRows.map((row, index) => (
-                            <tr key={index}>
-                                <td className="px-3 py-2 text-slate-500">{index + 1}</td>
-                                <td className="px-3 py-2">
-                                    <input
-                                        type="date"
-                                        value={row.dischargeDate}
-                                        onChange={(event) =>
-                                            updateRow(index, { dischargeDate: event.target.value })
-                                        }
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        disabled={disabled}
-                                    />
-                                </td>
-                                <td className="px-3 py-2">
-                                    <input
-                                        type="text"
-                                        value={row.roomNumber}
-                                        onChange={(event) =>
-                                            updateRow(index, { roomNumber: event.target.value })
-                                        }
-                                        placeholder="Enter room number"
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        disabled={disabled}
-                                    />
-                                </td>
-                                <td className="px-3 py-2">
-                                    <select
-                                        value={ROOM_TYPE_LABEL_BY_VALUE.get(row.roomType) || "Normal patient"}
-                                        onChange={(event) =>
-                                            updateRow(index, {
-                                                roomType:
-                                                    ROOM_TYPE_VALUE_BY_LABEL.get(event.target.value) ||
-                                                    "normal_patient",
-                                            })
-                                        }
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        disabled={disabled}
-                                    >
-                                        {ROOM_TYPE_OPTIONS.map((option) => (
-                                            <option key={option.value} value={option.label}>
-                                                {option.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </td>
-                                <td className="px-3 py-2">
-                                    <select
-                                        value={row.area}
-                                        onChange={(event) => updateRow(index, { area: event.target.value })}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                                        disabled={disabled || areaOptions.length === 0}
-                                    >
-                                        <option value="">Select area</option>
-                                        {areaOptions.map((option) => (
-                                            <option key={option} value={option}>
-                                                {option}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </td>
-                                <td className="px-3 py-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => removeRow(index)}
-                                        disabled={disabled}
-                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                    >
-                                        Remove
-                                    </button>
-                                </td>
-                            </tr>
-                        ))}
+                        {normalizedRows.map((row, index) => {
+                            const errors = rowErrors[index] || {};
+                            return (
+                                <tr key={index}>
+                                    <td className="px-3 py-2 text-slate-500">{index + 1}</td>
+                                    <td className="px-3 py-2">
+                                        <input
+                                            type="date"
+                                            value={row.dischargeDate}
+                                            onChange={(event) =>
+                                                updateRow(index, { dischargeDate: event.target.value })
+                                            }
+                                            className={getInputClass(Boolean(errors.dischargeDate))}
+                                            disabled={disabled}
+                                            aria-label={`Discharge date row ${index + 1}`}
+                                            aria-invalid={Boolean(errors.dischargeDate)}
+                                            aria-describedby={errors.dischargeDate ? `discharge-date-error-${index}` : undefined}
+                                        />
+                                        {errors.dischargeDate ? (
+                                            <p id={`discharge-date-error-${index}`} className="mt-1 text-xs text-red-700">
+                                                {errors.dischargeDate}
+                                            </p>
+                                        ) : null}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <input
+                                            type="text"
+                                            value={row.roomNumber}
+                                            onChange={(event) =>
+                                                updateRow(index, { roomNumber: event.target.value })
+                                            }
+                                            placeholder="Enter room number"
+                                            className={getInputClass(Boolean(errors.roomNumber))}
+                                            disabled={disabled}
+                                            aria-label={`Room number row ${index + 1}`}
+                                            aria-invalid={Boolean(errors.roomNumber)}
+                                            aria-describedby={errors.roomNumber ? `room-number-error-${index}` : undefined}
+                                        />
+                                        {errors.roomNumber ? (
+                                            <p id={`room-number-error-${index}`} className="mt-1 text-xs text-red-700">
+                                                {errors.roomNumber}
+                                            </p>
+                                        ) : null}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <select
+                                            value={ROOM_TYPE_LABEL_BY_VALUE.get(row.roomType) || "Normal patient"}
+                                            onChange={(event) =>
+                                                updateRow(index, {
+                                                    roomType:
+                                                        ROOM_TYPE_VALUE_BY_LABEL.get(event.target.value) ||
+                                                        "normal_patient",
+                                                })
+                                            }
+                                            className={getInputClass(false)}
+                                            disabled={disabled}
+                                            aria-label={`Type of room row ${index + 1}`}
+                                        >
+                                            {ROOM_TYPE_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.label}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <select
+                                            value={row.area}
+                                            onChange={(event) => updateRow(index, { area: event.target.value })}
+                                            className={getInputClass(Boolean(errors.area))}
+                                            disabled={disabled || areaOptions.length === 0}
+                                            aria-label={`Area row ${index + 1}`}
+                                            aria-invalid={Boolean(errors.area)}
+                                            aria-describedby={errors.area ? `area-error-${index}` : undefined}
+                                        >
+                                            <option value="">Select area</option>
+                                            {areaOptions.map((option) => (
+                                                <option key={option} value={option}>
+                                                    {option}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {errors.area ? (
+                                            <p id={`area-error-${index}`} className="mt-1 text-xs text-red-700">
+                                                {errors.area}
+                                            </p>
+                                        ) : null}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => removeRow(index)}
+                                            disabled={disabled}
+                                            className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                        >
+                                            Remove
+                                        </button>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>

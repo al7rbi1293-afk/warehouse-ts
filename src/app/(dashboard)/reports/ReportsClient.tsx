@@ -78,6 +78,15 @@ interface WeeklyFormState {
     specificWork: string;
 }
 
+type DischargeRowErrors = Partial<Record<"dischargeDate" | "roomNumber" | "area", string>>;
+type DischargeSortKey =
+    | "submission_desc"
+    | "submission_asc"
+    | "discharge_desc"
+    | "discharge_asc"
+    | "room_asc"
+    | "room_desc";
+
 const WEEKLY_QUESTION_KEYS = {
     area: "Area",
     areaType: "Type of area",
@@ -89,6 +98,11 @@ const WEEKLY_AREA_TYPE_OPTIONS = [
     "Mid critical",
     "Low critical",
 ];
+
+const DISCHARGE_MANAGER_PAGE_SIZE = 5;
+const DAILY_DRAFT_PREFIX = "reports.daily.draft";
+const WEEKLY_DRAFT_PREFIX = "reports.weekly.draft";
+const DISCHARGE_DRAFT_PREFIX = "reports.discharge.draft";
 
 const reportTabs: Array<{ key: ReportType; label: string }> = [
     { key: "daily", label: "Daily report" },
@@ -107,6 +121,95 @@ function getTodayLocalDateString() {
     return `${year}-${month}-${day}`;
 }
 
+function getShiftedLocalDateString(offsetDays: number) {
+    const now = new Date();
+    now.setDate(now.getDate() + offsetDays);
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function isValidDateInput(dateStr: string) {
+    const trimmed = dateStr.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return false;
+    }
+
+    const [year, month, day] = trimmed.split("-").map(Number);
+    if (
+        !Number.isInteger(year) ||
+        !Number.isInteger(month) ||
+        !Number.isInteger(day) ||
+        year <= 1900 ||
+        month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > 31
+    ) {
+        return false;
+    }
+
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+    );
+}
+
+function getDailyDraftKey(date: string) {
+    return `${DAILY_DRAFT_PREFIX}:${date}`;
+}
+
+function getWeeklyDraftKey(date: string) {
+    return `${WEEKLY_DRAFT_PREFIX}:${date}`;
+}
+
+function getDischargeDraftKey(date: string) {
+    return `${DISCHARGE_DRAFT_PREFIX}:${date}`;
+}
+
+function readDraft<T>(key: string): T | null {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    try {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) {
+            return null;
+        }
+        return JSON.parse(raw) as T;
+    } catch {
+        return null;
+    }
+}
+
+function writeDraft(key: string, value: unknown) {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+        // Ignore storage quota and serialization failures.
+    }
+}
+
+function clearDraft(key: string) {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    try {
+        window.localStorage.removeItem(key);
+    } catch {
+        // Ignore storage cleanup failures.
+    }
+}
+
 function createChecklistDefaults() {
     return DAILY_REPORT_SECTIONS.reduce((acc, section) => {
         acc[section.id] = [];
@@ -123,16 +226,146 @@ function createEmptyDischargeRow(): DischargeEntryInput {
     };
 }
 
-function dischargeRowHasValue(row: DischargeEntryInput) {
-    return (
-        row.dischargeDate.trim().length > 0 ||
-        row.roomNumber.trim().length > 0 ||
-        row.area.trim().length > 0
-    );
+function coerceDailyDraft(value: unknown): DailyFormState | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const draft = value as Partial<DailyFormState>;
+    const checklistDefaults = createChecklistDefaults();
+    const checklistAnswers = { ...checklistDefaults };
+
+    if (draft.checklistAnswers && typeof draft.checklistAnswers === "object") {
+        for (const section of DAILY_REPORT_SECTIONS) {
+            const row = draft.checklistAnswers[section.id];
+            if (!Array.isArray(row)) {
+                continue;
+            }
+            checklistAnswers[section.id] = row
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => item.trim())
+                .filter((item) => item.length > 0);
+        }
+    }
+
+    return {
+        region: typeof draft.region === "string" ? draft.region : "",
+        roundNumber:
+            typeof draft.roundNumber === "string" && draft.roundNumber
+                ? draft.roundNumber
+                : (DAILY_REPORT_ROUNDS[0] || ""),
+        checklistAnswers,
+    };
+}
+
+function coerceWeeklyDraft(value: unknown): WeeklyFormState | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const draft = value as Partial<WeeklyFormState>;
+    return {
+        area: typeof draft.area === "string" ? draft.area : "",
+        areaType:
+            typeof draft.areaType === "string" && WEEKLY_AREA_TYPE_OPTIONS.includes(draft.areaType)
+                ? draft.areaType
+                : (WEEKLY_AREA_TYPE_OPTIONS[0] || "High critical"),
+        specificWork: typeof draft.specificWork === "string" ? draft.specificWork : "",
+    };
+}
+
+function coerceDischargeDraftRows(value: unknown): DischargeEntryInput[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    return value
+        .map((row) => {
+            if (!row || typeof row !== "object") {
+                return null;
+            }
+
+            const typed = row as Partial<DischargeEntryInput>;
+            const roomType =
+                typed.roomType === "isolation" || typed.roomType === "normal_patient"
+                    ? typed.roomType
+                    : "normal_patient";
+
+            return {
+                dischargeDate: typeof typed.dischargeDate === "string" ? typed.dischargeDate : "",
+                roomNumber: typeof typed.roomNumber === "string" ? typed.roomNumber : "",
+                roomType,
+                area: typeof typed.area === "string" ? typed.area : "",
+            } satisfies DischargeEntryInput;
+        })
+        .filter((row): row is DischargeEntryInput => row !== null);
 }
 
 function getDischargeRoomTypeLabel(roomType: DischargeRoomType) {
     return roomType === "isolation" ? "Isolation" : "Normal patient";
+}
+
+function buildDischargePayload(
+    rows: DischargeEntryInput[],
+    allowedRegions: string[]
+): {
+    payload: DischargeEntryInput[];
+    errorsByRow: Record<number, DischargeRowErrors>;
+} {
+    const regionByKey = new Map(
+        allowedRegions.map((region) => [region.trim().toUpperCase(), region.trim()])
+    );
+
+    const payload: DischargeEntryInput[] = [];
+    const errorsByRow: Record<number, DischargeRowErrors> = {};
+
+    for (const [index, row] of rows.entries()) {
+        const dischargeDate = row.dischargeDate.trim();
+        const roomNumber = row.roomNumber.trim();
+        const area = row.area.trim();
+        const hasAnyValue =
+            dischargeDate.length > 0 ||
+            roomNumber.length > 0 ||
+            area.length > 0;
+
+        if (!hasAnyValue) {
+            continue;
+        }
+
+        const rowErrors: DischargeRowErrors = {};
+        if (!dischargeDate) {
+            rowErrors.dischargeDate = "Discharge date is required";
+        } else if (!isValidDateInput(dischargeDate)) {
+            rowErrors.dischargeDate = "Discharge date is invalid";
+        }
+
+        if (!roomNumber) {
+            rowErrors.roomNumber = "Room number is required";
+        }
+
+        if (!area) {
+            rowErrors.area = "Area is required";
+        } else if (allowedRegions.length > 0 && !regionByKey.has(area.toUpperCase())) {
+            rowErrors.area = "Area is not assigned to your account";
+        }
+
+        if (Object.keys(rowErrors).length > 0) {
+            errorsByRow[index] = rowErrors;
+            continue;
+        }
+
+        payload.push({
+            dischargeDate,
+            roomNumber,
+            roomType: row.roomType,
+            area: regionByKey.get(area.toUpperCase()) || area,
+        });
+    }
+
+    return {
+        payload,
+        errorsByRow,
+    };
 }
 
 function normalizeQuestionKey(value: string) {
@@ -183,6 +416,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         checklistAnswers: createChecklistDefaults(),
     });
     const [weeklyForm, setWeeklyForm] = useState<WeeklyFormState>(createWeeklyDefaults());
+    const [dischargeRowErrors, setDischargeRowErrors] = useState<Record<number, DischargeRowErrors>>({});
+    const [dischargeSearchTerm, setDischargeSearchTerm] = useState("");
+    const [dischargeAreaFilter, setDischargeAreaFilter] = useState("all");
+    const [dischargeSortKey, setDischargeSortKey] = useState<DischargeSortKey>("submission_desc");
+    const [dischargePage, setDischargePage] = useState(1);
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
@@ -242,6 +480,19 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         ? (mappedAnswers[questionIdMap.specificWork] || "")
                         : "",
                 });
+
+                if (isSupervisor) {
+                    const draft = coerceWeeklyDraft(
+                        readDraft<WeeklyFormState>(getWeeklyDraftKey(requestedDate))
+                    );
+                    if (draft) {
+                        setWeeklyForm((prev) => ({
+                            area: draft.area || prev.area,
+                            areaType: draft.areaType || prev.areaType,
+                            specificWork: draft.specificWork || prev.specificWork,
+                        }));
+                    }
+                }
             } else {
                 setWeeklyAllowedRegions([]);
             }
@@ -298,6 +549,20 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 : (allowed[0] || ""),
                     };
                 });
+
+                const draft = coerceDailyDraft(
+                    readDraft<DailyFormState>(getDailyDraftKey(requestedDate))
+                );
+                if (draft) {
+                    setDailyForm((prev) => ({
+                        ...prev,
+                        ...draft,
+                        region:
+                            draft.region && (allowed.length === 0 || allowed.includes(draft.region))
+                                ? draft.region
+                                : prev.region,
+                    }));
+                }
             }
         } catch {
             if (!isLatestLoad(token)) {
@@ -325,9 +590,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 const message = result.message || "Failed to load discharge reports";
                 toast.error(message);
                 setDischargeLoadError(message);
-                setDischargeEntries([]);
-                setDischargeRows([createEmptyDischargeRow()]);
-                setDischargeAllowedRegions([]);
+                if (!isSupervisor) {
+                    setDischargeEntries([]);
+                }
                 return;
             }
 
@@ -342,12 +607,18 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     roomType: entry.roomType,
                     area: entry.area,
                 }));
+                const draftRows = coerceDischargeDraftRows(
+                    readDraft<DischargeEntryInput[]>(getDischargeDraftKey(requestedDate))
+                );
 
                 setDischargeRows(
                     rowsFromServer.length > 0
                         ? rowsFromServer
-                        : [createEmptyDischargeRow()]
+                        : draftRows.length > 0
+                            ? draftRows
+                            : [createEmptyDischargeRow()]
                 );
+                setDischargeRowErrors({});
             } else {
                 setDischargeRows([createEmptyDischargeRow()]);
             }
@@ -359,9 +630,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             const message = "Failed to load discharge reports";
             toast.error(message);
             setDischargeLoadError(message);
-            setDischargeEntries([]);
-            setDischargeRows([createEmptyDischargeRow()]);
-            setDischargeAllowedRegions([]);
+            if (!isSupervisor) {
+                setDischargeEntries([]);
+            }
         } finally {
             if (isLatestLoad(token)) {
                 setIsLoading(false);
@@ -381,6 +652,38 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [activeTab, reportDate]);
+
+    useEffect(() => {
+        if (!isSupervisor) {
+            return;
+        }
+        writeDraft(getDailyDraftKey(reportDate), dailyForm);
+    }, [dailyForm, isSupervisor, reportDate]);
+
+    useEffect(() => {
+        if (!isSupervisor) {
+            return;
+        }
+        writeDraft(getWeeklyDraftKey(reportDate), weeklyForm);
+    }, [isSupervisor, reportDate, weeklyForm]);
+
+    useEffect(() => {
+        if (!isSupervisor) {
+            return;
+        }
+        writeDraft(getDischargeDraftKey(reportDate), dischargeRows);
+    }, [dischargeRows, isSupervisor, reportDate]);
+
+    const handleRetryDischargeLoad = () => {
+        const token = beginLoad();
+        setDischargeLoadError(null);
+        void loadDischargeData(token, reportDate);
+    };
+
+    const handleDischargeRowsChange = (nextRows: DischargeEntryInput[]) => {
+        setDischargeRows(nextRows);
+        setDischargeRowErrors({});
+    };
 
     const handleSubmitWeeklyReport = () => {
         const questionIdMap = getWeeklyQuestionIdMap(questions);
@@ -427,6 +730,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success("Weekly report submitted");
+            clearDraft(getWeeklyDraftKey(reportDate));
             const token = beginLoad();
             await loadQuestionnaireData(token, "weekly", reportDate);
         });
@@ -472,12 +776,12 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     const handleSubmitDailyReport = () => {
         if (!dailyForm.region.trim()) {
-            toast.error("يرجى اختيار المنطقة");
+            toast.error("Please select an area");
             return;
         }
 
         if (!dailyForm.roundNumber) {
-            toast.error("يرجى اختيار رقم الجولة");
+            toast.error("Please select round number");
             return;
         }
 
@@ -487,7 +791,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 (!dailyForm.checklistAnswers[section.id] ||
                     dailyForm.checklistAnswers[section.id].length === 0)
             ) {
-                toast.error(`يرجى تعبئة القسم الإلزامي: ${section.title}`);
+                toast.error(`Please complete required section: ${section.title}`);
                 return;
             }
         }
@@ -506,30 +810,33 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
+            clearDraft(getDailyDraftKey(reportDate));
             const token = beginLoad();
             await loadDailyData(token, reportDate);
         });
     };
 
     const handleSubmitDischargeReport = () => {
-        if (dischargeLoadError) {
-            toast.error("Failed to load discharge areas. Please refresh and try again.");
-            return;
-        }
-
         if (dischargeAllowedRegions.length === 0) {
-            toast.error("No assigned areas found for your account");
+            toast.error(
+                dischargeLoadError
+                    ? "Areas are unavailable right now. Please retry loading and submit again."
+                    : "No assigned areas found for your account"
+            );
             return;
         }
 
-        const payload = dischargeRows
-            .filter((row) => dischargeRowHasValue(row))
-            .map((row) => ({
-                dischargeDate: row.dischargeDate.trim(),
-                roomNumber: row.roomNumber.trim(),
-                roomType: row.roomType,
-                area: row.area.trim(),
-            }));
+        const { payload, errorsByRow } = buildDischargePayload(
+            dischargeRows,
+            dischargeAllowedRegions
+        );
+
+        setDischargeRowErrors(errorsByRow);
+
+        if (Object.keys(errorsByRow).length > 0) {
+            toast.error("Please fix the highlighted fields before submitting.");
+            return;
+        }
 
         if (payload.length === 0) {
             toast.error("Please add at least one room entry");
@@ -544,6 +851,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             toast.success(result.message);
+            setDischargeRowErrors({});
+            clearDraft(getDischargeDraftKey(reportDate));
             const token = beginLoad();
             await loadDischargeData(token, reportDate);
         });
@@ -765,17 +1074,66 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
 
         return Array.from(groups.values()).sort((a, b) =>
-            a.supervisorName.localeCompare(b.supervisorName, "ar")
+            a.supervisorName.localeCompare(b.supervisorName, "en")
         );
     }, [managerAnswers]);
 
+    const dischargeManagerAreas = useMemo(() => {
+        return Array.from(new Set(dischargeEntries.map((entry) => entry.area)))
+            .filter((value) => value.trim().length > 0)
+            .sort((a, b) => a.localeCompare(b, "en"));
+    }, [dischargeEntries]);
+
     const groupedDischargeEntries = useMemo(() => {
+        const normalizedSearch = dischargeSearchTerm.trim().toLowerCase();
+        const filteredRows = dischargeEntries.filter((entry) => {
+            if (dischargeAreaFilter !== "all" && entry.area !== dischargeAreaFilter) {
+                return false;
+            }
+
+            if (!normalizedSearch) {
+                return true;
+            }
+
+            const searchText = [
+                entry.supervisorName,
+                entry.roomNumber,
+                entry.area,
+                entry.reportDate.slice(0, 10),
+                entry.dischargeDate.slice(0, 10),
+                getDischargeRoomTypeLabel(entry.roomType),
+            ]
+                .join(" ")
+                .toLowerCase();
+
+            return searchText.includes(normalizedSearch);
+        });
+
+        const sortedRows = [...filteredRows].sort((a, b) => {
+            if (dischargeSortKey === "submission_asc") {
+                return a.reportDate.localeCompare(b.reportDate, "en");
+            }
+            if (dischargeSortKey === "submission_desc") {
+                return b.reportDate.localeCompare(a.reportDate, "en");
+            }
+            if (dischargeSortKey === "discharge_asc") {
+                return a.dischargeDate.localeCompare(b.dischargeDate, "en");
+            }
+            if (dischargeSortKey === "discharge_desc") {
+                return b.dischargeDate.localeCompare(a.dischargeDate, "en");
+            }
+            if (dischargeSortKey === "room_desc") {
+                return b.roomNumber.localeCompare(a.roomNumber, "en", { numeric: true });
+            }
+            return a.roomNumber.localeCompare(b.roomNumber, "en", { numeric: true });
+        });
+
         const groups = new Map<
             number,
             { supervisorId: number; supervisorName: string; rows: DischargeEntryItem[] }
         >();
 
-        for (const entry of dischargeEntries) {
+        for (const entry of sortedRows) {
             const existing = groups.get(entry.supervisorId);
             if (existing) {
                 existing.rows.push(entry);
@@ -790,9 +1148,19 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
 
         return Array.from(groups.values()).sort((a, b) =>
-            a.supervisorName.localeCompare(b.supervisorName, "ar")
+            a.supervisorName.localeCompare(b.supervisorName, "en")
         );
-    }, [dischargeEntries]);
+    }, [dischargeAreaFilter, dischargeEntries, dischargeSearchTerm, dischargeSortKey]);
+
+    const dischargeTotalPages = Math.max(
+        1,
+        Math.ceil(groupedDischargeEntries.length / DISCHARGE_MANAGER_PAGE_SIZE)
+    );
+
+    const pagedDischargeEntries = useMemo(() => {
+        const start = (dischargePage - 1) * DISCHARGE_MANAGER_PAGE_SIZE;
+        return groupedDischargeEntries.slice(start, start + DISCHARGE_MANAGER_PAGE_SIZE);
+    }, [dischargePage, groupedDischargeEntries]);
 
     const myDailySubmissions = useMemo(() => {
         if (!isSupervisor) {
@@ -800,9 +1168,19 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
 
         return [...dailySubmissions].sort((a, b) =>
-            a.roundNumber.localeCompare(b.roundNumber, "ar")
+            a.roundNumber.localeCompare(b.roundNumber, "en")
         );
     }, [dailySubmissions, isSupervisor]);
+
+    useEffect(() => {
+        setDischargePage(1);
+    }, [dischargeAreaFilter, dischargeSearchTerm, dischargeSortKey, reportDate]);
+
+    useEffect(() => {
+        if (dischargePage > dischargeTotalPages) {
+            setDischargePage(dischargeTotalPages);
+        }
+    }, [dischargePage, dischargeTotalPages]);
 
     return (
         <div className="space-y-6 animate-fade-in pb-12">
@@ -853,6 +1231,20 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         onChange={(e) => setReportDate(e.target.value)}
                         className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                     />
+                    <button
+                        type="button"
+                        onClick={() => setReportDate(getTodayLocalDateString())}
+                        className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    >
+                        Today
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setReportDate(getShiftedLocalDateString(-1))}
+                        className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                    >
+                        Yesterday
+                    </button>
                     {isManager && (
                         <button
                             type="button"
@@ -873,26 +1265,26 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             ) : (
                 <>
                     {activeTab === "daily" && (
-                        <div className="space-y-6" dir="rtl">
+                        <div className="space-y-6">
                             {isSupervisor && (
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-5">
                                     <div>
-                                        <h2 className="text-lg font-semibold text-slate-900">نموذج تقرير الاشراف اليومي</h2>
+                                        <h2 className="text-lg font-semibold text-slate-900">Daily Supervision Report</h2>
                                         <p className="text-sm text-slate-500">
-                                            النموذج يتضمن بعض الاسئلة التي يجب اجابتها بجميع التفاصيل
+                                            Complete all required checklist sections before submission.
                                         </p>
                                     </div>
 
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         <div className="space-y-1">
-                                            <label className="text-sm font-medium text-slate-700">اسم المشرف</label>
+                                            <label className="text-sm font-medium text-slate-700">Supervisor</label>
                                             <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
                                                 {userName || "Supervisor"}
                                             </div>
                                         </div>
 
                                         <div className="space-y-1">
-                                            <label className="text-sm font-medium text-slate-700">المنطقة</label>
+                                            <label className="text-sm font-medium text-slate-700">Area</label>
                                             <select
                                                 value={dailyForm.region}
                                                 onChange={(e) =>
@@ -905,10 +1297,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                 disabled={availableRegions.length === 0}
                                             >
                                                 {availableRegions.length === 0 ? (
-                                                    <option value="">لا توجد مناطق مرتبطة بك</option>
+                                                    <option value="">No areas assigned to your account</option>
                                                 ) : (
                                                     <>
-                                                        <option value="">اختر المنطقة</option>
+                                                        <option value="">Select area</option>
                                                         {availableRegions.map((region) => (
                                                             <option key={region} value={region}>
                                                                 {region}
@@ -920,7 +1312,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </div>
 
                                         <div className="space-y-1">
-                                            <label className="text-sm font-medium text-slate-700">جولة رقم</label>
+                                            <label className="text-sm font-medium text-slate-700">Round number</label>
                                             <select
                                                 value={dailyForm.roundNumber}
                                                 onChange={(e) =>
@@ -942,7 +1334,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                                     {availableRegions.length === 0 && (
                                         <p className="text-sm text-amber-600 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
-                                            لا توجد مناطق مخصصة لهذا المشرف حالياً.
+                                            No areas are currently assigned to this supervisor.
                                         </p>
                                     )}
 
@@ -957,23 +1349,23 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         </h3>
                                                         {section.required && (
                                                             <span className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full border border-red-100">
-                                                                إلزامي
+                                                                Required
                                                             </span>
                                                         )}
-                                                        <div className="mr-auto flex items-center gap-2">
+                                                        <div className="ml-auto flex items-center gap-2">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setAllSectionItems(section.id, section.items)}
                                                                 className="text-xs px-2 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-100 hover:bg-blue-100"
                                                             >
-                                                                تحديد الكل
+                                                                Select all
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => clearSectionItems(section.id)}
                                                                 className="text-xs px-2 py-1 rounded-md bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200"
                                                             >
-                                                                إلغاء الكل
+                                                                Clear all
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1005,7 +1397,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             disabled={isPending || availableRegions.length === 0}
                                             className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                         >
-                                            {isPending ? "جاري الإرسال..." : "إرسال التقرير اليومي"}
+                                            {isPending ? "Submitting..." : "Submit daily report"}
                                         </button>
                                     </div>
                                 </div>
@@ -1014,14 +1406,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             {isManager && (
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
                                     <div>
-                                        <h2 className="text-lg font-semibold text-slate-900">ردود المشرفين</h2>
+                                        <h2 className="text-lg font-semibold text-slate-900">Supervisor Responses</h2>
                                         <p className="text-sm text-slate-500">
-                                            عرض الردود المرسلة بتاريخ {reportDate}
+                                            Responses submitted on {reportDate}
                                         </p>
                                     </div>
 
                                     {dailySubmissions.length === 0 ? (
-                                        <p className="text-sm text-slate-500">لا توجد ردود مرسلة لهذا التاريخ.</p>
+                                        <p className="text-sm text-slate-500">No responses submitted for this date.</p>
                                     ) : (
                                         <div className="space-y-4">
                                             {dailySubmissions.map((submission) => (
@@ -1035,7 +1427,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                 {submission.supervisorName}
                                                             </p>
                                                             <p className="text-xs text-slate-500 mt-1">
-                                                                المنطقة: {submission.region} | الجولة: {submission.roundNumber} | آخر تحديث:{" "}
+                                                                Area: {submission.region} | Round: {submission.roundNumber} | Updated:{" "}
                                                                 {new Date(submission.updatedAt).toLocaleString()}
                                                             </p>
                                                         </div>
@@ -1091,9 +1483,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                             {isSupervisor && (
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-                                    <h3 className="text-sm font-semibold text-slate-900">تقاريرك المرسلة لهذا التاريخ</h3>
+                                    <h3 className="text-sm font-semibold text-slate-900">Your submissions for this date</h3>
                                     {myDailySubmissions.length === 0 ? (
-                                        <p className="text-sm text-slate-500">لم يتم إرسال أي تقرير بعد.</p>
+                                        <p className="text-sm text-slate-500">No reports submitted yet.</p>
                                     ) : (
                                         <div className="space-y-2">
                                             {myDailySubmissions.map((submission) => (
@@ -1101,7 +1493,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     key={submission.id}
                                                     className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700"
                                                 >
-                                                    الجولة: <span className="font-semibold">{submission.roundNumber}</span> | آخر تحديث:{" "}
+                                                    Round: <span className="font-semibold">{submission.roundNumber}</span> | Updated:{" "}
                                                     {new Date(submission.updatedAt).toLocaleString()}
                                                 </div>
                                             ))}
@@ -1139,9 +1531,17 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     </div>
 
                                     {dischargeLoadError ? (
-                                        <p className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
-                                            Failed to load discharge areas: {dischargeLoadError}
-                                        </p>
+                                        <div className="text-sm text-red-700 bg-red-50 border border-red-100 rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                                            <span>Failed to load discharge data: {dischargeLoadError}</span>
+                                            <button
+                                                type="button"
+                                                onClick={handleRetryDischargeLoad}
+                                                disabled={isPending || isLoading}
+                                                className="px-2.5 py-1.5 text-xs font-semibold rounded-md border border-red-200 bg-white text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                            >
+                                                Retry
+                                            </button>
+                                        </div>
                                     ) : dischargeAllowedRegions.length === 0 ? (
                                         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                                             No areas are assigned to your account currently.
@@ -1155,13 +1555,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                                     <DischargeSpreadsheet
                                         rows={dischargeRows}
+                                        rowErrors={dischargeRowErrors}
                                         allowedRegions={dischargeAllowedRegions}
-                                        disabled={
-                                            dischargeAllowedRegions.length === 0 ||
-                                            Boolean(dischargeLoadError) ||
-                                            isPending
-                                        }
-                                        onRowsChange={setDischargeRows}
+                                        disabled={isPending}
+                                        onRowsChange={handleDischargeRowsChange}
                                     />
 
                                     <div className="flex items-center justify-end gap-3">
@@ -1170,8 +1567,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             onClick={handleSubmitDischargeReport}
                                             disabled={
                                                 isPending ||
-                                                dischargeAllowedRegions.length === 0 ||
-                                                Boolean(dischargeLoadError)
+                                                dischargeAllowedRegions.length === 0
                                             }
                                             className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                         >
@@ -1191,11 +1587,77 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </p>
                                     </div>
 
+                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Search</label>
+                                            <input
+                                                type="text"
+                                                value={dischargeSearchTerm}
+                                                onChange={(event) => setDischargeSearchTerm(event.target.value)}
+                                                placeholder="Supervisor, room, area..."
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Area filter</label>
+                                            <select
+                                                value={dischargeAreaFilter}
+                                                onChange={(event) => setDischargeAreaFilter(event.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            >
+                                                <option value="all">All areas</option>
+                                                {dischargeManagerAreas.map((area) => (
+                                                    <option key={area} value={area}>
+                                                        {area}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Sort</label>
+                                            <select
+                                                value={dischargeSortKey}
+                                                onChange={(event) => setDischargeSortKey(event.target.value as DischargeSortKey)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            >
+                                                <option value="submission_desc">Submission date (newest)</option>
+                                                <option value="submission_asc">Submission date (oldest)</option>
+                                                <option value="discharge_desc">Discharge date (newest)</option>
+                                                <option value="discharge_asc">Discharge date (oldest)</option>
+                                                <option value="room_asc">Room number (A-Z)</option>
+                                                <option value="room_desc">Room number (Z-A)</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Actions</label>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDischargeSearchTerm("");
+                                                    setDischargeAreaFilter("all");
+                                                    setDischargeSortKey("submission_desc");
+                                                }}
+                                                className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                            >
+                                                Reset filters
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-xs text-slate-500">
+                                        Showing {groupedDischargeEntries.length} supervisor report
+                                        {groupedDischargeEntries.length === 1 ? "" : "s"}.
+                                    </p>
+
                                     {groupedDischargeEntries.length === 0 ? (
-                                        <p className="text-sm text-slate-500">No discharge report entries submitted yet.</p>
+                                        <p className="text-sm text-slate-500">
+                                            {dischargeEntries.length === 0
+                                                ? "No discharge report entries submitted yet."
+                                                : "No discharge entries match your current filters."}
+                                        </p>
                                     ) : (
                                         <div className="space-y-4">
-                                            {groupedDischargeEntries.map((group) => (
+                                            {pagedDischargeEntries.map((group) => (
                                                 <div
                                                     key={group.supervisorId}
                                                     className="border border-slate-200 rounded-lg overflow-hidden"
@@ -1252,6 +1714,33 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     </div>
                                                 </div>
                                             ))}
+                                            <div className="flex items-center justify-between pt-2">
+                                                <p className="text-xs text-slate-500">
+                                                    Page {dischargePage} of {dischargeTotalPages}
+                                                </p>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setDischargePage((prev) => Math.max(1, prev - 1))}
+                                                        disabled={dischargePage <= 1}
+                                                        className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                                    >
+                                                        Previous
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setDischargePage((prev) =>
+                                                                Math.min(dischargeTotalPages, prev + 1)
+                                                            )
+                                                        }
+                                                        disabled={dischargePage >= dischargeTotalPages}
+                                                        className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                                    >
+                                                        Next
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
