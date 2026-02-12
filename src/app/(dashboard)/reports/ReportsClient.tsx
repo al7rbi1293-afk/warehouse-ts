@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
@@ -7,6 +8,7 @@ import {
     deleteDailyReportSubmission,
     deleteSupervisorReportAnswers,
     getDischargeReportData,
+    getDailyReportTemplate,
     getDailyReportSubmissions,
     getReportQuestionnaireData,
     submitDischargeReport,
@@ -20,6 +22,7 @@ import {
 import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
+    type DailyReportSection,
 } from "@/lib/dailyReportTemplate";
 import { DischargeSpreadsheet } from "@/components/reports/DischargeSpreadsheet";
 
@@ -86,6 +89,15 @@ type DischargeSortKey =
     | "discharge_asc"
     | "room_asc"
     | "room_desc";
+type DailySortKey =
+    | "updated_desc"
+    | "updated_asc"
+    | "supervisor_asc"
+    | "supervisor_desc"
+    | "area_asc"
+    | "area_desc"
+    | "round_asc"
+    | "round_desc";
 
 const WEEKLY_QUESTION_KEYS = {
     area: "Area",
@@ -100,6 +112,8 @@ const WEEKLY_AREA_TYPE_OPTIONS = [
 ];
 
 const DISCHARGE_MANAGER_PAGE_SIZE = 5;
+const DAILY_MANAGER_PAGE_SIZE = 8;
+const WEEKLY_MANAGER_PAGE_SIZE = 5;
 const DAILY_DRAFT_PREFIX = "reports.daily.draft";
 const WEEKLY_DRAFT_PREFIX = "reports.weekly.draft";
 const DISCHARGE_DRAFT_PREFIX = "reports.discharge.draft";
@@ -210,8 +224,8 @@ function clearDraft(key: string) {
     }
 }
 
-function createChecklistDefaults() {
-    return DAILY_REPORT_SECTIONS.reduce((acc, section) => {
+function createChecklistDefaults(sections: DailyReportSection[]) {
+    return sections.reduce((acc, section) => {
         acc[section.id] = [];
         return acc;
     }, {} as Record<string, string[]>);
@@ -226,25 +240,26 @@ function createEmptyDischargeRow(): DischargeEntryInput {
     };
 }
 
-function coerceDailyDraft(value: unknown): DailyFormState | null {
+function coerceDailyDraft(value: unknown, sections: DailyReportSection[]): DailyFormState | null {
     if (!value || typeof value !== "object") {
         return null;
     }
 
     const draft = value as Partial<DailyFormState>;
-    const checklistDefaults = createChecklistDefaults();
+    const checklistDefaults = createChecklistDefaults(sections);
     const checklistAnswers = { ...checklistDefaults };
 
     if (draft.checklistAnswers && typeof draft.checklistAnswers === "object") {
-        for (const section of DAILY_REPORT_SECTIONS) {
+        for (const section of sections) {
             const row = draft.checklistAnswers[section.id];
             if (!Array.isArray(row)) {
                 continue;
             }
+            const allowedItems = new Set(section.items);
             checklistAnswers[section.id] = row
                 .filter((item): item is string => typeof item === "string")
                 .map((item) => item.trim())
-                .filter((item) => item.length > 0);
+                .filter((item) => item.length > 0 && allowedItems.has(item));
         }
     }
 
@@ -399,6 +414,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [questions, setQuestions] = useState<ReportQuestionItem[]>([]);
     const [managerAnswers, setManagerAnswers] = useState<ManagerAnswerItem[]>([]);
     const [dailySubmissions, setDailySubmissions] = useState<DailySubmissionItem[]>([]);
+    const [dailyTemplateSections, setDailyTemplateSections] = useState<DailyReportSection[]>(
+        DAILY_REPORT_SECTIONS
+    );
+    const [dailyTemplateUpdatedAt, setDailyTemplateUpdatedAt] = useState<string | null>(null);
     const [dischargeEntries, setDischargeEntries] = useState<DischargeEntryItem[]>([]);
     const [dischargeRows, setDischargeRows] = useState<DischargeEntryInput[]>([
         createEmptyDischargeRow(),
@@ -413,7 +432,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dailyForm, setDailyForm] = useState<DailyFormState>({
         region: "",
         roundNumber: DAILY_REPORT_ROUNDS[0] || "",
-        checklistAnswers: createChecklistDefaults(),
+        checklistAnswers: createChecklistDefaults(DAILY_REPORT_SECTIONS),
     });
     const [weeklyForm, setWeeklyForm] = useState<WeeklyFormState>(createWeeklyDefaults());
     const [dischargeRowErrors, setDischargeRowErrors] = useState<Record<number, DischargeRowErrors>>({});
@@ -421,6 +440,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dischargeAreaFilter, setDischargeAreaFilter] = useState("all");
     const [dischargeSortKey, setDischargeSortKey] = useState<DischargeSortKey>("submission_desc");
     const [dischargePage, setDischargePage] = useState(1);
+    const [dailySearchTerm, setDailySearchTerm] = useState("");
+    const [dailyAreaFilter, setDailyAreaFilter] = useState("all");
+    const [dailyRoundFilter, setDailyRoundFilter] = useState("all");
+    const [dailySortKey, setDailySortKey] = useState<DailySortKey>("updated_desc");
+    const [dailyPage, setDailyPage] = useState(1);
+    const [weeklySearchTerm, setWeeklySearchTerm] = useState("");
+    const [weeklySupervisorFilter, setWeeklySupervisorFilter] = useState("all");
+    const [weeklyPage, setWeeklyPage] = useState(1);
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
@@ -516,11 +543,23 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     const loadDailyData = async (token: number, requestedDate: string) => {
         try {
-            const result = await getDailyReportSubmissions(requestedDate);
+            const [result, templateResult] = await Promise.all([
+                getDailyReportSubmissions(requestedDate),
+                getDailyReportTemplate(),
+            ]);
 
             if (!isLatestLoad(token)) {
                 return;
             }
+
+            const templateSections =
+                templateResult.success && templateResult.data
+                    ? templateResult.data.sections
+                    : DAILY_REPORT_SECTIONS;
+            setDailyTemplateSections(templateSections);
+            setDailyTemplateUpdatedAt(
+                templateResult.success && templateResult.data ? templateResult.data.updatedAt : null
+            );
 
             if (!result.success || !result.data) {
                 toast.error(result.message || "Failed to load daily reports");
@@ -534,35 +573,50 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             if (isSupervisor) {
                 const latest = result.data.submissions[0];
                 const allowed = result.data.allowedRegions || [];
+                const draft = coerceDailyDraft(
+                    readDraft<DailyFormState>(getDailyDraftKey(requestedDate)),
+                    templateSections
+                );
 
                 setDailyForm((prev) => {
                     const latestRegion = latest?.region || "";
-                    const canUseLatest = latestRegion && (allowed.length === 0 || allowed.includes(latestRegion));
-                    const canKeepCurrent = prev.region && (allowed.length === 0 || allowed.includes(prev.region));
+                    const canUseLatest =
+                        latestRegion && (allowed.length === 0 || allowed.includes(latestRegion));
+                    const canKeepCurrent =
+                        prev.region && (allowed.length === 0 || allowed.includes(prev.region));
+                    const fallbackRegion = canUseLatest
+                        ? latestRegion
+                        : canKeepCurrent
+                            ? prev.region
+                            : (allowed[0] || "");
+                    const nextRegion =
+                        draft?.region && (allowed.length === 0 || allowed.includes(draft.region))
+                            ? draft.region
+                            : fallbackRegion;
+
+                    const nextChecklistAnswers = draft?.checklistAnswers
+                        ? draft.checklistAnswers
+                        : templateSections.reduce((acc, section) => {
+                            const currentRow = prev.checklistAnswers[section.id] || [];
+                            const allowedItems = new Set(section.items);
+                            acc[section.id] = Array.from(
+                                new Set(
+                                    currentRow
+                                        .filter((item): item is string => typeof item === "string")
+                                        .map((item) => item.trim())
+                                        .filter((item) => item.length > 0 && allowedItems.has(item))
+                                )
+                            );
+                            return acc;
+                        }, {} as Record<string, string[]>);
 
                     return {
                         ...prev,
-                        region: canUseLatest
-                            ? latestRegion
-                            : canKeepCurrent
-                                ? prev.region
-                                : (allowed[0] || ""),
+                        region: nextRegion,
+                        roundNumber: draft?.roundNumber || prev.roundNumber,
+                        checklistAnswers: nextChecklistAnswers,
                     };
                 });
-
-                const draft = coerceDailyDraft(
-                    readDraft<DailyFormState>(getDailyDraftKey(requestedDate))
-                );
-                if (draft) {
-                    setDailyForm((prev) => ({
-                        ...prev,
-                        ...draft,
-                        region:
-                            draft.region && (allowed.length === 0 || allowed.includes(draft.region))
-                                ? draft.region
-                                : prev.region,
-                    }));
-                }
             }
         } catch {
             if (!isLatestLoad(token)) {
@@ -785,7 +839,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             return;
         }
 
-        for (const section of DAILY_REPORT_SECTIONS) {
+        for (const section of dailyTemplateSections) {
             if (
                 section.required &&
                 (!dailyForm.checklistAnswers[section.id] ||
@@ -927,15 +981,23 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             const workbook = XLSX.utils.book_new();
 
             if (activeTab === "daily") {
-                const dailyResult = await getDailyReportSubmissions(reportDate);
+                const [dailyResult, templateResult] = await Promise.all([
+                    getDailyReportSubmissions(reportDate),
+                    getDailyReportTemplate(),
+                ]);
                 if (!dailyResult.success || !dailyResult.data) {
                     toast.error(dailyResult.message || "Failed to load daily reports for export");
                     return;
                 }
 
+                const templateSections =
+                    templateResult.success && templateResult.data
+                        ? templateResult.data.sections
+                        : DAILY_REPORT_SECTIONS;
+
                 const dailyRows: Array<Record<string, string>> = [];
                 for (const submission of dailyResult.data.submissions) {
-                    for (const section of DAILY_REPORT_SECTIONS) {
+                    for (const section of templateSections) {
                         const selected = new Set(submission.checklistAnswers[section.id] || []);
                         for (const item of section.items) {
                             const isChecked = selected.has(item);
@@ -1078,11 +1140,141 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         );
     }, [managerAnswers]);
 
+    const weeklyManagerSupervisors = useMemo(() => {
+        return Array.from(new Set(groupedManagerAnswers.map((group) => group.supervisorName)))
+            .filter((value) => value.trim().length > 0)
+            .sort((a, b) => a.localeCompare(b, "en"));
+    }, [groupedManagerAnswers]);
+
+    const filteredWeeklyManagerGroups = useMemo(() => {
+        const normalizedSearch = weeklySearchTerm.trim().toLowerCase();
+        return groupedManagerAnswers.filter((group) => {
+            if (weeklySupervisorFilter !== "all" && group.supervisorName !== weeklySupervisorFilter) {
+                return false;
+            }
+
+            if (!normalizedSearch) {
+                return true;
+            }
+
+            const searchText = [
+                group.supervisorName,
+                ...group.answers.map((answer) => `${answer.question} ${answer.answer}`),
+            ]
+                .join(" ")
+                .toLowerCase();
+
+            return searchText.includes(normalizedSearch);
+        });
+    }, [groupedManagerAnswers, weeklySearchTerm, weeklySupervisorFilter]);
+
+    const weeklyTotalPages = Math.max(
+        1,
+        Math.ceil(filteredWeeklyManagerGroups.length / WEEKLY_MANAGER_PAGE_SIZE)
+    );
+
+    const pagedWeeklyManagerGroups = useMemo(() => {
+        const start = (weeklyPage - 1) * WEEKLY_MANAGER_PAGE_SIZE;
+        return filteredWeeklyManagerGroups.slice(start, start + WEEKLY_MANAGER_PAGE_SIZE);
+    }, [filteredWeeklyManagerGroups, weeklyPage]);
+
     const dischargeManagerAreas = useMemo(() => {
         return Array.from(new Set(dischargeEntries.map((entry) => entry.area)))
             .filter((value) => value.trim().length > 0)
             .sort((a, b) => a.localeCompare(b, "en"));
     }, [dischargeEntries]);
+
+    const dailyManagerAreas = useMemo(() => {
+        return Array.from(new Set(dailySubmissions.map((submission) => submission.region)))
+            .filter((value) => value.trim().length > 0)
+            .sort((a, b) => a.localeCompare(b, "en"));
+    }, [dailySubmissions]);
+
+    const dailyManagerRounds = useMemo(() => {
+        return Array.from(new Set(dailySubmissions.map((submission) => submission.roundNumber)))
+            .filter((value) => value.trim().length > 0)
+            .sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+    }, [dailySubmissions]);
+
+    const filteredDailySubmissions = useMemo(() => {
+        const normalizedSearch = dailySearchTerm.trim().toLowerCase();
+        const templateById = new Map(dailyTemplateSections.map((section) => [section.id, section]));
+
+        return dailySubmissions.filter((submission) => {
+            if (dailyAreaFilter !== "all" && submission.region !== dailyAreaFilter) {
+                return false;
+            }
+
+            if (dailyRoundFilter !== "all" && submission.roundNumber !== dailyRoundFilter) {
+                return false;
+            }
+
+            if (!normalizedSearch) {
+                return true;
+            }
+
+            const selectedItems: string[] = [];
+            for (const [sectionId, answers] of Object.entries(submission.checklistAnswers)) {
+                if (!templateById.has(sectionId)) {
+                    continue;
+                }
+                if (Array.isArray(answers)) {
+                    selectedItems.push(...answers);
+                }
+            }
+
+            const searchText = [
+                submission.supervisorName,
+                submission.region,
+                submission.roundNumber,
+                submission.reportDate.slice(0, 10),
+                selectedItems.join(" "),
+            ]
+                .join(" ")
+                .toLowerCase();
+
+            return searchText.includes(normalizedSearch);
+        });
+    }, [dailyAreaFilter, dailyRoundFilter, dailySearchTerm, dailySubmissions, dailyTemplateSections]);
+
+    const sortedDailySubmissions = useMemo(() => {
+        const rows = [...filteredDailySubmissions];
+        rows.sort((a, b) => {
+            if (dailySortKey === "updated_asc") {
+                return a.updatedAt.localeCompare(b.updatedAt, "en");
+            }
+            if (dailySortKey === "updated_desc") {
+                return b.updatedAt.localeCompare(a.updatedAt, "en");
+            }
+            if (dailySortKey === "supervisor_asc") {
+                return a.supervisorName.localeCompare(b.supervisorName, "en");
+            }
+            if (dailySortKey === "supervisor_desc") {
+                return b.supervisorName.localeCompare(a.supervisorName, "en");
+            }
+            if (dailySortKey === "area_asc") {
+                return a.region.localeCompare(b.region, "en");
+            }
+            if (dailySortKey === "area_desc") {
+                return b.region.localeCompare(a.region, "en");
+            }
+            if (dailySortKey === "round_desc") {
+                return b.roundNumber.localeCompare(a.roundNumber, "en", { numeric: true });
+            }
+            return a.roundNumber.localeCompare(b.roundNumber, "en", { numeric: true });
+        });
+        return rows;
+    }, [dailySortKey, filteredDailySubmissions]);
+
+    const dailyTotalPages = Math.max(
+        1,
+        Math.ceil(sortedDailySubmissions.length / DAILY_MANAGER_PAGE_SIZE)
+    );
+
+    const pagedDailySubmissions = useMemo(() => {
+        const start = (dailyPage - 1) * DAILY_MANAGER_PAGE_SIZE;
+        return sortedDailySubmissions.slice(start, start + DAILY_MANAGER_PAGE_SIZE);
+    }, [dailyPage, sortedDailySubmissions]);
 
     const groupedDischargeEntries = useMemo(() => {
         const normalizedSearch = dischargeSearchTerm.trim().toLowerCase();
@@ -1177,10 +1369,30 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     }, [dischargeAreaFilter, dischargeSearchTerm, dischargeSortKey, reportDate]);
 
     useEffect(() => {
+        setDailyPage(1);
+    }, [dailyAreaFilter, dailyRoundFilter, dailySearchTerm, dailySortKey, reportDate]);
+
+    useEffect(() => {
+        setWeeklyPage(1);
+    }, [reportDate, weeklySearchTerm, weeklySupervisorFilter]);
+
+    useEffect(() => {
         if (dischargePage > dischargeTotalPages) {
             setDischargePage(dischargeTotalPages);
         }
     }, [dischargePage, dischargeTotalPages]);
+
+    useEffect(() => {
+        if (dailyPage > dailyTotalPages) {
+            setDailyPage(dailyTotalPages);
+        }
+    }, [dailyPage, dailyTotalPages]);
+
+    useEffect(() => {
+        if (weeklyPage > weeklyTotalPages) {
+            setWeeklyPage(weeklyTotalPages);
+        }
+    }, [weeklyPage, weeklyTotalPages]);
 
     return (
         <div className="space-y-6 animate-fade-in pb-12">
@@ -1339,7 +1551,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     )}
 
                                     <div className="space-y-4">
-                                        {DAILY_REPORT_SECTIONS.map((section) => {
+                                        {dailyTemplateSections.map((section) => {
                                             const selected = dailyForm.checklistAnswers[section.id] || [];
                                             return (
                                                 <div key={section.id} className="border border-slate-200 rounded-lg p-4 space-y-3">
@@ -1405,18 +1617,114 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                             {isManager && (
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-                                    <div>
-                                        <h2 className="text-lg font-semibold text-slate-900">Supervisor Responses</h2>
-                                        <p className="text-sm text-slate-500">
-                                            Responses submitted on {reportDate}
-                                        </p>
+                                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                                        <div>
+                                            <h2 className="text-lg font-semibold text-slate-900">Supervisor Responses</h2>
+                                            <p className="text-sm text-slate-500">
+                                                Responses submitted on {reportDate}
+                                            </p>
+                                            {dailyTemplateUpdatedAt && (
+                                                <p className="text-xs text-slate-400 mt-1">
+                                                    Template updated: {new Date(dailyTemplateUpdatedAt).toLocaleString()}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <Link
+                                            href="/reports/daily-template"
+                                            className="px-3 py-2 text-xs font-semibold rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                        >
+                                            Edit daily template
+                                        </Link>
                                     </div>
 
-                                    {dailySubmissions.length === 0 ? (
-                                        <p className="text-sm text-slate-500">No responses submitted for this date.</p>
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                        <div className="space-y-1 md:col-span-2">
+                                            <label className="text-xs font-semibold text-slate-600">Search</label>
+                                            <input
+                                                type="text"
+                                                value={dailySearchTerm}
+                                                onChange={(event) => setDailySearchTerm(event.target.value)}
+                                                placeholder="Supervisor, area, round..."
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Area filter</label>
+                                            <select
+                                                value={dailyAreaFilter}
+                                                onChange={(event) => setDailyAreaFilter(event.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            >
+                                                <option value="all">All areas</option>
+                                                {dailyManagerAreas.map((area) => (
+                                                    <option key={area} value={area}>
+                                                        {area}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Round filter</label>
+                                            <select
+                                                value={dailyRoundFilter}
+                                                onChange={(event) => setDailyRoundFilter(event.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            >
+                                                <option value="all">All rounds</option>
+                                                {dailyManagerRounds.map((round) => (
+                                                    <option key={round} value={round}>
+                                                        {round}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">Sort</label>
+                                            <select
+                                                value={dailySortKey}
+                                                onChange={(event) => setDailySortKey(event.target.value as DailySortKey)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            >
+                                                <option value="updated_desc">Updated (newest)</option>
+                                                <option value="updated_asc">Updated (oldest)</option>
+                                                <option value="supervisor_asc">Supervisor (A-Z)</option>
+                                                <option value="supervisor_desc">Supervisor (Z-A)</option>
+                                                <option value="area_asc">Area (A-Z)</option>
+                                                <option value="area_desc">Area (Z-A)</option>
+                                                <option value="round_asc">Round (A-Z)</option>
+                                                <option value="round_desc">Round (Z-A)</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1 md:col-span-5">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDailySearchTerm("");
+                                                    setDailyAreaFilter("all");
+                                                    setDailyRoundFilter("all");
+                                                    setDailySortKey("updated_desc");
+                                                }}
+                                                className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                            >
+                                                Reset filters
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <p className="text-xs text-slate-500">
+                                        Showing {sortedDailySubmissions.length} submission
+                                        {sortedDailySubmissions.length === 1 ? "" : "s"}.
+                                    </p>
+
+                                    {sortedDailySubmissions.length === 0 ? (
+                                        <p className="text-sm text-slate-500">
+                                            {dailySubmissions.length === 0
+                                                ? "No responses submitted for this date."
+                                                : "No daily submissions match your current filters."}
+                                        </p>
                                     ) : (
                                         <div className="space-y-4">
-                                            {dailySubmissions.map((submission) => (
+                                            {pagedDailySubmissions.map((submission) => (
                                                 <div
                                                     key={submission.id}
                                                     className="border border-slate-200 rounded-lg overflow-hidden"
@@ -1446,7 +1754,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         </button>
                                                     </div>
                                                     <div className="p-4 space-y-4">
-                                                        {DAILY_REPORT_SECTIONS.map((section) => {
+                                                        {dailyTemplateSections.map((section) => {
                                                             const selected = submission.checklistAnswers[section.id] || [];
                                                             const selectedSet = new Set(selected);
                                                             return (
@@ -1476,6 +1784,33 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     </div>
                                                 </div>
                                             ))}
+                                            <div className="flex items-center justify-between pt-2">
+                                                <p className="text-xs text-slate-500">
+                                                    Page {dailyPage} of {dailyTotalPages}
+                                                </p>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setDailyPage((prev) => Math.max(1, prev - 1))}
+                                                        disabled={dailyPage <= 1}
+                                                        className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                                    >
+                                                        Previous
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            setDailyPage((prev) =>
+                                                                Math.min(dailyTotalPages, prev + 1)
+                                                            )
+                                                        }
+                                                        disabled={dailyPage >= dailyTotalPages}
+                                                        className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                                    >
+                                                        Next
+                                                    </button>
+                                                </div>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -1757,11 +2092,61 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 </p>
                             </div>
 
-                            {groupedManagerAnswers.length === 0 ? (
-                                <p className="text-sm text-slate-500">No responses submitted yet.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                                <div className="space-y-1 md:col-span-2">
+                                    <label className="text-xs font-semibold text-slate-600">Search</label>
+                                    <input
+                                        type="text"
+                                        value={weeklySearchTerm}
+                                        onChange={(event) => setWeeklySearchTerm(event.target.value)}
+                                        placeholder="Supervisor, question, answer..."
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-600">Supervisor filter</label>
+                                    <select
+                                        value={weeklySupervisorFilter}
+                                        onChange={(event) => setWeeklySupervisorFilter(event.target.value)}
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                    >
+                                        <option value="all">All supervisors</option>
+                                        {weeklyManagerSupervisors.map((name) => (
+                                            <option key={name} value={name}>
+                                                {name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-600">Actions</label>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setWeeklySearchTerm("");
+                                            setWeeklySupervisorFilter("all");
+                                        }}
+                                        className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                    >
+                                        Reset filters
+                                    </button>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-slate-500">
+                                Showing {filteredWeeklyManagerGroups.length} supervisor report
+                                {filteredWeeklyManagerGroups.length === 1 ? "" : "s"}.
+                            </p>
+
+                            {filteredWeeklyManagerGroups.length === 0 ? (
+                                <p className="text-sm text-slate-500">
+                                    {groupedManagerAnswers.length === 0
+                                        ? "No responses submitted yet."
+                                        : "No weekly responses match your current filters."}
+                                </p>
                             ) : (
                                 <div className="space-y-4">
-                                    {groupedManagerAnswers.map((group) => (
+                                    {pagedWeeklyManagerGroups.map((group) => (
                                         <div key={group.supervisorId} className="border border-slate-200 rounded-lg overflow-hidden">
                                             <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
                                                 <p className="text-sm font-semibold text-slate-800">
@@ -1798,6 +2183,33 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             </div>
                                         </div>
                                     ))}
+                                    <div className="flex items-center justify-between pt-2">
+                                        <p className="text-xs text-slate-500">
+                                            Page {weeklyPage} of {weeklyTotalPages}
+                                        </p>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setWeeklyPage((prev) => Math.max(1, prev - 1))}
+                                                disabled={weeklyPage <= 1}
+                                                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                            >
+                                                Previous
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    setWeeklyPage((prev) =>
+                                                        Math.min(weeklyTotalPages, prev + 1)
+                                                    )
+                                                }
+                                                disabled={weeklyPage >= weeklyTotalPages}
+                                                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
+                                            >
+                                                Next
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
                         </div>

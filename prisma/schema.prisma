@@ -277,3 +277,15 @@ model DischargeReportEntry {
   @@index([reportDate, supervisorId])
   @@map("discharge_report_entries")
 }
+
+model DailyReportTemplate {
+  id        Int      @id @default(autoincrement())
+  template  Json
+  createdBy String?  @map("created_by")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([isActive])
+  @@map("daily_report_templates")
+}

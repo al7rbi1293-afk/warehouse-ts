@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/app/actions/audit";
@@ -9,6 +10,7 @@ import { logServerError, logServerInfo } from "@/lib/observability";
 import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
+    type DailyReportSection,
 } from "@/lib/dailyReportTemplate";
 
 export type ReportType = "daily" | "weekly" | "discharge";
@@ -116,6 +118,49 @@ const WEEKLY_TEMPLATE_QUESTIONS = [
     "Type of area",
     "Specific work completed this week",
 ] as const;
+
+function coerceDailyReportSections(value: unknown): DailyReportSection[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    const seen = new Set<string>();
+    const sections: DailyReportSection[] = [];
+
+    for (const raw of value) {
+        if (!raw || typeof raw !== "object") {
+            continue;
+        }
+
+        const section = raw as Partial<DailyReportSection>;
+        const id = typeof section.id === "string" ? section.id.trim() : "";
+        if (!id || seen.has(id)) {
+            continue;
+        }
+
+        const title = typeof section.title === "string" ? section.title.trim() : "";
+        if (!title) {
+            continue;
+        }
+
+        const items = Array.isArray(section.items)
+            ? section.items
+                .filter((item): item is string => typeof item === "string")
+                .map((item) => item.trim())
+                .filter((item) => item.length > 0)
+            : [];
+
+        sections.push({
+            id,
+            title,
+            required: Boolean(section.required),
+            items,
+        });
+        seen.add(id);
+    }
+
+    return sections;
+}
 
 function isReportType(value: string): value is ReportType {
     return REPORT_TYPES.includes(value as ReportType);
@@ -339,14 +384,36 @@ async function ensureWeeklyTemplateQuestions(createdBy: string) {
     });
 }
 
-function sanitizeChecklistAnswers(input: Record<string, string[]>): Record<string, string[]> {
+async function getActiveDailyTemplateSections(): Promise<DailyReportSection[]> {
+    const schemaCheck = await ensureDailyReportTemplateSchema();
+    if (schemaCheck) {
+        return DAILY_REPORT_SECTIONS;
+    }
+
+    try {
+        const record = await prisma.dailyReportTemplate.findFirst({
+            where: { isActive: true },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        });
+        const sections = record ? coerceDailyReportSections(record.template) : [];
+        return sections.length > 0 ? sections : DAILY_REPORT_SECTIONS;
+    } catch (error) {
+        logServerError("daily_template_load_failed", error);
+        return DAILY_REPORT_SECTIONS;
+    }
+}
+
+function sanitizeChecklistAnswers(
+    input: Record<string, string[]>,
+    sections: DailyReportSection[]
+): Record<string, string[]> {
     const sectionMap = new Map(
-        DAILY_REPORT_SECTIONS.map((section) => [section.id, new Set(section.items)])
+        sections.map((section) => [section.id, new Set(section.items)])
     );
 
     const sanitized: Record<string, string[]> = {};
 
-    for (const section of DAILY_REPORT_SECTIONS) {
+    for (const section of sections) {
         const allowed = sectionMap.get(section.id);
         const selected = Array.isArray(input[section.id]) ? input[section.id] : [];
 
@@ -354,16 +421,18 @@ function sanitizeChecklistAnswers(input: Record<string, string[]>): Record<strin
             .map((item) => item.trim())
             .filter((item) => item.length > 0 && allowed?.has(item));
 
-        // Remove duplicates while preserving order
         sanitized[section.id] = Array.from(new Set(cleaned));
     }
 
     return sanitized;
 }
 
-function parseChecklistAnswers(raw: unknown): Record<string, string[]> {
+function parseChecklistAnswers(
+    raw: unknown,
+    sections: DailyReportSection[]
+): Record<string, string[]> {
     const empty: Record<string, string[]> = {};
-    for (const section of DAILY_REPORT_SECTIONS) {
+    for (const section of sections) {
         empty[section.id] = [];
     }
 
@@ -373,7 +442,7 @@ function parseChecklistAnswers(raw: unknown): Record<string, string[]> {
 
     const parsed: Record<string, string[]> = { ...empty };
 
-    for (const section of DAILY_REPORT_SECTIONS) {
+    for (const section of sections) {
         const candidate = (raw as Record<string, unknown>)[section.id];
         if (!Array.isArray(candidate)) {
             continue;
@@ -812,6 +881,174 @@ export async function deleteSupervisorReportAnswers(
     };
 }
 
+async function ensureDailyReportTemplateSchema(): Promise<ActionError | null> {
+    try {
+        const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'daily_report_templates'
+            ) AS "exists"
+        `;
+
+        const hasTable = rows[0]?.exists === true;
+        if (hasTable) {
+            return null;
+        }
+
+        await prisma.$executeRawUnsafe(`
+            CREATE TABLE IF NOT EXISTS daily_report_templates (
+                id SERIAL PRIMARY KEY,
+                template JSONB NOT NULL,
+                created_by TEXT,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        `);
+        await prisma.$executeRawUnsafe(`
+            CREATE INDEX IF NOT EXISTS daily_report_templates_is_active_idx
+            ON daily_report_templates(is_active)
+        `);
+        await prisma.$executeRawUnsafe(`
+            CREATE UNIQUE INDEX IF NOT EXISTS daily_report_templates_one_active_idx
+            ON daily_report_templates((1))
+            WHERE is_active
+        `);
+
+        // Seed a default active template.
+        await prisma.dailyReportTemplate.create({
+            data: {
+                template: DAILY_REPORT_SECTIONS as unknown as Prisma.InputJsonValue,
+                createdBy: "system",
+                isActive: true,
+            },
+        });
+
+        logServerInfo("daily_template_schema_auto_migrated", {
+            table: "daily_report_templates",
+        });
+
+        return null;
+    } catch (error) {
+        logServerError("daily_template_schema_auto_migration_failed", error, {
+            table: "daily_report_templates",
+        });
+        return {
+            success: false,
+            message:
+                "Database update is required for daily report templates. " +
+                "Please run the latest SQL migration and refresh.",
+        };
+    }
+}
+
+export async function getDailyReportTemplate(): Promise<
+    ActionResult<{ sections: DailyReportSection[]; updatedAt: string | null }>
+> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const schemaCheck = await ensureDailyReportTemplateSchema();
+    if (schemaCheck) {
+        // Fall back to the bundled template so the app remains usable.
+        return {
+            success: true,
+            message: schemaCheck.message,
+            data: { sections: DAILY_REPORT_SECTIONS, updatedAt: null },
+        };
+    }
+
+    try {
+        const record = await prisma.dailyReportTemplate.findFirst({
+            where: { isActive: true },
+            orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        });
+
+        if (!record) {
+            return { success: true, message: "OK", data: { sections: DAILY_REPORT_SECTIONS, updatedAt: null } };
+        }
+
+        const sections = coerceDailyReportSections(record.template);
+        return {
+            success: true,
+            message: "OK",
+            data: {
+                sections: sections.length > 0 ? sections : DAILY_REPORT_SECTIONS,
+                updatedAt: record.updatedAt.toISOString(),
+            },
+        };
+    } catch (error) {
+        logServerError("daily_template_load_failed", error);
+        return {
+            success: true,
+            message: "Failed to load template, using default.",
+            data: { sections: DAILY_REPORT_SECTIONS, updatedAt: null },
+        };
+    }
+}
+
+export async function updateDailyReportTemplate(
+    sections: DailyReportSection[]
+): Promise<ActionResult> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const schemaCheck = await ensureDailyReportTemplateSchema();
+    if (schemaCheck) {
+        return schemaCheck;
+    }
+
+    const cleaned = coerceDailyReportSections(sections);
+    if (cleaned.length === 0) {
+        return { success: false, message: "Template must include at least one section" };
+    }
+
+    for (const section of cleaned) {
+        if (section.items.length === 0) {
+            return { success: false, message: `Section "${section.title}" must include at least one item` };
+        }
+    }
+
+    const actor = session.user.name || session.user.username || "Manager";
+
+    await prisma.$transaction(async (tx) => {
+        await tx.dailyReportTemplate.updateMany({
+            where: { isActive: true },
+            data: { isActive: false },
+        });
+
+        await tx.dailyReportTemplate.create({
+            data: {
+                template: cleaned as unknown as Prisma.InputJsonValue,
+                createdBy: actor,
+                isActive: true,
+            },
+        });
+    });
+
+    await logAudit(
+        actor,
+        "Update Daily Template",
+        `Updated daily report template (sections: ${cleaned.length})`,
+        "Reports"
+    );
+    logServerInfo("daily_template_updated", { sections: cleaned.length });
+
+    revalidatePath("/reports");
+    revalidatePath("/reports/daily-template");
+    return { success: true, message: "Daily report template updated" };
+}
+
 export async function getDailyReportSubmissions(
     reportDate: string
 ): Promise<
@@ -827,6 +1064,8 @@ export async function getDailyReportSubmissions(
     if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
         return { success: false, message: "Unauthorized" };
     }
+
+    const templateSections = await getActiveDailyTemplateSections();
 
     const normalizedDate = normalizeReportDate(reportDate);
     const supervisorId = Number(session.user.id);
@@ -863,7 +1102,7 @@ export async function getDailyReportSubmissions(
                 supervisorName: record.supervisorName,
                 region: record.region,
                 roundNumber: record.roundNumber,
-                checklistAnswers: parseChecklistAnswers(record.checklistAnswers),
+                checklistAnswers: parseChecklistAnswers(record.checklistAnswers, templateSections),
                 updatedAt: record.updatedAt.toISOString(),
             })),
         },
@@ -1005,9 +1244,10 @@ export async function submitDailyReportForm(
         return { success: false, message: "Please select a valid round number" };
     }
 
-    const checklistAnswers = sanitizeChecklistAnswers(payload.checklistAnswers || {});
+    const templateSections = await getActiveDailyTemplateSections();
+    const checklistAnswers = sanitizeChecklistAnswers(payload.checklistAnswers || {}, templateSections);
 
-    for (const section of DAILY_REPORT_SECTIONS) {
+    for (const section of templateSections) {
         if (section.required && checklistAnswers[section.id].length === 0) {
             return {
                 success: false,
