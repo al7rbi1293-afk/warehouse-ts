@@ -1515,6 +1515,7 @@ export async function deleteDischargeSupervisorReport(
         `Deleted discharge report entries for supervisor ${supervisorId} on ${reportDate}`,
         "Reports"
     );
+
     logServerInfo("discharge_report_deleted", {
         reportDate,
         supervisorId,
@@ -1524,5 +1525,117 @@ export async function deleteDischargeSupervisorReport(
         success: true,
         message: deleted.count > 0 ? "Discharge report deleted" : "No discharge report found to delete",
         data: { deleted: deleted.count },
+    };
+}
+
+export async function getMonthlyDischargeReportData(
+    year: number,
+    month: number
+): Promise<
+    ActionResult<{
+        mode: "manager" | "supervisor";
+        entries: DischargeEntryDto[];
+        allowedRegions: string[];
+    }>
+> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const schemaCheck = await ensureDischargeDateSchema();
+    if (schemaCheck) {
+        return schemaCheck;
+    }
+
+    // Calculate start and end dates for the month
+    // Month is 1-indexed (1 = January, 12 = December)
+    const startDate = new Date(Date.UTC(year, month - 1, 1));
+    const endDate = new Date(Date.UTC(year, month, 0)); // Last day of the month
+
+    const isManager = MANAGER_ROLES.has(role);
+
+    if (isManager) {
+        const records = await prisma.dischargeReportEntry.findMany({
+            where: {
+                dischargeDate: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            orderBy: [
+                { dischargeDate: "desc" },
+                { supervisorName: "asc" },
+                { id: "asc" },
+            ],
+        });
+
+        return {
+            success: true,
+            message: "OK",
+            data: {
+                mode: "manager",
+                allowedRegions: [],
+                entries: records.map((record) => ({
+                    id: record.id,
+                    reportDate: record.reportDate.toISOString(),
+                    dischargeDate: record.dischargeDate.toISOString(),
+                    supervisorId: record.supervisorId,
+                    supervisorName: record.supervisorName,
+                    area: record.area,
+                    roomNumber: record.roomNumber,
+                    roomType: isDischargeRoomType(record.roomType)
+                        ? record.roomType
+                        : "normal_patient",
+                    updatedAt: record.updatedAt.toISOString(),
+                })),
+            },
+        };
+    }
+
+    const supervisorId = Number(session.user.id);
+    if (!Number.isFinite(supervisorId)) {
+        return { success: false, message: "Invalid supervisor session" };
+    }
+
+    const [records, allowedRegions] = await Promise.all([
+        prisma.dischargeReportEntry.findMany({
+            where: {
+                supervisorId,
+                dischargeDate: {
+                    gte: startDate,
+                    lte: endDate,
+                },
+            },
+            orderBy: [
+                { dischargeDate: "desc" },
+                { id: "asc" },
+            ],
+        }),
+        getSupervisorAllowedRegions(supervisorId, new Date()), // Region check is general, so current date is fine/safe enough or we could pick start of month
+    ]);
+
+    return {
+        success: true,
+        message: "OK",
+        data: {
+            mode: "supervisor",
+            allowedRegions,
+            entries: records.map((record) => ({
+                id: record.id,
+                reportDate: record.reportDate.toISOString(),
+                dischargeDate: record.dischargeDate.toISOString(),
+                supervisorId: record.supervisorId,
+                supervisorName: record.supervisorName,
+                area: record.area,
+                roomNumber: record.roomNumber,
+                roomType: isDischargeRoomType(record.roomType)
+                    ? record.roomType
+                    : "normal_patient",
+                updatedAt: record.updatedAt.toISOString(),
+            })),
+        },
     };
 }

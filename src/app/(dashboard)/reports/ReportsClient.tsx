@@ -8,6 +8,8 @@ import {
     deleteDailyReportSubmission,
     deleteSupervisorReportAnswers,
     getDischargeReportData,
+
+    getMonthlyDischargeReportData,
     getDailyReportTemplate,
     getDailyReportSubmissions,
     getReportQuestionnaireData,
@@ -449,6 +451,12 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [weeklySupervisorFilter, setWeeklySupervisorFilter] = useState("all");
     const [weeklyPage, setWeeklyPage] = useState(1);
 
+
+    // Monthly Discharge State
+    const [dischargeReportType, setDischargeReportType] = useState<"daily" | "monthly">("daily");
+    const [dischargeMonth, setDischargeMonth] = useState(new Date().getMonth() + 1);
+    const [dischargeYear, setDischargeYear] = useState(new Date().getFullYear());
+
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
     const loadTokenRef = useRef(0);
@@ -634,7 +642,12 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     const loadDischargeData = async (token: number, requestedDate: string) => {
         try {
-            const result = await getDischargeReportData(requestedDate);
+            let result;
+            if (dischargeReportType === "monthly") {
+                result = await getMonthlyDischargeReportData(dischargeYear, dischargeMonth);
+            } else {
+                result = await getDischargeReportData(requestedDate);
+            }
 
             if (!isLatestLoad(token)) {
                 return;
@@ -705,7 +718,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             void loadQuestionnaireData(token, activeTab, reportDate);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, reportDate]);
+    }, [activeTab, reportDate, dischargeReportType, dischargeMonth, dischargeYear]);
 
     useEffect(() => {
         if (!isSupervisor) {
@@ -1402,14 +1415,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     {activeTab === "daily"
                         ? "Daily report form cloned from the provided Google Form"
                         : activeTab === "weekly"
-                        ? isManager
-                            ? "Review weekly submissions from supervisors"
-                            : "Submit your weekly report for your assigned area"
-                        : activeTab === "discharge"
-                        ? isManager
-                            ? "Review discharge entries submitted by supervisors"
-                            : "Fill the discharge report sheet and submit your rows"
-                        : "Reports overview"}
+                            ? isManager
+                                ? "Review weekly submissions from supervisors"
+                                : "Submit your weekly report for your assigned area"
+                            : activeTab === "discharge"
+                                ? isManager
+                                    ? "Review discharge entries submitted by supervisors"
+                                    : "Fill the discharge report sheet and submit your rows"
+                                : "Reports overview"}
                 </p>
             </div>
 
@@ -1433,30 +1446,90 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    <label htmlFor="report-date" className="text-sm font-medium text-slate-700">
-                        {activeTab === "discharge" ? "Submission date" : "Report date"}
-                    </label>
-                    <input
-                        id="report-date"
-                        type="date"
-                        value={reportDate}
-                        onChange={(e) => setReportDate(e.target.value)}
-                        className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                    />
-                    <button
-                        type="button"
-                        onClick={() => setReportDate(getTodayLocalDateString())}
-                        className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                    >
-                        Today
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setReportDate(getShiftedLocalDateString(-1))}
-                        className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                    >
-                        Yesterday
-                    </button>
+                    {activeTab === "discharge" && (
+                        <div className="flex bg-slate-100 rounded-lg p-1 mr-2">
+                            <button
+                                type="button"
+                                onClick={() => setDischargeReportType("daily")}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${dischargeReportType === "daily"
+                                    ? "bg-white text-slate-900 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                                    }`}
+                            >
+                                Daily
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDischargeReportType("monthly")}
+                                className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${dischargeReportType === "monthly"
+                                    ? "bg-white text-slate-900 shadow-sm"
+                                    : "text-slate-500 hover:text-slate-700"
+                                    }`}
+                            >
+                                Monthly
+                            </button>
+                        </div>
+                    )}
+
+                    {(activeTab !== "discharge" || dischargeReportType === "daily") && (
+                        <>
+                            <label htmlFor="report-date" className="text-sm font-medium text-slate-700">
+                                {activeTab === "discharge" ? "Submission date" : "Report date"}
+                            </label>
+                            <input
+                                id="report-date"
+                                type="date"
+                                value={reportDate}
+                                onChange={(e) => setReportDate(e.target.value)}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setReportDate(getTodayLocalDateString())}
+                                className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                            >
+                                Today
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setReportDate(getShiftedLocalDateString(-1))}
+                                className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                            >
+                                Yesterday
+                            </button>
+                        </>
+                    )}
+
+                    {activeTab === "discharge" && dischargeReportType === "monthly" && (
+                        <>
+                            <select
+                                value={dischargeMonth}
+                                onChange={(e) => setDischargeMonth(Number(e.target.value))}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                aria-label="Select month"
+                            >
+                                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                                    <option key={m} value={m}>
+                                        {new Date(0, m - 1).toLocaleString("default", { month: "long" })}
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                value={dischargeYear}
+                                onChange={(e) => setDischargeYear(Number(e.target.value))}
+                                className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                aria-label="Select year"
+                            >
+                                {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - 2 + i).map(
+                                    (y) => (
+                                        <option key={y} value={y}>
+                                            {y}
+                                        </option>
+                                    )
+                                )}
+                            </select>
+                        </>
+                    )}
                     {isManager && (
                         <button
                             type="button"
@@ -1892,17 +1965,23 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         rows={dischargeRows}
                                         rowErrors={dischargeRowErrors}
                                         allowedRegions={dischargeAllowedRegions}
-                                        disabled={isPending}
+                                        disabled={isPending || dischargeReportType === "monthly"}
                                         onRowsChange={handleDischargeRowsChange}
                                     />
 
                                     <div className="flex items-center justify-end gap-3">
+                                        {dischargeReportType === "monthly" && (
+                                            <p className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
+                                                Switch to Daily view to add or edit reports.
+                                            </p>
+                                        )}
                                         <button
                                             type="button"
                                             onClick={handleSubmitDischargeReport}
                                             disabled={
                                                 isPending ||
-                                                dischargeAllowedRegions.length === 0
+                                                dischargeAllowedRegions.length === 0 ||
+                                                dischargeReportType === "monthly"
                                             }
                                             className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                         >
