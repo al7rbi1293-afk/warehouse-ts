@@ -53,7 +53,8 @@ export function ManpowerClient({
 
     // Filter available regions for dropdown
     const availableRegions = useMemo(() => {
-        if (userRole !== "supervisor" || supervisorRegions.length === 0) return data.regions;
+        const isSupervisor = userRole === "supervisor" || userRole === "night_supervisor";
+        if (!isSupervisor || supervisorRegions.length === 0) return data.regions;
         return data.regions.filter(r => supervisorRegions.includes(r.name));
     }, [data.regions, userRole, supervisorRegions]);
 
@@ -61,7 +62,7 @@ export function ManpowerClient({
     const availableShifts = useMemo(() => {
         if (userRole === "manager") return data.shifts;
 
-        if (userRole === "supervisor") {
+        if (userRole === "supervisor" || userRole === "night_supervisor") {
             if (userAllowedShifts) {
                 const allowedNames = userAllowedShifts.split(",").map(s => s.trim()).filter(Boolean);
                 return data.shifts.filter(s => allowedNames.includes(s.name));
@@ -81,7 +82,7 @@ export function ManpowerClient({
             const isValid = availableShifts.some(s => s.id.toString() === selectedShift);
             if (!isValid && selectedShift !== "All") {
                 setSelectedShift(availableShifts[0].id.toString());
-            } else if (selectedShift === "All" && userRole === "supervisor" && userAllowedShifts) {
+            } else if (selectedShift === "All" && (userRole === "supervisor" || userRole === "night_supervisor") && userAllowedShifts) {
                 // If supervisor has specific allowed shifts, don't default to "All" (which might show nothing)
                 setSelectedShift(availableShifts[0].id.toString());
             }
@@ -143,7 +144,7 @@ export function ManpowerClient({
     const attendanceWorkers = useMemo(() => {
         return data.workers.filter(w => {
             // 1. Region Filter
-            if (userRole === "supervisor") {
+            if (userRole === "supervisor" || userRole === "night_supervisor") {
                 // If specific region selected, match it
                 if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
                 // If "All" selected, ensuring worker is in one of the supervisor's allowed regions
@@ -160,7 +161,7 @@ export function ManpowerClient({
                 const shiftObj = data.shifts.find(s => s.id.toString() === selectedShift);
                 if (shiftObj) {
                     // Restriction check for supervisors
-                    if (userRole === "supervisor") {
+                    if (userRole === "supervisor" || userRole === "night_supervisor") {
                         // If they have allowed shifts, only show matching workers
                         if (allowedNames.length > 0) {
                             if (!allowedNames.includes(w.shiftName || "")) return false;
@@ -179,7 +180,7 @@ export function ManpowerClient({
                         if (w.shiftId?.toString() !== selectedShift) return false;
                     }
                 }
-            } else if (userRole === "supervisor") {
+            } else if (userRole === "supervisor" || userRole === "night_supervisor") {
                 // "All" selected but supervisor role
                 if (allowedNames.length > 0) {
                     if (!w.shiftName || !allowedNames.includes(w.shiftName)) return false;
@@ -261,7 +262,7 @@ export function ManpowerClient({
 
             // Filter: If supervisor, only show their own reports (if they want to see only theirs)
             // But usually reports tab shows all they are allowed to see
-            if (userRole === "supervisor" && record.supervisor !== userName) {
+            if ((userRole === "supervisor" || userRole === "night_supervisor") && record.supervisor !== userName) {
                 // If we want supervisors to only see what they submitted
                 // return; 
             }
@@ -435,22 +436,6 @@ export function ManpowerClient({
 
     return (
         <div className="space-y-6 animate-fade-in pb-12">
-            {/* TEMPORARY DEBUG BANNER */}
-            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded text-xs font-mono mb-6">
-                <p><strong>Debug Info:</strong></p>
-                <div className="grid grid-cols-2 gap-2 mt-2">
-                    <p>Role: {userRole}</p>
-                    <p>Shift ID: {userShiftId}</p>
-                    <p>Region: {userRegion || "None"}</p>
-                    <p>Allowed Shifts: {userAllowedShifts || "None"}</p>
-                    <p>Workers: {data.workers.length}</p>
-                    <p>Visible: {attendanceWorkers.length}</p>
-                    <div className="col-span-2">
-                        <p>Supervisor Regions: {JSON.stringify(supervisorRegions)}</p>
-                    </div>
-                </div>
-            </div>
-
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Manpower Reports</h1>
@@ -597,7 +582,7 @@ export function ManpowerClient({
                                                             View Details
                                                         </button>
                                                         {/* Allow Edit if Supervisor or Manager */}
-                                                        {userRole === 'supervisor' || userRole === 'manager' ? (
+                                                        {(userRole === 'supervisor' || userRole === 'night_supervisor' || userRole === 'manager') ? (
                                                             <button
                                                                 onClick={() => handleEditReport(row)}
                                                                 className="text-amber-600 hover:text-amber-800 font-medium text-sm flex items-center gap-1"
