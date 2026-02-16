@@ -1086,6 +1086,47 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 return;
             }
 
+            if (dischargeReportType === "monthly") {
+                const dischargeResult = await getMonthlyDischargeReportData(dischargeYear, dischargeMonth);
+
+                if (!dischargeResult.success || !dischargeResult.data) {
+                    toast.error(dischargeResult.message || "Failed to load monthly discharge reports for export");
+                    return;
+                }
+
+                const dischargeRows = dischargeResult.data.entries.length > 0
+                    ? dischargeResult.data.entries.map((entry) => ({
+                        SubmissionDate: entry.reportDate.slice(0, 10),
+                        DischargeDate: entry.dischargeDate.slice(0, 10),
+                        RoomNumber: entry.roomNumber,
+                        RoomType: getDischargeRoomTypeLabel(entry.roomType),
+                        Supervisor: entry.supervisorName,
+                        Area: entry.area,
+                        UpdatedAt: new Date(entry.updatedAt).toLocaleString(),
+                    }))
+                    : [
+                        {
+                            SubmissionDate: `${dischargeYear}-${dischargeMonth}`,
+                            DischargeDate: "",
+                            RoomNumber: "",
+                            RoomType: "",
+                            Supervisor: "",
+                            Area: "",
+                            UpdatedAt: "No discharge responses for this month",
+                        },
+                    ];
+
+                XLSX.utils.book_append_sheet(
+                    workbook,
+                    XLSX.utils.json_to_sheet(dischargeRows),
+                    "Monthly Discharge Report"
+                );
+                XLSX.writeFile(workbook, `monthly-discharge-report-${dischargeYear}-${dischargeMonth}.xlsx`);
+                toast.success("Monthly discharge reports exported");
+                return;
+            }
+
+            // Daily Discharge Report Export
             const dischargeResult = await getDischargeReportData(reportDate);
             if (!dischargeResult.success || !dischargeResult.data) {
                 toast.error(dischargeResult.message || "Failed to load discharge reports for export");

@@ -32,7 +32,7 @@ async function getManpowerData(user: SessionManpowerUser) {
         };
 
         // Strict isolation for supervisors
-        if (!isManager && user.role === 'supervisor') {
+        if (!isManager && (user.role === 'supervisor' || user.role === 'night_supervisor')) {
             // 1. Get base authorized zones from shift/tags
             const shiftName = user.shiftName || (user.shiftId ? user.shiftId.toString() : null);
             const authorizedZones = new Set(getAuthorizedZones(shiftName));
