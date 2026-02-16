@@ -1612,6 +1612,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium text-slate-700">Area</label>
                                             <select
+                                                aria-label="Select area"
                                                 value={dailyForm.region}
                                                 onChange={(e) =>
                                                     setDailyForm((prev) => ({
@@ -1640,6 +1641,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-sm font-medium text-slate-700">Round number</label>
                                             <select
+                                                aria-label="Select round number"
                                                 value={dailyForm.roundNumber}
                                                 onChange={(e) =>
                                                     setDailyForm((prev) => ({
@@ -1765,6 +1767,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-slate-600">Area filter</label>
                                             <select
+                                                aria-label="Filter by area"
                                                 value={dailyAreaFilter}
                                                 onChange={(event) => setDailyAreaFilter(event.target.value)}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
@@ -1780,6 +1783,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-slate-600">Round filter</label>
                                             <select
+                                                aria-label="Filter by round"
                                                 value={dailyRoundFilter}
                                                 onChange={(event) => setDailyRoundFilter(event.target.value)}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
@@ -1795,6 +1799,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-slate-600">Sort</label>
                                             <select
+                                                aria-label="Sort daily submissions"
                                                 value={dailySortKey}
                                                 onChange={(event) => setDailySortKey(event.target.value as DailySortKey)}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
@@ -2056,6 +2061,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-slate-600">Area filter</label>
                                             <select
+                                                aria-label="Filter discharge entries by area"
                                                 value={dischargeAreaFilter}
                                                 onChange={(event) => setDischargeAreaFilter(event.target.value)}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
@@ -2071,6 +2077,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div className="space-y-1">
                                             <label className="text-xs font-semibold text-slate-600">Sort</label>
                                             <select
+                                                aria-label="Sort discharge entries"
                                                 value={dischargeSortKey}
                                                 onChange={(event) => setDischargeSortKey(event.target.value as DischargeSortKey)}
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
@@ -2226,6 +2233,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 <div className="space-y-1">
                                     <label className="text-xs font-semibold text-slate-600">Supervisor filter</label>
                                     <select
+                                        aria-label="Filter by supervisor"
                                         value={weeklySupervisorFilter}
                                         onChange={(event) => setWeeklySupervisorFilter(event.target.value)}
                                         className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
@@ -2369,6 +2377,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 <div className="space-y-1">
                                     <label className="text-sm font-medium text-slate-700">Area</label>
                                     <select
+                                        aria-label="Select area for weekly report"
                                         value={weeklyForm.area}
                                         onChange={(e) =>
                                             setWeeklyForm((prev) => ({
@@ -2391,6 +2400,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 <div className="space-y-1">
                                     <label className="text-sm font-medium text-slate-700">Type of area</label>
                                     <select
+                                        aria-label="Select type of area"
                                         value={weeklyForm.areaType}
                                         onChange={(e) =>
                                             setWeeklyForm((prev) => ({
