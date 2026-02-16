@@ -435,6 +435,22 @@ export function ManpowerClient({
 
     return (
         <div className="space-y-6 animate-fade-in pb-12">
+            {/* TEMPORARY DEBUG BANNER */}
+            <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 rounded text-xs font-mono mb-6">
+                <p><strong>Debug Info:</strong></p>
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                    <p>Role: {userRole}</p>
+                    <p>Shift ID: {userShiftId}</p>
+                    <p>Region: {userRegion || "None"}</p>
+                    <p>Allowed Shifts: {userAllowedShifts || "None"}</p>
+                    <p>Workers: {data.workers.length}</p>
+                    <p>Visible: {attendanceWorkers.length}</p>
+                    <div className="col-span-2">
+                        <p>Supervisor Regions: {JSON.stringify(supervisorRegions)}</p>
+                    </div>
+                </div>
+            </div>
+
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-slate-900">Manpower Reports</h1>
@@ -615,6 +631,7 @@ export function ManpowerClient({
                                             </p>
                                         </div>
                                         <button
+                                            aria-label="Close details"
                                             onClick={() => setSelectedReport(null)}
                                             className="text-slate-400 hover:text-slate-600 p-1"
                                         >
