@@ -29,19 +29,12 @@ export function ManpowerClient({
     userRole = "manager",
     userName = "Admin",
     userRegion,
-    userShiftId,
-    userAllowedShifts
+    userShiftId
 }: Props) {
     const router = useRouter();
     // Default tab based on role? Or just default to Reports
     const [activeTab, setActiveTab] = useState("reports");
     const [searchTerm, setSearchTerm] = useState("");
-
-    // Parse supervisor regions
-    const supervisorRegions = useMemo(() => {
-        if (!userRegion) return [];
-        return userRegion.split(",").map(r => r.trim());
-    }, [userRegion]);
 
     // Attendance Marking State
     const [attendanceDate, setAttendanceDate] = useState<string>(new Date().toISOString().split('T')[0]);
@@ -53,41 +46,25 @@ export function ManpowerClient({
 
     // Filter available regions for dropdown
     const availableRegions = useMemo(() => {
-        const isSupervisor = userRole === "supervisor" || userRole === "night_supervisor";
-        if (!isSupervisor || supervisorRegions.length === 0) return data.regions;
-        return data.regions.filter(r => supervisorRegions.includes(r.name));
-    }, [data.regions, userRole, supervisorRegions]);
+        return data.regions;
+    }, [data.regions]);
 
     // Derived available shifts
     const availableShifts = useMemo(() => {
-        if (userRole === "manager") return data.shifts;
-
-        if (userRole === "supervisor" || userRole === "night_supervisor") {
-            if (userAllowedShifts) {
-                const allowedNames = userAllowedShifts.split(",").map(s => s.trim()).filter(Boolean);
-                return data.shifts.filter(s => allowedNames.includes(s.name));
-            }
-            // Default: only their assigned shift
-            if (userShiftId) {
-                return data.shifts.filter(s => s.id === userShiftId);
-            }
-        }
-
-        return data.shifts; // Default for other roles or if supervisor conditions not met
-    }, [data.shifts, userRole, userShiftId, userAllowedShifts]);
+        return data.shifts;
+    }, [data.shifts]);
 
     // [FIX] Sync selectedShift with availableShifts
     useEffect(() => {
-        if (availableShifts.length > 0) {
-            const isValid = availableShifts.some(s => s.id.toString() === selectedShift);
-            if (!isValid && selectedShift !== "All") {
-                setSelectedShift(availableShifts[0].id.toString());
-            } else if (selectedShift === "All" && (userRole === "supervisor" || userRole === "night_supervisor") && userAllowedShifts) {
-                // If supervisor has specific allowed shifts, don't default to "All" (which might show nothing)
-                setSelectedShift(availableShifts[0].id.toString());
-            }
+        if (selectedShift === "All") {
+            return;
         }
-    }, [availableShifts, selectedShift, userRole, userAllowedShifts]);
+
+        const isValid = availableShifts.some((shift) => shift.id.toString() === selectedShift);
+        if (!isValid) {
+            setSelectedShift("All");
+        }
+    }, [availableShifts, selectedShift]);
 
     // Track attendance overrides: { [date]: { [workerId]: { status?: string; notes?: string } } }
     const [attendanceBuffer, setAttendanceBuffer] = useState<Record<string, Record<number, { status?: string; notes?: string }>>>({});
@@ -144,33 +121,19 @@ export function ManpowerClient({
     const attendanceWorkers = useMemo(() => {
         return data.workers.filter(w => {
             // 1. Region Filter
-            if (userRole === "supervisor" || userRole === "night_supervisor") {
-                // If specific region selected, match it
-                if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
-                // If "All" selected, ensuring worker is in one of the supervisor's allowed regions
-                if (selectedRegion === "All" && (!w.region || !supervisorRegions.includes(w.region))) return false;
-            } else {
-                // Manager/Admin
-                if (selectedRegion !== "All" && w.region?.toLowerCase().trim() !== selectedRegion.toLowerCase().trim()) return false;
+            if (selectedRegion !== "All") {
+                if (!w.region) {
+                    return false;
+                }
+                if (w.region.toLowerCase().trim() !== selectedRegion.toLowerCase().trim()) {
+                    return false;
+                }
             }
 
             // 2. Shift Filter (Smart Parent/Child)
-            const allowedNames = userAllowedShifts ? userAllowedShifts.split(",").map(s => s.trim()).filter(Boolean) : [];
-
             if (selectedShift !== "All") {
                 const shiftObj = data.shifts.find(s => s.id.toString() === selectedShift);
                 if (shiftObj) {
-                    // Restriction check for supervisors
-                    if (userRole === "supervisor" || userRole === "night_supervisor") {
-                        // If they have allowed shifts, only show matching workers
-                        if (allowedNames.length > 0) {
-                            if (!allowedNames.includes(w.shiftName || "")) return false;
-                        } else if (userShiftId && w.shiftId !== userShiftId) {
-                            // Default fallback: only their own shift
-                            return false;
-                        }
-                    }
-
                     // Strict filter for the current view
                     if (shiftObj.name === "A" || shiftObj.name === "B") {
                         // If filtering by "A", show "A", "A1", "A2" etc.
@@ -180,13 +143,6 @@ export function ManpowerClient({
                         if (w.shiftId?.toString() !== selectedShift) return false;
                     }
                 }
-            } else if (userRole === "supervisor" || userRole === "night_supervisor") {
-                // "All" selected but supervisor role
-                if (allowedNames.length > 0) {
-                    if (!w.shiftName || !allowedNames.includes(w.shiftName)) return false;
-                } else if (userShiftId && w.shiftId !== userShiftId) {
-                    return false;
-                }
             }
 
             // 3. Search
@@ -195,7 +151,7 @@ export function ManpowerClient({
 
             return true;
         });
-    }, [data.workers, selectedRegion, selectedShift, searchTerm, userRole, supervisorRegions, data.shifts, userAllowedShifts, userShiftId]);
+    }, [data.workers, selectedRegion, selectedShift, searchTerm, data.shifts]);
 
 
 

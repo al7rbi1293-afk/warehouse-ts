@@ -6,7 +6,6 @@ import { ManpowerClient } from "./ManpowerClient";
 // Import UserRole type to use for casting
 import { UserRole } from "@/types";
 
-import { getAuthorizedZones } from "@/lib/zoneMapping";
 import { getSubstituteZones } from "@/app/actions/staff"; // Direct import for server component
 
 type SessionManpowerUser = {
@@ -23,57 +22,13 @@ async function getManpowerData(user: SessionManpowerUser) {
     try {
         const isManager = user.role === 'manager';
 
-        // Default filters (fetch all for manager)
-        let workerFilter: Prisma.WorkerWhereInput = {};
+        // Default filters (fetch all workers/attendance; supervisors are not zone-restricted).
+        const workerFilter: Prisma.WorkerWhereInput = {};
         const attendanceFilter: Prisma.AttendanceWhereInput = {
             date: {
                 gte: new Date(new Date().setDate(new Date().getDate() - 14)), // Reduced to 14 days for performance
             },
         };
-
-        // Strict isolation for supervisors
-        if (!isManager && (user.role === 'supervisor' || user.role === 'night_supervisor')) {
-            // 1. Get base authorized zones from shift/tags
-            const shiftName = user.shiftName || (user.shiftId ? user.shiftId.toString() : null);
-            const authorizedZones = new Set(getAuthorizedZones(shiftName));
-
-            // 2. Add directly assigned regions (new multi-zone field)
-            if (user.regions) {
-                user.regions.split(',').forEach((r: string) => authorizedZones.add(r.trim().toUpperCase()));
-            }
-            if (user.region) {
-                authorizedZones.add(user.region.trim().toUpperCase());
-            }
-
-            // 3. Add inherited zones from active substitutions
-            try {
-                const today = new Date().toISOString().split('T')[0];
-                const subRes = await getSubstituteZones(Number.parseInt(user.id, 10), today);
-                if (subRes.success && subRes.data) {
-                    subRes.data.forEach((z: string) => authorizedZones.add(z.trim().toUpperCase()));
-                }
-            } catch (e) {
-                console.error("Failed to fetch substitute zones in filtered query", e);
-            }
-
-            const zonesList = Array.from(authorizedZones);
-
-            // Apply filters: Worker must be in authorized zone (by region OR shift name)
-            workerFilter = {
-                OR: [
-                    { region: { in: zonesList, mode: 'insensitive' } },
-                    { shift: { name: { in: zonesList, mode: 'insensitive' } } }
-                ]
-            };
-
-            // Apply filters: Attendance must belong to a worker in authorized zone
-            attendanceFilter.worker = {
-                OR: [
-                    { region: { in: zonesList, mode: 'insensitive' } },
-                    { shift: { name: { in: zonesList, mode: 'insensitive' } } }
-                ]
-            };
-        }
 
         const [workers, shifts, supervisors, allAttendance, regions, allUsers] = await Promise.all([
             prisma.worker.findMany({

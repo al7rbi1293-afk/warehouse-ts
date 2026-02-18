@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAudit } from "@/app/actions/audit";
-import { isAuthorizedForZone, getZoneAccessError } from "@/lib/zoneMapping";
 
 export async function createWorker(formData: FormData) {
     const session = await getServerSession(authOptions);
@@ -146,30 +145,11 @@ export async function submitAttendance(
     supervisor: string
 ) {
     const session = await getServerSession(authOptions);
-    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+    if (!session || !['manager', 'supervisor', 'night_supervisor'].includes(session.user.role)) {
         return { success: false, message: "Unauthorized" };
     }
 
     try {
-        // Zone-based authorization check for supervisors
-        if (session.user.role === 'supervisor') {
-            const worker = await prisma.worker.findUnique({
-                where: { id: workerId },
-                include: { shift: true }
-            });
-
-            if (!worker) {
-                return { success: false, message: "Worker not found" };
-            }
-
-            const supervisorShift = session.user.shiftName || (session.user as { allowedShifts?: string }).allowedShifts;
-            const workerZone = worker.shift?.name || worker.region;
-
-            if (!isAuthorizedForZone(supervisorShift, workerZone, session.user.role)) {
-                return { success: false, message: getZoneAccessError(supervisorShift, workerZone || 'Unknown') };
-            }
-        }
-
         // Delete existing attendance for this worker on this date and shift
         await prisma.attendance.deleteMany({
             where: {
@@ -213,34 +193,13 @@ export async function submitBulkAttendance(
     supervisor: string
 ) {
     const session = await getServerSession(authOptions);
-    if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
+    if (!session || !['manager', 'supervisor', 'night_supervisor'].includes(session.user.role)) {
         return { success: false, message: "Unauthorized" };
     }
 
     try {
         const dateObj = new Date(date);
         const workerIds = attendanceData.map(r => r.workerId);
-
-        // Zone-based authorization check for supervisors
-        if (session.user.role === 'supervisor') {
-            const workers = await prisma.worker.findMany({
-                where: { id: { in: workerIds } },
-                include: { shift: true }
-            });
-
-            const supervisorShift = session.user.shiftName || (session.user as { allowedShifts?: string }).allowedShifts;
-
-            // Check each worker
-            for (const worker of workers) {
-                const workerZone = worker.shift?.name || worker.region;
-                if (!isAuthorizedForZone(supervisorShift, workerZone, session.user.role)) {
-                    return {
-                        success: false,
-                        message: getZoneAccessError(supervisorShift, workerZone || 'Unknown')
-                    };
-                }
-            }
-        }
 
         await prisma.$transaction(async (tx) => {
             // Delete all existing attendance records for these workers on this date
