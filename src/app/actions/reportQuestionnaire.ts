@@ -14,6 +14,7 @@ import {
 } from "@/lib/dailyReportTemplate";
 
 export type ReportType = "daily" | "weekly" | "discharge";
+export type WeeklyManagerRange = "daily" | "weekly" | "monthly";
 
 interface ActionResult<T = undefined> {
     success: boolean;
@@ -38,6 +39,7 @@ interface ManagerAnswerDto {
     question: string;
     supervisorId: number;
     supervisorName: string;
+    reportDate: string;
     answer: string;
     updatedAt: string;
 }
@@ -91,6 +93,7 @@ interface DischargeEntryDto {
 }
 
 const REPORT_TYPES: ReportType[] = ["daily", "weekly", "discharge"];
+const WEEKLY_MANAGER_RANGES: WeeklyManagerRange[] = ["daily", "weekly", "monthly"];
 const MANAGER_ROLES = new Set(["manager", "admin"]);
 const SUPERVISOR_ROLES = new Set(["supervisor", "night_supervisor"]);
 const DISCHARGE_ROOM_TYPES: DischargeRoomType[] = ["normal_patient", "isolation"];
@@ -166,6 +169,10 @@ function isReportType(value: string): value is ReportType {
     return REPORT_TYPES.includes(value as ReportType);
 }
 
+function isWeeklyManagerRange(value: string): value is WeeklyManagerRange {
+    return WEEKLY_MANAGER_RANGES.includes(value as WeeklyManagerRange);
+}
+
 function isDischargeRoomType(value: string): value is DischargeRoomType {
     return DISCHARGE_ROOM_TYPES.includes(value as DischargeRoomType);
 }
@@ -193,6 +200,33 @@ function normalizeReportDate(dateStr?: string): Date {
 
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function getWeeklyDateBounds(
+    anchorDate: Date,
+    range: WeeklyManagerRange
+): { from: Date; to: Date } {
+    const anchor = new Date(
+        Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), anchorDate.getUTCDate())
+    );
+
+    if (range === "monthly") {
+        const from = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
+        const to = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0));
+        return { from, to };
+    }
+
+    if (range === "weekly") {
+        const day = anchor.getUTCDay();
+        const daysSinceMonday = (day + 6) % 7;
+        const from = new Date(anchor);
+        from.setUTCDate(anchor.getUTCDate() - daysSinceMonday);
+        const to = new Date(from);
+        to.setUTCDate(from.getUTCDate() + 6);
+        return { from, to };
+    }
+
+    return { from: anchor, to: anchor };
 }
 
 function parseDateInput(dateStr?: string): Date | null {
@@ -515,7 +549,8 @@ async function getSupervisorAllowedRegions(
 
 export async function getReportQuestionnaireData(
     reportType: string,
-    reportDate: string
+    reportDate: string,
+    weeklyRange: WeeklyManagerRange = "daily"
 ): Promise<
     ActionResult<{
         mode: "manager" | "supervisor";
@@ -534,6 +569,10 @@ export async function getReportQuestionnaireData(
 
     if (!isReportType(reportType)) {
         return { success: false, message: "Invalid report type" };
+    }
+
+    if (!isWeeklyManagerRange(weeklyRange)) {
+        return { success: false, message: "Invalid weekly range" };
     }
 
     const normalizedDate = normalizeReportDate(reportDate);
@@ -559,9 +598,17 @@ export async function getReportQuestionnaireData(
     });
 
     if (MANAGER_ROLES.has(role)) {
+        const weeklyBounds =
+            reportType === "weekly"
+                ? getWeeklyDateBounds(normalizedDate, weeklyRange)
+                : { from: normalizedDate, to: normalizedDate };
+
         const managerAnswers = await prisma.reportAnswer.findMany({
             where: {
-                reportDate: normalizedDate,
+                reportDate:
+                    reportType === "weekly"
+                        ? { gte: weeklyBounds.from, lte: weeklyBounds.to }
+                        : normalizedDate,
                 question: {
                     reportType,
                     isActive: true,
@@ -573,6 +620,7 @@ export async function getReportQuestionnaireData(
                 answer: true,
                 supervisorId: true,
                 supervisorName: true,
+                reportDate: true,
                 updatedAt: true,
                 question: {
                     select: {
@@ -581,6 +629,7 @@ export async function getReportQuestionnaireData(
                 },
             },
             orderBy: [
+                { reportDate: "desc" },
                 { supervisorName: "asc" },
                 { question: { sortOrder: "asc" } },
                 { updatedAt: "desc" },
@@ -599,6 +648,7 @@ export async function getReportQuestionnaireData(
                     question: row.question.question,
                     supervisorId: row.supervisorId,
                     supervisorName: row.supervisorName,
+                    reportDate: row.reportDate.toISOString().slice(0, 10),
                     answer: row.answer,
                     updatedAt: row.updatedAt.toISOString(),
                 })),

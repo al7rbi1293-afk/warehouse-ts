@@ -20,6 +20,7 @@ import {
     type DischargeRoomType,
     type DailySubmissionInput,
     type ReportType,
+    type WeeklyManagerRange,
 } from "@/app/actions/reportQuestionnaire";
 import {
     DAILY_REPORT_ROUNDS,
@@ -45,6 +46,7 @@ interface ManagerAnswerItem {
     question: string;
     supervisorId: number;
     supervisorName: string;
+    reportDate: string;
     answer: string;
     updatedAt: string;
 }
@@ -172,6 +174,49 @@ function isValidDateInput(dateStr: string) {
         parsed.getUTCMonth() === month - 1 &&
         parsed.getUTCDate() === day
     );
+}
+
+function parseIsoDate(value: string) {
+    const [year, month, day] = value.split("-").map(Number);
+    if (
+        !Number.isInteger(year) ||
+        !Number.isInteger(month) ||
+        !Number.isInteger(day)
+    ) {
+        return null;
+    }
+    return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatIsoDate(value: Date) {
+    const year = value.getUTCFullYear();
+    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(value.getUTCDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function getWeeklyManagerRangeLabel(reportDate: string, range: WeeklyManagerRange) {
+    const parsed = parseIsoDate(reportDate);
+    if (!parsed) {
+        return reportDate;
+    }
+
+    if (range === "monthly") {
+        const monthName = parsed.toLocaleString("en", { month: "long", timeZone: "UTC" });
+        return `${monthName} ${parsed.getUTCFullYear()}`;
+    }
+
+    if (range === "weekly") {
+        const day = parsed.getUTCDay();
+        const daysSinceMonday = (day + 6) % 7;
+        const start = new Date(parsed);
+        start.setUTCDate(parsed.getUTCDate() - daysSinceMonday);
+        const end = new Date(start);
+        end.setUTCDate(start.getUTCDate() + 6);
+        return `${formatIsoDate(start)} to ${formatIsoDate(end)}`;
+    }
+
+    return formatIsoDate(parsed);
 }
 
 function getDailyDraftKey(date: string) {
@@ -449,6 +494,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dailyPage, setDailyPage] = useState(1);
     const [weeklySearchTerm, setWeeklySearchTerm] = useState("");
     const [weeklySupervisorFilter, setWeeklySupervisorFilter] = useState("all");
+    const [weeklyManagerRange, setWeeklyManagerRange] = useState<WeeklyManagerRange>("weekly");
     const [weeklyPage, setWeeklyPage] = useState(1);
 
 
@@ -473,10 +519,15 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const loadQuestionnaireData = async (
         token: number,
         requestedTab: ReportType,
-        requestedDate: string
+        requestedDate: string,
+        requestedWeeklyRange: WeeklyManagerRange
     ) => {
         try {
-            const result = await getReportQuestionnaireData(requestedTab, requestedDate);
+            const result = await getReportQuestionnaireData(
+                requestedTab,
+                requestedDate,
+                requestedWeeklyRange
+            );
 
             if (!isLatestLoad(token)) {
                 return;
@@ -715,10 +766,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             setDischargeLoadError(null);
             void loadDischargeData(token, reportDate);
         } else {
-            void loadQuestionnaireData(token, activeTab, reportDate);
+            void loadQuestionnaireData(token, activeTab, reportDate, weeklyManagerRange);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, reportDate, dischargeReportType, dischargeMonth, dischargeYear]);
+    }, [activeTab, reportDate, dischargeReportType, dischargeMonth, dischargeYear, weeklyManagerRange]);
 
     useEffect(() => {
         if (!isSupervisor) {
@@ -799,7 +850,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             toast.success("Weekly report submitted");
             clearDraft(getWeeklyDraftKey(reportDate));
             const token = beginLoad();
-            await loadQuestionnaireData(token, "weekly", reportDate);
+            await loadQuestionnaireData(token, "weekly", reportDate, weeklyManagerRange);
         });
     };
 
@@ -979,7 +1030,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             toast.success(result.message);
             const token = beginLoad();
-            await loadQuestionnaireData(token, activeTab, reportDate);
+            await loadQuestionnaireData(token, activeTab, reportDate, weeklyManagerRange);
         });
     };
 
@@ -1052,7 +1103,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             if (activeTab === "weekly") {
-                const weeklyResult = await getReportQuestionnaireData("weekly", reportDate);
+                const weeklyResult = await getReportQuestionnaireData(
+                    "weekly",
+                    reportDate,
+                    weeklyManagerRange
+                );
                 if (!weeklyResult.success || !weeklyResult.data) {
                     toast.error(weeklyResult.message || "Failed to load weekly reports for export");
                     return;
@@ -1060,7 +1115,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                 const weeklyRows = weeklyResult.data.managerAnswers.length > 0
                     ? weeklyResult.data.managerAnswers.map((answer) => ({
-                        Date: reportDate,
+                        Date: answer.reportDate,
                         Supervisor: answer.supervisorName,
                         Question: answer.question,
                         Answer: answer.answer,
@@ -1081,7 +1136,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     XLSX.utils.json_to_sheet(weeklyRows),
                     "Weekly Report"
                 );
-                XLSX.writeFile(workbook, `weekly-report-${reportDate}.xlsx`);
+                XLSX.writeFile(workbook, `weekly-report-${weeklyManagerRange}-${reportDate}.xlsx`);
                 toast.success("Weekly reports exported");
                 return;
             }
@@ -1213,7 +1268,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             const searchText = [
                 group.supervisorName,
-                ...group.answers.map((answer) => `${answer.question} ${answer.answer}`),
+                ...group.answers.map(
+                    (answer) => `${answer.reportDate} ${answer.question} ${answer.answer}`
+                ),
             ]
                 .join(" ")
                 .toLowerCase();
@@ -1225,6 +1282,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const weeklyTotalPages = Math.max(
         1,
         Math.ceil(filteredWeeklyManagerGroups.length / WEEKLY_MANAGER_PAGE_SIZE)
+    );
+
+    const weeklyManagerRangeLabel = useMemo(
+        () => getWeeklyManagerRangeLabel(reportDate, weeklyManagerRange),
+        [reportDate, weeklyManagerRange]
     );
 
     const pagedWeeklyManagerGroups = useMemo(() => {
@@ -1428,7 +1490,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     useEffect(() => {
         setWeeklyPage(1);
-    }, [reportDate, weeklySearchTerm, weeklySupervisorFilter]);
+    }, [reportDate, weeklySearchTerm, weeklySupervisorFilter, weeklyManagerRange]);
 
     useEffect(() => {
         if (dischargePage > dischargeTotalPages) {
@@ -2215,11 +2277,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             <div>
                                 <h2 className="text-lg font-semibold text-slate-900">Supervisor answers</h2>
                                 <p className="text-sm text-slate-500">
-                                    Weekly responses submitted for {reportDate}.
+                                    Weekly responses submitted for {weeklyManagerRangeLabel}.
                                 </p>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                                 <div className="space-y-1 md:col-span-2">
                                     <label className="text-xs font-semibold text-slate-600">Search</label>
                                     <input
@@ -2247,12 +2309,28 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     </select>
                                 </div>
                                 <div className="space-y-1">
+                                    <label className="text-xs font-semibold text-slate-600">Period</label>
+                                    <select
+                                        aria-label="Select weekly report period"
+                                        value={weeklyManagerRange}
+                                        onChange={(event) =>
+                                            setWeeklyManagerRange(event.target.value as WeeklyManagerRange)
+                                        }
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                    >
+                                        <option value="daily">Daily</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                    </select>
+                                </div>
+                                <div className="space-y-1">
                                     <label className="text-xs font-semibold text-slate-600">Actions</label>
                                     <button
                                         type="button"
                                         onClick={() => {
                                             setWeeklySearchTerm("");
                                             setWeeklySupervisorFilter("all");
+                                            setWeeklyManagerRange("weekly");
                                         }}
                                         className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                                     >
@@ -2280,19 +2358,25 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                 <p className="text-sm font-semibold text-slate-800">
                                                     {group.supervisorName}
                                                 </p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDeleteSupervisorReport(
-                                                            group.supervisorId,
-                                                            group.supervisorName
-                                                        )
-                                                    }
-                                                    disabled={isPending}
-                                                    className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                                >
-                                                    Delete report
-                                                </button>
+                                                {weeklyManagerRange === "daily" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDeleteSupervisorReport(
+                                                                group.supervisorId,
+                                                                group.supervisorName
+                                                            )
+                                                        }
+                                                        disabled={isPending}
+                                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                    >
+                                                        Delete report
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-[11px] text-slate-400">
+                                                        Switch to daily period to delete
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="divide-y divide-slate-100">
                                                 {group.answers.map((answer) => (
@@ -2304,6 +2388,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                             {answer.answer}
                                                         </p>
                                                         <p className="text-[11px] text-slate-400 mt-2">
+                                                            Date: {answer.reportDate} |{" "}
                                                             Updated: {new Date(answer.updatedAt).toLocaleString()}
                                                         </p>
                                                     </div>
