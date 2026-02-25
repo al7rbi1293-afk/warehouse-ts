@@ -45,6 +45,11 @@ const requiredColumns = [
     column: "area",
     note: "area column",
   },
+  {
+    table: "report_answers",
+    column: "area",
+    note: "weekly area scope column",
+  },
 ];
 
 try {
@@ -53,7 +58,7 @@ try {
     SELECT table_name, column_name
     FROM information_schema.columns
     WHERE table_schema = 'public'
-      AND table_name IN ('discharge_report_entries')
+      AND table_name IN ('discharge_report_entries', 'report_answers')
     `
   );
 

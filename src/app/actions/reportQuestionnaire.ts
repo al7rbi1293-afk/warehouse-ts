@@ -40,6 +40,7 @@ interface ManagerAnswerDto {
     supervisorId: number;
     supervisorName: string;
     reportDate: string;
+    area: string;
     answer: string;
     updatedAt: string;
 }
@@ -47,6 +48,7 @@ interface ManagerAnswerDto {
 interface SupervisorAnswerDto {
     questionId: number;
     answer: string;
+    area: string;
 }
 
 export interface DailySubmissionInput {
@@ -181,6 +183,10 @@ function normalizeQuestionKey(value: string) {
     return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizeAreaKey(value: string) {
+    return value.trim().toUpperCase();
+}
+
 function normalizeReportDate(dateStr?: string): Date {
     if (dateStr) {
         const [year, month, day] = dateStr.split("-").map(Number);
@@ -292,6 +298,111 @@ async function ensureDischargeDateSchema(): Promise<ActionError | null> {
             success: false,
             message:
                 "Database update is required for discharge reports (missing discharge_date column). " +
+                "Please run the latest SQL migration and refresh.",
+        };
+    }
+}
+
+async function ensureReportAnswersAreaSchema(): Promise<ActionError | null> {
+    try {
+        const rows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'report_answers'
+                  AND column_name = 'area'
+            ) AS "exists"
+        `;
+
+        const hasColumn = rows[0]?.exists === true;
+        const indexRows = await prisma.$queryRaw<Array<{ exists: boolean }>>`
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_indexes
+                WHERE schemaname = 'public'
+                  AND indexname = 'report_answers_question_date_supervisor_area_key'
+            ) AS "exists"
+        `;
+        const hasScopedUniqueIndex = indexRows[0]?.exists === true;
+
+        if (hasColumn && hasScopedUniqueIndex) {
+            return null;
+        }
+
+        if (!hasColumn) {
+            await prisma.$executeRawUnsafe(`
+                ALTER TABLE report_answers
+                ADD COLUMN IF NOT EXISTS area TEXT
+            `);
+            await prisma.$executeRawUnsafe(`
+                WITH weekly_area_rows AS (
+                    SELECT
+                        ra.report_date,
+                        ra.supervisor_id,
+                        NULLIF(TRIM(ra.answer), '') AS area
+                    FROM report_answers ra
+                    INNER JOIN report_questions rq ON rq.id = ra.question_id
+                    WHERE rq.report_type = 'weekly'
+                      AND LOWER(REGEXP_REPLACE(TRIM(rq.question), '\\s+', ' ', 'g')) = 'area'
+                      AND NULLIF(TRIM(ra.answer), '') IS NOT NULL
+                )
+                UPDATE report_answers target
+                SET area = source.area
+                FROM weekly_area_rows source
+                WHERE target.report_date = source.report_date
+                  AND target.supervisor_id = source.supervisor_id
+                  AND EXISTS (
+                      SELECT 1
+                      FROM report_questions target_q
+                      WHERE target_q.id = target.question_id
+                        AND target_q.report_type = 'weekly'
+                  )
+                  AND (target.area IS NULL OR TRIM(target.area) = '')
+            `);
+
+            logServerInfo("report_answers_area_schema_auto_migrated", {
+                table: "report_answers",
+                column: "area",
+            });
+        }
+
+        await prisma.$executeRawUnsafe(`
+            UPDATE report_answers
+            SET area = ''
+            WHERE area IS NULL
+        `);
+        await prisma.$executeRawUnsafe(`
+            ALTER TABLE report_answers
+            ALTER COLUMN area SET DEFAULT ''
+        `);
+        await prisma.$executeRawUnsafe(`
+            ALTER TABLE report_answers
+            ALTER COLUMN area SET NOT NULL
+        `);
+
+        await prisma.$executeRawUnsafe(`
+            DROP INDEX IF EXISTS report_answers_question_date_supervisor_key
+        `);
+        await prisma.$executeRawUnsafe(`
+            CREATE UNIQUE INDEX IF NOT EXISTS report_answers_question_date_supervisor_area_key
+            ON report_answers(question_id, report_date, supervisor_id, area)
+        `);
+        await prisma.$executeRawUnsafe(`
+            CREATE INDEX IF NOT EXISTS report_answers_report_date_supervisor_area_idx
+            ON report_answers(report_date, supervisor_id, area)
+        `);
+
+        return null;
+    } catch (error) {
+        logServerError("report_answers_area_schema_auto_migration_failed", error, {
+            table: "report_answers",
+            column: "area",
+        });
+        return {
+            success: false,
+            message:
+                "Database update is required for weekly report area scoping. " +
                 "Please run the latest SQL migration and refresh.",
         };
     }
@@ -549,6 +660,10 @@ export async function getReportQuestionnaireData(
     }
 
     const normalizedDate = normalizeReportDate(reportDate);
+    const areaSchemaCheck = await ensureReportAnswersAreaSchema();
+    if (areaSchemaCheck) {
+        return areaSchemaCheck;
+    }
 
     const actorName = session.user.name || session.user.username || "manager";
     if (reportType === "weekly") {
@@ -586,6 +701,7 @@ export async function getReportQuestionnaireData(
                 supervisorId: true,
                 supervisorName: true,
                 reportDate: true,
+                area: true,
                 updatedAt: true,
                 question: {
                     select: {
@@ -614,6 +730,7 @@ export async function getReportQuestionnaireData(
                     supervisorId: row.supervisorId,
                     supervisorName: row.supervisorName,
                     reportDate: row.reportDate.toISOString().slice(0, 10),
+                    area: row.area,
                     answer: row.answer,
                     updatedAt: row.updatedAt.toISOString(),
                 })),
@@ -640,8 +757,20 @@ export async function getReportQuestionnaireData(
         select: {
             questionId: true,
             answer: true,
+            area: true,
+            updatedAt: true,
         },
+        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
     });
+
+    const preferredWeeklyArea =
+        reportType === "weekly"
+            ? supervisorAnswers.find((row) => row.area.trim().length > 0)?.area || ""
+            : "";
+    const scopedSupervisorAnswers =
+        reportType === "weekly" && preferredWeeklyArea
+            ? supervisorAnswers.filter((row) => row.area === preferredWeeklyArea)
+            : supervisorAnswers;
 
     const allowedRegions =
         reportType === "weekly"
@@ -655,7 +784,11 @@ export async function getReportQuestionnaireData(
             mode: "supervisor",
             questions,
             managerAnswers: [],
-            supervisorAnswers,
+            supervisorAnswers: scopedSupervisorAnswers.map((row) => ({
+                questionId: row.questionId,
+                answer: row.answer,
+                area: row.area,
+            })),
             allowedRegions,
         },
     };
@@ -772,6 +905,10 @@ export async function submitSupervisorReportAnswers(
     }
 
     const normalizedDate = normalizeReportDate(reportDate);
+    const areaSchemaCheck = await ensureReportAnswersAreaSchema();
+    if (areaSchemaCheck) {
+        return areaSchemaCheck;
+    }
 
     const actorName = session.user.name || session.user.username || "manager";
     if (reportType === "weekly") {
@@ -785,7 +922,7 @@ export async function submitSupervisorReportAnswers(
             reportType,
             isActive: true,
         },
-        select: { id: true },
+        select: { id: true, question: true },
     });
 
     const validQuestionIds = new Set(activeQuestions.map((q) => q.id));
@@ -798,15 +935,51 @@ export async function submitSupervisorReportAnswers(
         }))
         .filter((row) => row.answer.length > 0);
 
+    let areaScope = "";
+    if (reportType === "weekly") {
+        const areaQuestionId =
+            activeQuestions.find(
+                (question) =>
+                    normalizeQuestionKey(question.question) ===
+                    normalizeQuestionKey(WEEKLY_TEMPLATE_QUESTIONS[0])
+            )?.id || null;
+        const submittedArea =
+            (areaQuestionId &&
+                cleanedAnswers.find((row) => row.questionId === areaQuestionId)?.answer.trim()) ||
+            "";
+        if (!submittedArea) {
+            return { success: false, message: "Area is required for weekly report" };
+        }
+
+        const allowedRegions = await getSupervisorAllowedRegions(supervisorId, normalizedDate);
+        const regionByKey = new Map(
+            allowedRegions.map((region) => [normalizeAreaKey(region), region])
+        );
+        const normalizedSubmittedArea = normalizeAreaKey(submittedArea);
+
+        if (allowedRegions.length > 0 && !regionByKey.has(normalizedSubmittedArea)) {
+            return { success: false, message: "Selected area is not assigned to your account" };
+        }
+
+        areaScope = regionByKey.get(normalizedSubmittedArea) || submittedArea;
+    }
+
     await prisma.$transaction(async (tx) => {
-        await tx.reportAnswer.deleteMany({
-            where: {
-                supervisorId,
-                reportDate: normalizedDate,
-                questionId: {
-                    in: Array.from(validQuestionIds),
-                },
+        const deleteWhere: Prisma.ReportAnswerWhereInput = {
+            supervisorId,
+            reportDate: normalizedDate,
+            questionId: {
+                in: Array.from(validQuestionIds),
             },
+        };
+        if (reportType === "weekly") {
+            deleteWhere.area = areaScope;
+        } else {
+            deleteWhere.area = "";
+        }
+
+        await tx.reportAnswer.deleteMany({
+            where: deleteWhere,
         });
 
         if (cleanedAnswers.length === 0) {
@@ -820,6 +993,7 @@ export async function submitSupervisorReportAnswers(
                 answer: row.answer,
                 supervisorId,
                 supervisorName: session.user.name || session.user.username || "Supervisor",
+                area: reportType === "weekly" ? areaScope : "",
             })),
         });
     });
@@ -828,13 +1002,15 @@ export async function submitSupervisorReportAnswers(
     await logAudit(
         session.user.name || session.user.username || "Supervisor",
         "Submit Report Answers",
-        `${reportType} report submitted (${cleanedAnswers.length} answers) for ${reportDate}`,
+        `${reportType} report submitted (${cleanedAnswers.length} answers) for ${reportDate}${reportType === "weekly" ? `, area ${areaScope}` : ""
+        }`,
         "Reports"
     );
     logServerInfo("report_answers_submitted", {
         reportType,
         reportDate,
         supervisorId,
+        area: areaScope,
         submitted: cleanedAnswers.length,
     });
     return {
@@ -847,7 +1023,8 @@ export async function submitSupervisorReportAnswers(
 export async function deleteSupervisorReportAnswers(
     reportType: string,
     reportDate: string,
-    supervisorId: number
+    supervisorId: number,
+    area?: string
 ): Promise<ActionResult<{ deleted: number }>> {
     const session = await getServerSession(authOptions);
     const role = getRole(session);
@@ -865,28 +1042,40 @@ export async function deleteSupervisorReportAnswers(
     }
 
     const normalizedDate = normalizeReportDate(reportDate);
+    const normalizedArea = area?.trim() || "";
+    const areaSchemaCheck = await ensureReportAnswersAreaSchema();
+    if (areaSchemaCheck) {
+        return areaSchemaCheck;
+    }
+
+    const where: Prisma.ReportAnswerWhereInput = {
+        supervisorId,
+        reportDate: normalizedDate,
+        question: {
+            reportType,
+        },
+    };
+    if (reportType === "weekly" && normalizedArea) {
+        where.area = normalizedArea;
+    }
 
     const deleted = await prisma.reportAnswer.deleteMany({
-        where: {
-            supervisorId,
-            reportDate: normalizedDate,
-            question: {
-                reportType,
-            },
-        },
+        where,
     });
 
     revalidatePath("/reports");
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete Supervisor Report",
-        `Deleted ${reportType} report answers for supervisor ${supervisorId} on ${reportDate}`,
+        `Deleted ${reportType} report answers for supervisor ${supervisorId} on ${reportDate}${reportType === "weekly" && normalizedArea ? `, area ${normalizedArea}` : ""
+        }`,
         "Reports"
     );
     logServerInfo("supervisor_report_deleted", {
         reportType,
         reportDate,
         supervisorId,
+        area: normalizedArea || null,
         deleted: deleted.count,
     });
     return {

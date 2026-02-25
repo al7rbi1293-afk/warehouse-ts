@@ -228,14 +228,16 @@ model ReportAnswer {
   answer         String
   supervisorId   Int            @map("supervisor_id")
   supervisorName String         @map("supervisor_name")
+  area           String         @default("")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
   question       ReportQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
   supervisor     User           @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
 
-  @@unique([questionId, reportDate, supervisorId])
+  @@unique([questionId, reportDate, supervisorId, area])
   @@index([reportDate])
   @@index([supervisorId])
+  @@index([reportDate, supervisorId, area])
   @@map("report_answers")
 }
 

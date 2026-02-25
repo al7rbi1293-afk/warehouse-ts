@@ -22,15 +22,21 @@ CREATE TABLE IF NOT EXISTS report_answers (
     answer TEXT NOT NULL,
     supervisor_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     supervisor_name TEXT NOT NULL,
+    area TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS report_answers_question_date_supervisor_key
-    ON report_answers(question_id, report_date, supervisor_id);
+DROP INDEX IF EXISTS report_answers_question_date_supervisor_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS report_answers_question_date_supervisor_area_key
+    ON report_answers(question_id, report_date, supervisor_id, area);
 
 CREATE INDEX IF NOT EXISTS report_answers_report_date_idx
     ON report_answers(report_date);
 
 CREATE INDEX IF NOT EXISTS report_answers_supervisor_id_idx
     ON report_answers(supervisor_id);
+
+CREATE INDEX IF NOT EXISTS report_answers_report_date_supervisor_area_idx
+    ON report_answers(report_date, supervisor_id, area);

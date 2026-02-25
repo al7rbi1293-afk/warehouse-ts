@@ -47,6 +47,7 @@ interface ManagerAnswerItem {
     supervisorId: number;
     supervisorName: string;
     reportDate: string;
+    area: string;
     answer: string;
     updatedAt: string;
 }
@@ -968,18 +969,26 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const handleDeleteSupervisorReport = (
         supervisorId: number,
         supervisorName: string,
-        targetReportDate: string = reportDate
+        targetReportDate: string = reportDate,
+        targetArea?: string
     ) => {
+        const areaLabel = targetArea?.trim() || "";
         if (
             !confirm(
-                `Delete ${activeTab} report answers for ${supervisorName} on ${targetReportDate}?`
+                `Delete ${activeTab} report answers for ${supervisorName} on ${targetReportDate}${areaLabel ? ` (area: ${areaLabel})` : ""
+                }?`
             )
         ) {
             return;
         }
 
         startTransition(async () => {
-            const result = await deleteSupervisorReportAnswers(activeTab, targetReportDate, supervisorId);
+            const result = await deleteSupervisorReportAnswers(
+                activeTab,
+                targetReportDate,
+                supervisorId,
+                areaLabel || undefined
+            );
             if (!result.success) {
                 toast.error(result.message);
                 return;
@@ -1074,6 +1083,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     ? weeklyResult.data.managerAnswers.map((answer) => ({
                         Date: answer.reportDate,
                         Supervisor: answer.supervisorName,
+                        Area: answer.area || "-",
                         Question: answer.question,
                         Answer: answer.answer,
                         UpdatedAt: new Date(answer.updatedAt).toLocaleString(),
@@ -1082,6 +1092,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         {
                             Date: reportDate,
                             Supervisor: "",
+                            Area: "",
                             Question: "",
                             Answer: "No weekly responses",
                             UpdatedAt: "",
@@ -1189,12 +1200,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 supervisorId: number;
                 supervisorName: string;
                 reportDate: string;
+                area: string;
                 answers: ManagerAnswerItem[];
             }
         >();
 
         for (const answer of managerAnswers) {
-            const groupKey = `${answer.supervisorId}:${answer.reportDate}`;
+            const normalizedArea = answer.area.trim();
+            const groupKey = `${answer.supervisorId}:${answer.reportDate}:${normalizedArea}`;
             const existing = groups.get(groupKey);
             if (existing) {
                 existing.answers.push(answer);
@@ -1206,6 +1219,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 supervisorId: answer.supervisorId,
                 supervisorName: answer.supervisorName,
                 reportDate: answer.reportDate,
+                area: normalizedArea,
                 answers: [answer],
             });
         }
@@ -1226,7 +1240,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 if (byDate !== 0) {
                     return byDate;
                 }
-                return a.supervisorName.localeCompare(b.supervisorName, "en");
+                const bySupervisor = a.supervisorName.localeCompare(b.supervisorName, "en");
+                if (bySupervisor !== 0) {
+                    return bySupervisor;
+                }
+                return a.area.localeCompare(b.area, "en");
             });
     }, [managerAnswers]);
 
@@ -2227,7 +2245,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         {group.supervisorName}
                                                     </p>
                                                     <p className="text-xs text-slate-500">
-                                                        Work date: {group.reportDate}
+                                                        Work date: {group.reportDate} | Area: {group.area || "Unspecified"}
                                                     </p>
                                                 </div>
                                                 <button
@@ -2236,7 +2254,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         handleDeleteSupervisorReport(
                                                             group.supervisorId,
                                                             group.supervisorName,
-                                                            group.reportDate
+                                                            group.reportDate,
+                                                            group.area
                                                         )
                                                     }
                                                     disabled={isPending}
