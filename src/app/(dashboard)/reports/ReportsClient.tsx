@@ -2303,10 +2303,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     </div>
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-sm font-medium text-slate-700">Date</label>
-                                    <div className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-50 text-slate-800 text-sm">
-                                        {reportDate}
-                                    </div>
+                                    <label className="text-sm font-medium text-slate-700">Work date</label>
+                                    <input
+                                        type="date"
+                                        value={reportDate}
+                                        onChange={(e) => setReportDate(e.target.value)}
+                                        aria-label="Select work date"
+                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-800 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                                    />
                                 </div>
                             </div>
 
