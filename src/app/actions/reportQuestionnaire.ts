@@ -202,33 +202,6 @@ function normalizeReportDate(dateStr?: string): Date {
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 }
 
-function getWeeklyDateBounds(
-    anchorDate: Date,
-    range: WeeklyManagerRange
-): { from: Date; to: Date } {
-    const anchor = new Date(
-        Date.UTC(anchorDate.getUTCFullYear(), anchorDate.getUTCMonth(), anchorDate.getUTCDate())
-    );
-
-    if (range === "monthly") {
-        const from = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
-        const to = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0));
-        return { from, to };
-    }
-
-    if (range === "weekly") {
-        const day = anchor.getUTCDay();
-        const daysSinceMonday = (day + 6) % 7;
-        const from = new Date(anchor);
-        from.setUTCDate(anchor.getUTCDate() - daysSinceMonday);
-        const to = new Date(from);
-        to.setUTCDate(from.getUTCDate() + 6);
-        return { from, to };
-    }
-
-    return { from: anchor, to: anchor };
-}
-
 function parseDateInput(dateStr?: string): Date | null {
     if (!dateStr) {
         return null;
@@ -598,17 +571,9 @@ export async function getReportQuestionnaireData(
     });
 
     if (MANAGER_ROLES.has(role)) {
-        const weeklyBounds =
-            reportType === "weekly"
-                ? getWeeklyDateBounds(normalizedDate, weeklyRange)
-                : { from: normalizedDate, to: normalizedDate };
-
         const managerAnswers = await prisma.reportAnswer.findMany({
             where: {
-                reportDate:
-                    reportType === "weekly"
-                        ? { gte: weeklyBounds.from, lte: weeklyBounds.to }
-                        : normalizedDate,
+                ...(reportType === "weekly" ? {} : { reportDate: normalizedDate }),
                 question: {
                     reportType,
                     isActive: true,

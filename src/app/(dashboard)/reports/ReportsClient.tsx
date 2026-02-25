@@ -117,7 +117,6 @@ const WEEKLY_AREA_TYPE_OPTIONS = [
 
 const DISCHARGE_MANAGER_PAGE_SIZE = 5;
 const DAILY_MANAGER_PAGE_SIZE = 8;
-const WEEKLY_MANAGER_PAGE_SIZE = 5;
 const DAILY_DRAFT_PREFIX = "reports.daily.draft";
 const WEEKLY_DRAFT_PREFIX = "reports.weekly.draft";
 const DISCHARGE_DRAFT_PREFIX = "reports.discharge.draft";
@@ -174,49 +173,6 @@ function isValidDateInput(dateStr: string) {
         parsed.getUTCMonth() === month - 1 &&
         parsed.getUTCDate() === day
     );
-}
-
-function parseIsoDate(value: string) {
-    const [year, month, day] = value.split("-").map(Number);
-    if (
-        !Number.isInteger(year) ||
-        !Number.isInteger(month) ||
-        !Number.isInteger(day)
-    ) {
-        return null;
-    }
-    return new Date(Date.UTC(year, month - 1, day));
-}
-
-function formatIsoDate(value: Date) {
-    const year = value.getUTCFullYear();
-    const month = String(value.getUTCMonth() + 1).padStart(2, "0");
-    const day = String(value.getUTCDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-}
-
-function getWeeklyManagerRangeLabel(reportDate: string, range: WeeklyManagerRange) {
-    const parsed = parseIsoDate(reportDate);
-    if (!parsed) {
-        return reportDate;
-    }
-
-    if (range === "monthly") {
-        const monthName = parsed.toLocaleString("en", { month: "long", timeZone: "UTC" });
-        return `${monthName} ${parsed.getUTCFullYear()}`;
-    }
-
-    if (range === "weekly") {
-        const day = parsed.getUTCDay();
-        const daysSinceMonday = (day + 6) % 7;
-        const start = new Date(parsed);
-        start.setUTCDate(parsed.getUTCDate() - daysSinceMonday);
-        const end = new Date(start);
-        end.setUTCDate(start.getUTCDate() + 6);
-        return `${formatIsoDate(start)} to ${formatIsoDate(end)}`;
-    }
-
-    return formatIsoDate(parsed);
 }
 
 function getDailyDraftKey(date: string) {
@@ -492,10 +448,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dailyRoundFilter, setDailyRoundFilter] = useState("all");
     const [dailySortKey, setDailySortKey] = useState<DailySortKey>("updated_desc");
     const [dailyPage, setDailyPage] = useState(1);
-    const [weeklySearchTerm, setWeeklySearchTerm] = useState("");
-    const [weeklySupervisorFilter, setWeeklySupervisorFilter] = useState("all");
-    const [weeklyManagerRange, setWeeklyManagerRange] = useState<WeeklyManagerRange>("weekly");
-    const [weeklyPage, setWeeklyPage] = useState(1);
+    const weeklyManagerRange: WeeklyManagerRange = "weekly";
 
 
     // Monthly Discharge State
@@ -1012,17 +965,21 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
     };
 
-    const handleDeleteSupervisorReport = (supervisorId: number, supervisorName: string) => {
+    const handleDeleteSupervisorReport = (
+        supervisorId: number,
+        supervisorName: string,
+        targetReportDate: string = reportDate
+    ) => {
         if (
             !confirm(
-                `Delete ${activeTab} report answers for ${supervisorName} on ${reportDate}?`
+                `Delete ${activeTab} report answers for ${supervisorName} on ${targetReportDate}?`
             )
         ) {
             return;
         }
 
         startTransition(async () => {
-            const result = await deleteSupervisorReportAnswers(activeTab, reportDate, supervisorId);
+            const result = await deleteSupervisorReportAnswers(activeTab, targetReportDate, supervisorId);
             if (!result.success) {
                 toast.error(result.message);
                 return;
@@ -1226,73 +1183,52 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     const groupedManagerAnswers = useMemo(() => {
         const groups = new Map<
-            number,
-            { supervisorId: number; supervisorName: string; answers: ManagerAnswerItem[] }
+            string,
+            {
+                groupKey: string;
+                supervisorId: number;
+                supervisorName: string;
+                reportDate: string;
+                answers: ManagerAnswerItem[];
+            }
         >();
 
         for (const answer of managerAnswers) {
-            const existing = groups.get(answer.supervisorId);
+            const groupKey = `${answer.supervisorId}:${answer.reportDate}`;
+            const existing = groups.get(groupKey);
             if (existing) {
                 existing.answers.push(answer);
                 continue;
             }
 
-            groups.set(answer.supervisorId, {
+            groups.set(groupKey, {
+                groupKey,
                 supervisorId: answer.supervisorId,
                 supervisorName: answer.supervisorName,
+                reportDate: answer.reportDate,
                 answers: [answer],
             });
         }
 
-        return Array.from(groups.values()).sort((a, b) =>
-            a.supervisorName.localeCompare(b.supervisorName, "en")
-        );
+        return Array.from(groups.values())
+            .map((group) => ({
+                ...group,
+                answers: [...group.answers].sort((a, b) => {
+                    const byQuestion = a.questionId - b.questionId;
+                    if (byQuestion !== 0) {
+                        return byQuestion;
+                    }
+                    return b.updatedAt.localeCompare(a.updatedAt, "en");
+                }),
+            }))
+            .sort((a, b) => {
+                const byDate = b.reportDate.localeCompare(a.reportDate, "en");
+                if (byDate !== 0) {
+                    return byDate;
+                }
+                return a.supervisorName.localeCompare(b.supervisorName, "en");
+            });
     }, [managerAnswers]);
-
-    const weeklyManagerSupervisors = useMemo(() => {
-        return Array.from(new Set(groupedManagerAnswers.map((group) => group.supervisorName)))
-            .filter((value) => value.trim().length > 0)
-            .sort((a, b) => a.localeCompare(b, "en"));
-    }, [groupedManagerAnswers]);
-
-    const filteredWeeklyManagerGroups = useMemo(() => {
-        const normalizedSearch = weeklySearchTerm.trim().toLowerCase();
-        return groupedManagerAnswers.filter((group) => {
-            if (weeklySupervisorFilter !== "all" && group.supervisorName !== weeklySupervisorFilter) {
-                return false;
-            }
-
-            if (!normalizedSearch) {
-                return true;
-            }
-
-            const searchText = [
-                group.supervisorName,
-                ...group.answers.map(
-                    (answer) => `${answer.reportDate} ${answer.question} ${answer.answer}`
-                ),
-            ]
-                .join(" ")
-                .toLowerCase();
-
-            return searchText.includes(normalizedSearch);
-        });
-    }, [groupedManagerAnswers, weeklySearchTerm, weeklySupervisorFilter]);
-
-    const weeklyTotalPages = Math.max(
-        1,
-        Math.ceil(filteredWeeklyManagerGroups.length / WEEKLY_MANAGER_PAGE_SIZE)
-    );
-
-    const weeklyManagerRangeLabel = useMemo(
-        () => getWeeklyManagerRangeLabel(reportDate, weeklyManagerRange),
-        [reportDate, weeklyManagerRange]
-    );
-
-    const pagedWeeklyManagerGroups = useMemo(() => {
-        const start = (weeklyPage - 1) * WEEKLY_MANAGER_PAGE_SIZE;
-        return filteredWeeklyManagerGroups.slice(start, start + WEEKLY_MANAGER_PAGE_SIZE);
-    }, [filteredWeeklyManagerGroups, weeklyPage]);
 
     const dischargeManagerAreas = useMemo(() => {
         return Array.from(new Set(dischargeEntries.map((entry) => entry.area)))
@@ -1489,10 +1425,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     }, [dailyAreaFilter, dailyRoundFilter, dailySearchTerm, dailySortKey, reportDate]);
 
     useEffect(() => {
-        setWeeklyPage(1);
-    }, [reportDate, weeklySearchTerm, weeklySupervisorFilter, weeklyManagerRange]);
-
-    useEffect(() => {
         if (dischargePage > dischargeTotalPages) {
             setDischargePage(dischargeTotalPages);
         }
@@ -1503,12 +1435,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             setDailyPage(dailyTotalPages);
         }
     }, [dailyPage, dailyTotalPages]);
-
-    useEffect(() => {
-        if (weeklyPage > weeklyTotalPages) {
-            setWeeklyPage(weeklyTotalPages);
-        }
-    }, [weeklyPage, weeklyTotalPages]);
 
     return (
         <div className="space-y-6 animate-fade-in pb-12">
@@ -1574,7 +1500,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         </div>
                     )}
 
-                    {(activeTab !== "discharge" || dischargeReportType === "daily") && (
+                    {(activeTab === "daily" ||
+                        (activeTab === "discharge" && dischargeReportType === "daily")) && (
                         <>
                             <label htmlFor="report-date" className="text-sm font-medium text-slate-700">
                                 {activeTab === "discharge" ? "Submission date" : "Report date"}
@@ -1633,7 +1560,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             </select>
                         </>
                     )}
-                    {isManager && (
+                    {isManager && activeTab !== "weekly" && (
                         <button
                             type="button"
                             onClick={handleExportTabReports}
@@ -2277,106 +2204,46 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             <div>
                                 <h2 className="text-lg font-semibold text-slate-900">Supervisor answers</h2>
                                 <p className="text-sm text-slate-500">
-                                    Weekly responses submitted for {weeklyManagerRangeLabel}.
+                                    All weekly responses, sorted by work date.
                                 </p>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                                <div className="space-y-1 md:col-span-2">
-                                    <label className="text-xs font-semibold text-slate-600">Search</label>
-                                    <input
-                                        type="text"
-                                        value={weeklySearchTerm}
-                                        onChange={(event) => setWeeklySearchTerm(event.target.value)}
-                                        placeholder="Supervisor, question, answer..."
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-slate-600">Supervisor filter</label>
-                                    <select
-                                        aria-label="Filter by supervisor"
-                                        value={weeklySupervisorFilter}
-                                        onChange={(event) => setWeeklySupervisorFilter(event.target.value)}
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                                    >
-                                        <option value="all">All supervisors</option>
-                                        {weeklyManagerSupervisors.map((name) => (
-                                            <option key={name} value={name}>
-                                                {name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-slate-600">Period</label>
-                                    <select
-                                        aria-label="Select weekly report period"
-                                        value={weeklyManagerRange}
-                                        onChange={(event) =>
-                                            setWeeklyManagerRange(event.target.value as WeeklyManagerRange)
-                                        }
-                                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-                                    >
-                                        <option value="daily">Daily</option>
-                                        <option value="weekly">Weekly</option>
-                                        <option value="monthly">Monthly</option>
-                                    </select>
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-slate-600">Actions</label>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setWeeklySearchTerm("");
-                                            setWeeklySupervisorFilter("all");
-                                            setWeeklyManagerRange("weekly");
-                                        }}
-                                        className="w-full px-3 py-2 text-sm font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
-                                    >
-                                        Reset filters
-                                    </button>
-                                </div>
                             </div>
 
                             <p className="text-xs text-slate-500">
-                                Showing {filteredWeeklyManagerGroups.length} supervisor report
-                                {filteredWeeklyManagerGroups.length === 1 ? "" : "s"}.
+                                Showing {groupedManagerAnswers.length} weekly report
+                                {groupedManagerAnswers.length === 1 ? "" : "s"}.
                             </p>
 
-                            {filteredWeeklyManagerGroups.length === 0 ? (
+                            {groupedManagerAnswers.length === 0 ? (
                                 <p className="text-sm text-slate-500">
-                                    {groupedManagerAnswers.length === 0
-                                        ? "No responses submitted yet."
-                                        : "No weekly responses match your current filters."}
+                                    No responses submitted yet.
                                 </p>
                             ) : (
                                 <div className="space-y-4">
-                                    {pagedWeeklyManagerGroups.map((group) => (
-                                        <div key={group.supervisorId} className="border border-slate-200 rounded-lg overflow-hidden">
+                                    {groupedManagerAnswers.map((group) => (
+                                        <div key={group.groupKey} className="border border-slate-200 rounded-lg overflow-hidden">
                                             <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
-                                                <p className="text-sm font-semibold text-slate-800">
-                                                    {group.supervisorName}
-                                                </p>
-                                                {weeklyManagerRange === "daily" ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            handleDeleteSupervisorReport(
-                                                                group.supervisorId,
-                                                                group.supervisorName
-                                                            )
-                                                        }
-                                                        disabled={isPending}
-                                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                                    >
-                                                        Delete report
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-[11px] text-slate-400">
-                                                        Switch to daily period to delete
-                                                    </span>
-                                                )}
+                                                <div>
+                                                    <p className="text-sm font-semibold text-slate-800">
+                                                        {group.supervisorName}
+                                                    </p>
+                                                    <p className="text-xs text-slate-500">
+                                                        Work date: {group.reportDate}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleDeleteSupervisorReport(
+                                                            group.supervisorId,
+                                                            group.supervisorName,
+                                                            group.reportDate
+                                                        )
+                                                    }
+                                                    disabled={isPending}
+                                                    className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                >
+                                                    Delete report
+                                                </button>
                                             </div>
                                             <div className="divide-y divide-slate-100">
                                                 {group.answers.map((answer) => (
@@ -2388,7 +2255,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                             {answer.answer}
                                                         </p>
                                                         <p className="text-[11px] text-slate-400 mt-2">
-                                                            Date: {answer.reportDate} |{" "}
                                                             Updated: {new Date(answer.updatedAt).toLocaleString()}
                                                         </p>
                                                     </div>
@@ -2396,33 +2262,6 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             </div>
                                         </div>
                                     ))}
-                                    <div className="flex items-center justify-between pt-2">
-                                        <p className="text-xs text-slate-500">
-                                            Page {weeklyPage} of {weeklyTotalPages}
-                                        </p>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => setWeeklyPage((prev) => Math.max(1, prev - 1))}
-                                                disabled={weeklyPage <= 1}
-                                                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
-                                            >
-                                                Previous
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    setWeeklyPage((prev) =>
-                                                        Math.min(weeklyTotalPages, prev + 1)
-                                                    )
-                                                }
-                                                disabled={weeklyPage >= weeklyTotalPages}
-                                                className="px-3 py-1.5 text-xs font-semibold rounded-md border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 disabled:opacity-60"
-                                            >
-                                                Next
-                                            </button>
-                                        </div>
-                                    </div>
                                 </div>
                             )}
                         </div>
