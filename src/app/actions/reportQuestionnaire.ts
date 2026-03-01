@@ -8,6 +8,11 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/app/actions/audit";
 import { logServerError, logServerInfo } from "@/lib/observability";
 import {
+    getRoomOptionsForArea,
+    hasMultipleRoomValues,
+    normalizeSingleRoomValue,
+} from "@/lib/dischargeLocations";
+import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
     type DailyReportSection,
@@ -1541,7 +1546,7 @@ export async function submitDischargeReport(
 
     for (const [index, row] of rows.entries()) {
         const dischargeDateInput = row?.dischargeDate?.trim() || "";
-        const roomNumber = row?.roomNumber?.trim() || "";
+        const roomNumber = normalizeSingleRoomValue(row?.roomNumber || "");
         const roomType = row?.roomType?.trim() || "";
         const area = row?.area?.trim() || "";
 
@@ -1575,6 +1580,13 @@ export async function submitDischargeReport(
             };
         }
 
+        if (hasMultipleRoomValues(roomNumber)) {
+            return {
+                success: false,
+                message: `Only one room is allowed per row (row ${index + 1})`,
+            };
+        }
+
         if (!isDischargeRoomType(roomType)) {
             return {
                 success: false,
@@ -1596,6 +1608,14 @@ export async function submitDischargeReport(
             return {
                 success: false,
                 message: `Area is not assigned to your account in row ${index + 1}`,
+            };
+        }
+
+        const roomOptions = getRoomOptionsForArea(normalizedArea);
+        if (roomOptions.length > 0 && !roomOptions.includes(roomNumber)) {
+            return {
+                success: false,
+                message: `Room is invalid for selected area in row ${index + 1}`,
             };
         }
 

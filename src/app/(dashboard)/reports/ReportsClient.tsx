@@ -27,6 +27,12 @@ import {
     DAILY_REPORT_SECTIONS,
     type DailyReportSection,
 } from "@/lib/dailyReportTemplate";
+import {
+    getRoomOptionsForArea,
+    hasMultipleRoomValues,
+    normalizeSingleRoomValue,
+    splitRoomValues,
+} from "@/lib/dischargeLocations";
 import { DischargeSpreadsheet } from "@/components/reports/DischargeSpreadsheet";
 
 interface ReportsClientProps {
@@ -324,6 +330,25 @@ function getDischargeRoomTypeLabel(roomType: DischargeRoomType) {
     return roomType === "isolation" ? "Isolation" : "Normal patient";
 }
 
+function expandDischargeEntriesByRoom(entries: DischargeEntryItem[]) {
+    return entries.flatMap((entry) => {
+        const roomValues = splitRoomValues(entry.roomNumber);
+        if (roomValues.length <= 1) {
+            return [
+                {
+                    ...entry,
+                    roomNumber: normalizeSingleRoomValue(entry.roomNumber),
+                },
+            ];
+        }
+
+        return roomValues.map((roomNumber) => ({
+            ...entry,
+            roomNumber,
+        }));
+    });
+}
+
 function buildDischargePayload(
     rows: DischargeEntryInput[],
     allowedRegions: string[]
@@ -340,7 +365,7 @@ function buildDischargePayload(
 
     for (const [index, row] of rows.entries()) {
         const dischargeDate = row.dischargeDate.trim();
-        const roomNumber = row.roomNumber.trim();
+        const roomNumber = normalizeSingleRoomValue(row.roomNumber);
         const area = row.area.trim();
         const hasAnyValue =
             dischargeDate.length > 0 ||
@@ -360,12 +385,20 @@ function buildDischargePayload(
 
         if (!roomNumber) {
             rowErrors.roomNumber = "Room number is required";
+        } else if (hasMultipleRoomValues(roomNumber)) {
+            rowErrors.roomNumber = "Only one room is allowed per row";
         }
 
+        const normalizedArea = regionByKey.get(area.toUpperCase()) || area;
         if (!area) {
             rowErrors.area = "Area is required";
         } else if (allowedRegions.length > 0 && !regionByKey.has(area.toUpperCase())) {
             rowErrors.area = "Area is not assigned to your account";
+        }
+
+        const roomOptions = getRoomOptionsForArea(normalizedArea);
+        if (roomOptions.length > 0 && roomNumber && !roomOptions.includes(roomNumber)) {
+            rowErrors.roomNumber = "Room is invalid for the selected area";
         }
 
         if (Object.keys(rowErrors).length > 0) {
@@ -377,7 +410,7 @@ function buildDischargePayload(
             dischargeDate,
             roomNumber,
             roomType: row.roomType,
-            area: regionByKey.get(area.toUpperCase()) || area,
+            area: normalizedArea,
         });
     }
 
@@ -669,11 +702,12 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             setDischargeLoadError(null);
-            setDischargeEntries(result.data.entries);
+            const expandedEntries = expandDischargeEntriesByRoom(result.data.entries);
+            setDischargeEntries(expandedEntries);
             setDischargeAllowedRegions(result.data.allowedRegions || []);
 
             if (isSupervisor) {
-                const rowsFromServer = result.data.entries.map((entry) => ({
+                const rowsFromServer = expandedEntries.map((entry) => ({
                     dischargeDate: entry.dischargeDate.slice(0, 10),
                     roomNumber: entry.roomNumber,
                     roomType: entry.roomType,
@@ -1134,8 +1168,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     return;
                 }
 
-                const dischargeRows = dischargeResult.data.entries.length > 0
-                    ? dischargeResult.data.entries.map((entry) => ({
+                const expandedEntries = expandDischargeEntriesByRoom(dischargeResult.data.entries);
+                const dischargeRows = expandedEntries.length > 0
+                    ? expandedEntries.map((entry) => ({
                         SubmissionDate: entry.reportDate.slice(0, 10),
                         DischargeDate: entry.dischargeDate.slice(0, 10),
                         RoomNumber: entry.roomNumber,
@@ -1173,8 +1208,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 return;
             }
 
-            const dischargeRows = dischargeResult.data.entries.length > 0
-                ? dischargeResult.data.entries.map((entry) => ({
+            const expandedEntries = expandDischargeEntriesByRoom(dischargeResult.data.entries);
+            const dischargeRows = expandedEntries.length > 0
+                ? expandedEntries.map((entry) => ({
                     SubmissionDate: entry.reportDate.slice(0, 10),
                     DischargeDate: entry.dischargeDate.slice(0, 10),
                     RoomNumber: entry.roomNumber,
@@ -2027,8 +2063,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     ) : null}
 
                                     <p className="text-xs text-slate-500">
-                                        Fill rows normally: choose Discharge date, write Room number, then choose Type
-                                        of room and Area from dropdown lists.
+                                        Choose area first. For E.R you can pick FT1, FT2, Triage, or CC Resus. For
+                                        floor areas, pick one ward room (for example 50 or 51 on 5th floor).
                                     </p>
 
                                     <DischargeSpreadsheet
@@ -2066,7 +2102,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     <div>
                                         <h2 className="text-lg font-semibold text-slate-900">Discharge Entries</h2>
                                         <p className="text-sm text-slate-500">
-                                            Submission date | Discharge date | Room number | Type of room | Supervisor
+                                            Submission date | Discharge date | Room / station | Type of room | Supervisor
                                             name | Area
                                         </p>
                                     </div>
@@ -2078,7 +2114,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                 type="text"
                                                 value={dischargeSearchTerm}
                                                 onChange={(event) => setDischargeSearchTerm(event.target.value)}
-                                                placeholder="Supervisor, room, area..."
+                                                placeholder="Supervisor, room/station, area..."
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                                             />
                                         </div>
@@ -2172,15 +2208,15 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                 <tr>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Submission date</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Discharge date</th>
-                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room / station</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Supervisor name</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-slate-100">
-                                                                {group.rows.map((entry) => (
-                                                                    <tr key={entry.id}>
+                                                                {group.rows.map((entry, rowIndex) => (
+                                                                    <tr key={`${entry.id}-${entry.roomNumber}-${rowIndex}`}>
                                                                         <td className="px-3 py-2 text-slate-700">
                                                                             {entry.reportDate.slice(0, 10)}
                                                                         </td>
