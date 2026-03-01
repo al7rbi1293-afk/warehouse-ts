@@ -1690,7 +1690,8 @@ export async function deleteDailyReportSubmission(
 
 export async function deleteDischargeSupervisorReport(
     reportDate: string,
-    supervisorId: number
+    supervisorId: number,
+    scope?: { year: number; month: number }
 ): Promise<ActionResult<{ deleted: number }>> {
     const session = await getServerSession(authOptions);
     const role = getRole(session);
@@ -1703,20 +1704,45 @@ export async function deleteDischargeSupervisorReport(
         return { success: false, message: "Invalid supervisor id" };
     }
 
-    const normalizedDate = normalizeReportDate(reportDate);
+    const where: Prisma.DischargeReportEntryWhereInput = {
+        supervisorId,
+    };
+    let auditTarget = `submission date ${reportDate}`;
+
+    if (scope) {
+        const { year, month } = scope;
+        if (
+            !Number.isInteger(year) ||
+            !Number.isInteger(month) ||
+            year < 1900 ||
+            year > 9999 ||
+            month < 1 ||
+            month > 12
+        ) {
+            return { success: false, message: "Invalid monthly scope" };
+        }
+
+        const startDate = new Date(Date.UTC(year, month - 1, 1));
+        const endDate = new Date(Date.UTC(year, month, 0));
+        where.dischargeDate = {
+            gte: startDate,
+            lte: endDate,
+        };
+        auditTarget = `month ${year}-${String(month).padStart(2, "0")}`;
+    } else {
+        const normalizedDate = normalizeReportDate(reportDate);
+        where.reportDate = normalizedDate;
+    }
 
     const deleted = await prisma.dischargeReportEntry.deleteMany({
-        where: {
-            reportDate: normalizedDate,
-            supervisorId,
-        },
+        where,
     });
 
     revalidatePath("/reports");
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete Discharge Report",
-        `Deleted discharge report entries for supervisor ${supervisorId} on ${reportDate}`,
+        `Deleted discharge report entries for supervisor ${supervisorId} on ${auditTarget}`,
         "Reports"
     );
 
@@ -1724,6 +1750,7 @@ export async function deleteDischargeSupervisorReport(
         reportDate,
         supervisorId,
         deleted: deleted.count,
+        ...(scope ? { year: scope.year, month: scope.month } : {}),
     });
     return {
         success: true,

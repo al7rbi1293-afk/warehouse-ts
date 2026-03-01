@@ -949,12 +949,29 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     };
 
     const handleDeleteDischargeReport = (supervisorId: number, supervisorName: string) => {
-        if (!confirm(`Delete discharge report for ${supervisorName} on submission date ${reportDate}?`)) {
+        const targetLabel =
+            dischargeReportType === "monthly"
+                ? `in ${new Date(dischargeYear, dischargeMonth - 1, 1).toLocaleString("default", {
+                    month: "long",
+                    year: "numeric",
+                })}`
+                : `on submission date ${reportDate}`;
+
+        if (!confirm(`Delete discharge report for ${supervisorName} ${targetLabel}?`)) {
             return;
         }
 
         startTransition(async () => {
-            const result = await deleteDischargeSupervisorReport(reportDate, supervisorId);
+            const result = await deleteDischargeSupervisorReport(
+                reportDate,
+                supervisorId,
+                dischargeReportType === "monthly"
+                    ? {
+                        year: dischargeYear,
+                        month: dischargeMonth,
+                    }
+                    : undefined
+            );
             if (!result.success) {
                 toast.error(result.message);
                 return;
