@@ -1,7 +1,12 @@
 
 import { getProjects, getWarehouses, getRegions } from "@/app/actions/references";
+import { notFound } from "next/navigation";
 
 export default async function DebugDbPage() {
+    if (process.env.NODE_ENV === "production") {
+        notFound();
+    }
+
     const projects = await getProjects();
     const warehouses = await getWarehouses();
     const regions = await getRegions();

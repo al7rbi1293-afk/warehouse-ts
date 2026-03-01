@@ -1,15 +1,25 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { hashPassword } from "@/lib/auth";
+import { authOptions, hashPassword } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
 
 interface RegisterResult {
     success: boolean;
     message: string;
 }
 
+const PROFILE_ADMIN_ROLES = new Set(["manager", "admin"]);
+
 export async function registerUser(formData: FormData): Promise<RegisterResult> {
+    const session = await getServerSession(authOptions);
+    const isDev = process.env.NODE_ENV !== "production";
+
+    if (!isDev && (!session || !PROFILE_ADMIN_ROLES.has(session.user.role))) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     const username = formData.get("username") as string;
     const password = formData.get("password") as string;
     const name = formData.get("name") as string;
@@ -55,6 +65,18 @@ export async function updateUserProfile(
     oldUsername: string,
     formData: FormData
 ): Promise<RegisterResult> {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const canEditOthers =
+        PROFILE_ADMIN_ROLES.has(session.user.role);
+
+    if (!canEditOthers && session.user.username !== oldUsername) {
+        return { success: false, message: "Unauthorized" };
+    }
+
     const newUsername = formData.get("username") as string;
     const newName = formData.get("name") as string;
     const newPassword = formData.get("password") as string;

@@ -4,6 +4,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 interface UserActionInput {
     username: string;
@@ -17,6 +19,8 @@ interface UserActionInput {
     attendanceShiftId?: string | number | null;
     allowedShifts?: string | null;
 }
+
+const USER_ADMIN_ROLES = new Set(["manager", "admin"]);
 
 function parseOptionalInt(value: string | number | null | undefined): number | null {
     if (value === null || value === undefined || value === "") {
@@ -34,8 +38,21 @@ function getErrorMessage(error: unknown) {
     return "Unexpected error";
 }
 
+async function requireUserAdmin() {
+    const session = await getServerSession(authOptions);
+    if (!session || !USER_ADMIN_ROLES.has(session.user.role)) {
+        return null;
+    }
+    return session;
+}
+
 export async function createUser(data: UserActionInput) {
     try {
+        const session = await requireUserAdmin();
+        if (!session) {
+            return { success: false, message: "Unauthorized" };
+        }
+
         const { username, password, name, empId, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
 
         if (!password || password.trim().length < 6) {
@@ -72,6 +89,11 @@ export async function createUser(data: UserActionInput) {
 
 export async function updateUser(username: string, data: UserActionInput) {
     try {
+        const session = await requireUserAdmin();
+        if (!session) {
+            return { success: false, message: "Unauthorized" };
+        }
+
         const { password, name, empId, role, region, regions, shiftId, attendanceShiftId, allowedShifts } = data;
 
         const updateData: Prisma.UserUncheckedUpdateInput = {
@@ -104,6 +126,11 @@ export async function updateUser(username: string, data: UserActionInput) {
 
 export async function deleteUser(username: string) {
     try {
+        const session = await requireUserAdmin();
+        if (!session) {
+            return { success: false, message: "Unauthorized" };
+        }
+
         await prisma.user.delete({
             where: { username }
         });

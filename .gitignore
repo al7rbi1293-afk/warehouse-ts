@@ -204,3 +204,11 @@ coverage/
 
 # Vercel
 .vercel
+
+# Maintenance artifacts (generated at runtime)
+maintenance/backups/
+maintenance/reports/weekly-health-*.md
+maintenance/reports/security-audit-*.json
+maintenance/reports/security-outdated-*.json
+maintenance/reports/security-secrets-*.txt
+maintenance/reports/security-summary-*.md
