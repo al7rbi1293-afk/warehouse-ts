@@ -5,12 +5,16 @@ import type {
     DischargeEntryInput,
     DischargeRoomType,
 } from "@/app/actions/reportQuestionnaire";
-import { getRoomOptionsForArea, isEmergencyArea } from "@/lib/dischargeLocations";
+import {
+    getAreaDetailOptions,
+    isEmergencyArea,
+    normalizeAreaDetailValue,
+} from "@/lib/dischargeLocations";
 
 interface DischargeSpreadsheetProps {
     rows: DischargeEntryInput[];
     allowedRegions: string[];
-    rowErrors?: Record<number, Partial<Record<"dischargeDate" | "roomNumber" | "area", string>>>;
+    rowErrors?: Record<number, Partial<Record<"dischargeDate" | "roomNumber" | "area" | "areaDetail", string>>>;
     disabled?: boolean;
     onRowsChange: (rows: DischargeEntryInput[]) => void;
 }
@@ -34,6 +38,7 @@ function createEmptyRow(): DischargeEntryInput {
         roomNumber: "",
         roomType: "normal_patient",
         area: "",
+        areaDetail: "",
     };
 }
 
@@ -109,17 +114,18 @@ export function DischargeSpreadsheet({
                         <tr>
                             <th className="w-12 px-3 py-2 text-left font-semibold text-slate-700">#</th>
                             <th className="px-3 py-2 text-left font-semibold text-slate-700">Discharge date</th>
-                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Room / station</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
                             <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
                             <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">Area detail</th>
                             <th className="w-24 px-3 py-2 text-left font-semibold text-slate-700">Action</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                         {normalizedRows.map((row, index) => {
                             const errors = rowErrors[index] || {};
-                            const roomOptions = getRoomOptionsForArea(row.area);
-                            const usesFixedRoomOptions = roomOptions.length > 0;
+                            const areaDetailOptions = getAreaDetailOptions(row.area);
+                            const isErArea = isEmergencyArea(row.area);
                             return (
                                 <tr key={index}>
                                     <td className="px-3 py-2 text-slate-500">{index + 1}</td>
@@ -143,44 +149,19 @@ export function DischargeSpreadsheet({
                                         ) : null}
                                     </td>
                                     <td className="px-3 py-2">
-                                        {usesFixedRoomOptions ? (
-                                            <select
-                                                value={row.roomNumber}
-                                                onChange={(event) =>
-                                                    updateRow(index, { roomNumber: event.target.value })
-                                                }
-                                                className={getInputClass(Boolean(errors.roomNumber))}
-                                                disabled={disabled}
-                                                aria-label={`Room number row ${index + 1}`}
-                                                aria-invalid={Boolean(errors.roomNumber)}
-                                                aria-describedby={errors.roomNumber ? `room-number-error-${index}` : undefined}
-                                            >
-                                                <option value="">
-                                                    {isEmergencyArea(row.area)
-                                                        ? "Select E.R station"
-                                                        : "Select ward room"}
-                                                </option>
-                                                {roomOptions.map((option) => (
-                                                    <option key={option} value={option}>
-                                                        {option}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <input
-                                                type="text"
-                                                value={row.roomNumber}
-                                                onChange={(event) =>
-                                                    updateRow(index, { roomNumber: event.target.value })
-                                                }
-                                                placeholder="Enter one room only"
-                                                className={getInputClass(Boolean(errors.roomNumber))}
-                                                disabled={disabled}
-                                                aria-label={`Room number row ${index + 1}`}
-                                                aria-invalid={Boolean(errors.roomNumber)}
-                                                aria-describedby={errors.roomNumber ? `room-number-error-${index}` : undefined}
-                                            />
-                                        )}
+                                        <input
+                                            type="text"
+                                            value={row.roomNumber}
+                                            onChange={(event) =>
+                                                updateRow(index, { roomNumber: event.target.value })
+                                            }
+                                            placeholder="Enter one room only"
+                                            className={getInputClass(Boolean(errors.roomNumber))}
+                                            disabled={disabled}
+                                            aria-label={`Room number row ${index + 1}`}
+                                            aria-invalid={Boolean(errors.roomNumber)}
+                                            aria-describedby={errors.roomNumber ? `room-number-error-${index}` : undefined}
+                                        />
                                         {errors.roomNumber ? (
                                             <p id={`room-number-error-${index}`} className="mt-1 text-xs text-red-700">
                                                 {errors.roomNumber}
@@ -213,16 +194,18 @@ export function DischargeSpreadsheet({
                                             value={row.area}
                                             onChange={(event) => {
                                                 const nextArea = event.target.value;
-                                                const nextAreaRoomOptions = getRoomOptionsForArea(nextArea);
-                                                const currentRoom = row.roomNumber.trim();
-                                                const shouldResetRoom =
-                                                    nextAreaRoomOptions.length > 0 &&
-                                                    currentRoom.length > 0 &&
-                                                    !nextAreaRoomOptions.includes(currentRoom);
+                                                const nextAreaDetailOptions = getAreaDetailOptions(nextArea);
+                                                const normalizedDetail = normalizeAreaDetailValue(
+                                                    nextArea,
+                                                    row.areaDetail || ""
+                                                );
 
                                                 updateRow(index, {
                                                     area: nextArea,
-                                                    ...(shouldResetRoom ? { roomNumber: "" } : {}),
+                                                    areaDetail:
+                                                        nextAreaDetailOptions.length > 0
+                                                            ? normalizedDetail
+                                                            : "",
                                                 });
                                             }}
                                             className={getInputClass(Boolean(errors.area))}
@@ -241,6 +224,59 @@ export function DischargeSpreadsheet({
                                         {errors.area ? (
                                             <p id={`area-error-${index}`} className="mt-1 text-xs text-red-700">
                                                 {errors.area}
+                                            </p>
+                                        ) : null}
+                                    </td>
+                                    <td className="px-3 py-2">
+                                        {isErArea ? (
+                                            <input
+                                                type="text"
+                                                value={row.areaDetail || ""}
+                                                onChange={(event) =>
+                                                    updateRow(index, { areaDetail: event.target.value })
+                                                }
+                                                placeholder="FT1 / FT2 / Triage / CC Resus"
+                                                className={getInputClass(Boolean(errors.areaDetail))}
+                                                disabled={disabled || !row.area}
+                                                aria-label={`Area detail row ${index + 1}`}
+                                                aria-invalid={Boolean(errors.areaDetail)}
+                                                aria-describedby={errors.areaDetail ? `area-detail-error-${index}` : undefined}
+                                            />
+                                        ) : areaDetailOptions.length > 0 ? (
+                                            <select
+                                                value={row.areaDetail || ""}
+                                                onChange={(event) => updateRow(index, { areaDetail: event.target.value })}
+                                                className={getInputClass(Boolean(errors.areaDetail))}
+                                                disabled={disabled || !row.area}
+                                                aria-label={`Area detail row ${index + 1}`}
+                                                aria-invalid={Boolean(errors.areaDetail)}
+                                                aria-describedby={errors.areaDetail ? `area-detail-error-${index}` : undefined}
+                                            >
+                                                <option value="">Select area detail</option>
+                                                {areaDetailOptions.map((option) => (
+                                                    <option key={option} value={option}>
+                                                        {option}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <input
+                                                type="text"
+                                                value={row.areaDetail || ""}
+                                                onChange={(event) =>
+                                                    updateRow(index, { areaDetail: event.target.value })
+                                                }
+                                                placeholder="Optional detail"
+                                                className={getInputClass(Boolean(errors.areaDetail))}
+                                                disabled={disabled || !row.area}
+                                                aria-label={`Area detail row ${index + 1}`}
+                                                aria-invalid={Boolean(errors.areaDetail)}
+                                                aria-describedby={errors.areaDetail ? `area-detail-error-${index}` : undefined}
+                                            />
+                                        )}
+                                        {errors.areaDetail ? (
+                                            <p id={`area-detail-error-${index}`} className="mt-1 text-xs text-red-700">
+                                                {errors.areaDetail}
                                             </p>
                                         ) : null}
                                     </td>

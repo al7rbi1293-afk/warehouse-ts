@@ -28,8 +28,10 @@ import {
     type DailyReportSection,
 } from "@/lib/dailyReportTemplate";
 import {
-    getRoomOptionsForArea,
+    decodeAreaValue,
+    getAreaDetailOptions,
     hasMultipleRoomValues,
+    normalizeAreaDetailValue,
     normalizeSingleRoomValue,
     splitRoomValues,
 } from "@/lib/dischargeLocations";
@@ -75,6 +77,7 @@ interface DischargeEntryItem {
     supervisorId: number;
     supervisorName: string;
     area: string;
+    areaDetail: string;
     roomNumber: string;
     roomType: DischargeRoomType;
     updatedAt: string;
@@ -92,7 +95,7 @@ interface WeeklyFormState {
     specificWork: string;
 }
 
-type DischargeRowErrors = Partial<Record<"dischargeDate" | "roomNumber" | "area", string>>;
+type DischargeRowErrors = Partial<Record<"dischargeDate" | "roomNumber" | "area" | "areaDetail", string>>;
 type DischargeSortKey =
     | "submission_desc"
     | "submission_asc"
@@ -247,6 +250,7 @@ function createEmptyDischargeRow(): DischargeEntryInput {
         roomNumber: "",
         roomType: "normal_patient",
         area: "",
+        areaDetail: "",
     };
 }
 
@@ -321,6 +325,7 @@ function coerceDischargeDraftRows(value: unknown): DischargeEntryInput[] {
                 roomNumber: typeof typed.roomNumber === "string" ? typed.roomNumber : "",
                 roomType,
                 area: typeof typed.area === "string" ? typed.area : "",
+                areaDetail: typeof typed.areaDetail === "string" ? typed.areaDetail : "",
             } satisfies DischargeEntryInput;
         })
         .filter((row): row is DischargeEntryInput => row !== null);
@@ -349,6 +354,17 @@ function expandDischargeEntriesByRoom(entries: DischargeEntryItem[]) {
     });
 }
 
+function hydrateDischargeEntries(rawEntries: Array<Omit<DischargeEntryItem, "areaDetail">>) {
+    return rawEntries.map((entry) => {
+        const decodedArea = decodeAreaValue(entry.area);
+        return {
+            ...entry,
+            area: decodedArea.area,
+            areaDetail: decodedArea.areaDetail,
+        } satisfies DischargeEntryItem;
+    });
+}
+
 function buildDischargePayload(
     rows: DischargeEntryInput[],
     allowedRegions: string[]
@@ -367,10 +383,12 @@ function buildDischargePayload(
         const dischargeDate = row.dischargeDate.trim();
         const roomNumber = normalizeSingleRoomValue(row.roomNumber);
         const area = row.area.trim();
+        const areaDetailInput = row.areaDetail.trim();
         const hasAnyValue =
             dischargeDate.length > 0 ||
             roomNumber.length > 0 ||
-            area.length > 0;
+            area.length > 0 ||
+            areaDetailInput.length > 0;
 
         if (!hasAnyValue) {
             continue;
@@ -396,9 +414,10 @@ function buildDischargePayload(
             rowErrors.area = "Area is not assigned to your account";
         }
 
-        const roomOptions = getRoomOptionsForArea(normalizedArea);
-        if (roomOptions.length > 0 && roomNumber && !roomOptions.includes(roomNumber)) {
-            rowErrors.roomNumber = "Room is invalid for the selected area";
+        const areaDetailOptions = getAreaDetailOptions(normalizedArea);
+        const normalizedAreaDetail = normalizeAreaDetailValue(normalizedArea, areaDetailInput);
+        if (areaDetailOptions.length > 0 && !normalizedAreaDetail) {
+            rowErrors.areaDetail = "Area detail is required for selected area";
         }
 
         if (Object.keys(rowErrors).length > 0) {
@@ -411,6 +430,7 @@ function buildDischargePayload(
             roomNumber,
             roomType: row.roomType,
             area: normalizedArea,
+            areaDetail: normalizedAreaDetail,
         });
     }
 
@@ -702,7 +722,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             }
 
             setDischargeLoadError(null);
-            const expandedEntries = expandDischargeEntriesByRoom(result.data.entries);
+            const hydratedEntries = hydrateDischargeEntries(result.data.entries);
+            const expandedEntries = expandDischargeEntriesByRoom(hydratedEntries);
             setDischargeEntries(expandedEntries);
             setDischargeAllowedRegions(result.data.allowedRegions || []);
 
@@ -712,6 +733,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     roomNumber: entry.roomNumber,
                     roomType: entry.roomType,
                     area: entry.area,
+                    areaDetail: entry.areaDetail,
                 }));
                 const draftRows = coerceDischargeDraftRows(
                     readDraft<DischargeEntryInput[]>(getDischargeDraftKey(requestedDate))
@@ -1168,7 +1190,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     return;
                 }
 
-                const expandedEntries = expandDischargeEntriesByRoom(dischargeResult.data.entries);
+                const hydratedEntries = hydrateDischargeEntries(dischargeResult.data.entries);
+                const expandedEntries = expandDischargeEntriesByRoom(hydratedEntries);
                 const dischargeRows = expandedEntries.length > 0
                     ? expandedEntries.map((entry) => ({
                         SubmissionDate: entry.reportDate.slice(0, 10),
@@ -1177,6 +1200,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         RoomType: getDischargeRoomTypeLabel(entry.roomType),
                         Supervisor: entry.supervisorName,
                         Area: entry.area,
+                        AreaDetail: entry.areaDetail,
                         UpdatedAt: new Date(entry.updatedAt).toLocaleString(),
                     }))
                     : [
@@ -1187,6 +1211,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             RoomType: "",
                             Supervisor: "",
                             Area: "",
+                            AreaDetail: "",
                             UpdatedAt: "No discharge responses for this month",
                         },
                     ];
@@ -1208,7 +1233,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 return;
             }
 
-            const expandedEntries = expandDischargeEntriesByRoom(dischargeResult.data.entries);
+            const hydratedEntries = hydrateDischargeEntries(dischargeResult.data.entries);
+            const expandedEntries = expandDischargeEntriesByRoom(hydratedEntries);
             const dischargeRows = expandedEntries.length > 0
                 ? expandedEntries.map((entry) => ({
                     SubmissionDate: entry.reportDate.slice(0, 10),
@@ -1217,6 +1243,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     RoomType: getDischargeRoomTypeLabel(entry.roomType),
                     Supervisor: entry.supervisorName,
                     Area: entry.area,
+                    AreaDetail: entry.areaDetail,
                     UpdatedAt: new Date(entry.updatedAt).toLocaleString(),
                 }))
                 : [
@@ -1227,6 +1254,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         RoomType: "",
                         Supervisor: "",
                         Area: "",
+                        AreaDetail: "",
                         UpdatedAt: "No discharge responses",
                     },
                 ];
@@ -1414,6 +1442,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 entry.supervisorName,
                 entry.roomNumber,
                 entry.area,
+                entry.areaDetail,
                 entry.reportDate.slice(0, 10),
                 entry.dischargeDate.slice(0, 10),
                 getDischargeRoomTypeLabel(entry.roomType),
@@ -2063,8 +2092,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     ) : null}
 
                                     <p className="text-xs text-slate-500">
-                                        Choose area first. For E.R you can pick FT1, FT2, Triage, or CC Resus. For
-                                        floor areas, pick one ward room (for example 50 or 51 on 5th floor).
+                                        Room number stays separate. Use Area detail for E.R (FT1, FT2, Triage, CC
+                                        Resus) and for ward floors (example: 5th floor to 50 or 51).
                                     </p>
 
                                     <DischargeSpreadsheet
@@ -2102,8 +2131,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     <div>
                                         <h2 className="text-lg font-semibold text-slate-900">Discharge Entries</h2>
                                         <p className="text-sm text-slate-500">
-                                            Submission date | Discharge date | Room / station | Type of room | Supervisor
-                                            name | Area
+                                            Submission date | Discharge date | Room number | Type of room |
+                                            Supervisor name | Area | Area detail
                                         </p>
                                     </div>
 
@@ -2114,7 +2143,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                 type="text"
                                                 value={dischargeSearchTerm}
                                                 onChange={(event) => setDischargeSearchTerm(event.target.value)}
-                                                placeholder="Supervisor, room/station, area..."
+                                                placeholder="Supervisor, room, area, area detail..."
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                                             />
                                         </div>
@@ -2208,10 +2237,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                 <tr>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Submission date</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Discharge date</th>
-                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room / station</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Room number</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Type of room</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Supervisor name</th>
                                                                     <th className="px-3 py-2 text-left font-semibold text-slate-700">Area</th>
+                                                                    <th className="px-3 py-2 text-left font-semibold text-slate-700">Area detail</th>
                                                                 </tr>
                                                             </thead>
                                                             <tbody className="divide-y divide-slate-100">
@@ -2229,6 +2259,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                                         </td>
                                                                         <td className="px-3 py-2 text-slate-700">{entry.supervisorName}</td>
                                                                         <td className="px-3 py-2 text-slate-700">{entry.area}</td>
+                                                                        <td className="px-3 py-2 text-slate-700">{entry.areaDetail || "-"}</td>
                                                                     </tr>
                                                                 ))}
                                                             </tbody>

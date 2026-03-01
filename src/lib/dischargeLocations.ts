@@ -5,7 +5,9 @@ const NORMALIZED_EMERGENCY_AREA_KEYS = new Set([
     "EMERGENCYDEPARTMENT",
 ]);
 
-export const ER_ROOM_OPTIONS = ["FT1", "FT2", "Triage", "CC Resus"] as const;
+const AREA_DETAIL_SEPARATOR = "|||";
+
+export const ER_AREA_DETAIL_OPTIONS = ["FT1", "FT2", "Triage", "CC Resus"] as const;
 
 function normalizeAreaForComparison(value: string) {
     return value.replace(/[^a-z0-9]/gi, "").toUpperCase();
@@ -39,9 +41,9 @@ export function getWardRoomOptionsForFloor(floor: number) {
     return [`${floor}0`, `${floor}1`];
 }
 
-export function getRoomOptionsForArea(area: string) {
+export function getAreaDetailOptions(area: string) {
     if (isEmergencyArea(area)) {
-        return [...ER_ROOM_OPTIONS];
+        return [...ER_AREA_DETAIL_OPTIONS];
     }
 
     const floorNumber = extractFloorNumber(area);
@@ -50,6 +52,62 @@ export function getRoomOptionsForArea(area: string) {
     }
 
     return [] as string[];
+}
+
+export function normalizeAreaDetailValue(area: string, areaDetail: string) {
+    const options = getAreaDetailOptions(area);
+    if (options.length === 0) {
+        return normalizeSingleRoomValue(areaDetail);
+    }
+
+    const byNormalized = new Map(
+        options.map((option) => [normalizeAreaForComparison(option), option])
+    );
+    return byNormalized.get(normalizeAreaForComparison(areaDetail)) || "";
+}
+
+export function encodeAreaValue(area: string, areaDetail: string) {
+    const baseArea = area.trim();
+    const detail = areaDetail.trim();
+    if (!baseArea) {
+        return "";
+    }
+
+    if (!detail) {
+        return baseArea;
+    }
+
+    return `${baseArea}${AREA_DETAIL_SEPARATOR}${detail}`;
+}
+
+export function decodeAreaValue(rawArea: string) {
+    const value = rawArea.trim();
+    if (!value) {
+        return { area: "", areaDetail: "" };
+    }
+
+    if (value.includes(AREA_DETAIL_SEPARATOR)) {
+        const [area, ...rest] = value.split(AREA_DETAIL_SEPARATOR);
+        return {
+            area: area?.trim() || "",
+            areaDetail: rest.join(AREA_DETAIL_SEPARATOR).trim(),
+        };
+    }
+
+    const legacySplit = value.match(/^(.+?)\s*-\s*(.+)$/);
+    if (legacySplit) {
+        const candidateArea = legacySplit[1].trim();
+        const candidateDetail = legacySplit[2].trim();
+        const normalizedDetail = normalizeAreaDetailValue(candidateArea, candidateDetail);
+        if (normalizedDetail) {
+            return {
+                area: candidateArea,
+                areaDetail: normalizedDetail,
+            };
+        }
+    }
+
+    return { area: value, areaDetail: "" };
 }
 
 export function hasMultipleRoomValues(roomNumber: string) {

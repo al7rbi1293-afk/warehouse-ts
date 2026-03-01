@@ -8,8 +8,10 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/app/actions/audit";
 import { logServerError, logServerInfo } from "@/lib/observability";
 import {
-    getRoomOptionsForArea,
+    encodeAreaValue,
+    getAreaDetailOptions,
     hasMultipleRoomValues,
+    normalizeAreaDetailValue,
     normalizeSingleRoomValue,
 } from "@/lib/dischargeLocations";
 import {
@@ -75,6 +77,7 @@ export interface DischargeEntryInput {
     roomNumber: string;
     roomType: DischargeRoomType;
     area: string;
+    areaDetail: string;
 }
 
 interface DailySubmissionDto {
@@ -1549,11 +1552,13 @@ export async function submitDischargeReport(
         const roomNumber = normalizeSingleRoomValue(row?.roomNumber || "");
         const roomType = row?.roomType?.trim() || "";
         const area = row?.area?.trim() || "";
+        const areaDetailInput = row?.areaDetail?.trim() || "";
 
         const hasAnyValue =
             dischargeDateInput.length > 0 ||
             roomNumber.length > 0 ||
-            area.length > 0;
+            area.length > 0 ||
+            areaDetailInput.length > 0;
         if (!hasAnyValue) {
             continue;
         }
@@ -1611,11 +1616,12 @@ export async function submitDischargeReport(
             };
         }
 
-        const roomOptions = getRoomOptionsForArea(normalizedArea);
-        if (roomOptions.length > 0 && !roomOptions.includes(roomNumber)) {
+        const areaDetailOptions = getAreaDetailOptions(normalizedArea);
+        const normalizedAreaDetail = normalizeAreaDetailValue(normalizedArea, areaDetailInput);
+        if (areaDetailOptions.length > 0 && !normalizedAreaDetail) {
             return {
                 success: false,
-                message: `Room is invalid for selected area in row ${index + 1}`,
+                message: `Area detail is required and invalid in row ${index + 1}`,
             };
         }
 
@@ -1623,7 +1629,7 @@ export async function submitDischargeReport(
             dischargeDate,
             roomNumber,
             roomType,
-            area: normalizedArea,
+            area: encodeAreaValue(normalizedArea, normalizedAreaDetail),
             sortOrder: cleaned.length,
         });
     }
