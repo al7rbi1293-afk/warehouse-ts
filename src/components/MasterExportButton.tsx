@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { track } from "@vercel/analytics";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import {
@@ -154,6 +155,12 @@ export function MasterExportButton({ currentDate, className }: MasterExportButto
             XLSX.utils.book_append_sheet(wb, wsNight, "Night Shift");
 
             XLSX.writeFile(wb, `Master_Report_${currentDate}.xlsx`);
+            track("Export Master Report", {
+                report_date: currentDate,
+                supervisor_count: data.supervisors.length,
+                morning_zone_count: Object.keys(data.morning).length,
+                night_zone_count: Object.keys(data.night).length,
+            });
             toast.success("Master Report exported successfully");
 
         } catch (error) {

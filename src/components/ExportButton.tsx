@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { track } from "@vercel/analytics";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
@@ -98,6 +99,11 @@ export function ExportButton({
                     type: 'binary'
                 });
 
+                track("Export Data", {
+                    file_name: fileName,
+                    sheet_name: sheetName,
+                    row_count: formattedData.length,
+                });
                 toast.success("Export successful");
             } catch (error) {
                 console.error("Export failed:", error);

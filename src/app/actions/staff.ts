@@ -1,9 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { revalidateManpowerData } from "@/lib/cache-tags";
 
 
 
@@ -95,7 +95,7 @@ export async function markStaffAttendance(
             }
         });
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Staff attendance updated" };
     } catch (error) {
         console.error("Error updating staff attendance:", error);
@@ -153,7 +153,7 @@ export async function assignSubstitute(
             }
         });
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return {
             success: true,
             message: "Substitute assigned successfully",
@@ -223,7 +223,7 @@ export async function updateWorkerAttendance(
             }
         });
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Attendance updated successfully" };
     } catch (error) {
         console.error("Update worker attendance error:", error);

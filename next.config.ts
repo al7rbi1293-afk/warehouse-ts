@@ -4,6 +4,10 @@ const nextConfig: NextConfig = {
   // Production optimizations
   reactStrictMode: true,
 
+  turbopack: {
+    root: process.cwd(),
+  },
+
   // Optimize images if using external sources
   images: {
     formats: ["image/avif", "image/webp"],

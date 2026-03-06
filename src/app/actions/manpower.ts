@@ -1,10 +1,10 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAudit } from "@/app/actions/audit";
+import { revalidateManpowerData } from "@/lib/cache-tags";
 
 export async function createWorker(formData: FormData) {
     const session = await getServerSession(authOptions);
@@ -34,7 +34,7 @@ export async function createWorker(formData: FormData) {
 
         await logAudit(session.user.name || session.user.username, "Create Worker", `Created worker ${name} (${role})`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Worker added successfully" };
     } catch (error) {
         console.error("Create worker error:", error);
@@ -68,7 +68,7 @@ export async function updateWorker(
 
         await logAudit(session.user.name || session.user.username, "Update Worker", `Updated worker ID ${id}`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Worker updated successfully" };
     } catch (error) {
         console.error("Update worker error:", error);
@@ -97,7 +97,7 @@ export async function deleteWorker(id: number) {
 
         await logAudit(session.user.name || session.user.username, "Delete Worker", `Deleted worker ID ${id}`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Worker deleted successfully" };
     } catch (error) {
         console.error("Delete worker error:", error);
@@ -128,7 +128,7 @@ export async function createShift(formData: FormData) {
 
         await logAudit(session.user.name || session.user.username, "Create Shift", `Created shift ${name}`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Shift added successfully" };
     } catch (error) {
         console.error("Create shift error:", error);
@@ -173,7 +173,7 @@ export async function submitAttendance(
 
         await logAudit(session.user.name || session.user.username, "Submit Attendance", `Recorded attendance for worker ID ${workerId} (${status})`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Attendance recorded" };
     } catch (error) {
         console.error("Submit attendance error:", error);
@@ -225,7 +225,7 @@ export async function submitBulkAttendance(
 
         await logAudit(session.user.name || session.user.username, "Bulk Attendance", `Submitted attendance for ${attendanceData.length} workers`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: `Recorded attendance for ${attendanceData.length} workers` };
     } catch (error) {
         console.error("Bulk attendance error:", error);
@@ -260,7 +260,7 @@ export async function updateSupervisorProfile(
 
         await logAudit(session.user.name || session.user.username, "Update Profile", `Updated profile for ${username}`, "Manpower");
 
-        revalidatePath("/manpower");
+        revalidateManpowerData();
         return { success: true, message: "Profile updated successfully" };
     } catch (error) {
         console.error("Update supervisor error:", error);

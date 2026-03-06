@@ -1,147 +1,65 @@
 import { getServerSession } from "next-auth";
-import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
+import { getSubstituteZones } from "@/app/actions/staff";
+import { getCachedManpowerData } from "@/lib/cached-data";
 import { ManpowerClient } from "./ManpowerClient";
-// Import UserRole type to use for casting
-import { UserRole } from "@/types";
-
-import { getSubstituteZones } from "@/app/actions/staff"; // Direct import for server component
-
-type SessionManpowerUser = {
-    id: string;
-    role: string;
-    region?: string | null;
-    regions?: string | null;
-    shiftId?: number | null;
-    shiftName?: string | null;
-    allowedShifts?: string | null;
-};
-
-async function getManpowerData(user: SessionManpowerUser) {
-    try {
-        const isManager = user.role === 'manager';
-
-        // Default filters (fetch all workers/attendance; supervisors are not zone-restricted).
-        const workerFilter: Prisma.WorkerWhereInput = {};
-        const attendanceFilter: Prisma.AttendanceWhereInput = {
-            date: {
-                gte: new Date(new Date().setDate(new Date().getDate() - 14)), // Reduced to 14 days for performance
-            },
-        };
-
-        const [workers, shifts, supervisors, allAttendance, regions, allUsers] = await Promise.all([
-            prisma.worker.findMany({
-                where: workerFilter,
-                include: { shift: true },
-                orderBy: { id: "desc" },
-            }),
-            prisma.shift.findMany({
-                orderBy: { id: "asc" },
-            }),
-            prisma.user.findMany({
-                where: { role: { not: "manager" } },
-                orderBy: { name: "asc" },
-            }),
-            prisma.attendance.findMany({
-                where: attendanceFilter,
-                include: { worker: true },
-                orderBy: { date: 'desc' },
-            }),
-            prisma.region.findMany({
-                orderBy: { name: "asc" },
-            }),
-            // Fetch users: Managers see all, Supervisors see authorized list? 
-            // For now, supervisors typically don't manage other users, so we can restrict this or leave as is if they don't have access to "Users" tab
-            isManager ? prisma.user.findMany({
-                select: {
-                    id: true,
-                    username: true,
-                    name: true,
-                    role: true,
-                    region: true,
-                    regions: true,
-                    shiftId: true,
-                    attendanceShiftId: true,
-                    allowedShifts: true,
-                    empId: true,
-                },
-                orderBy: { name: 'asc' }
-            }) : Promise.resolve([]),
-        ]);
-
-        return {
-            workers: workers.map(w => ({
-                ...w,
-                shiftName: w.shift?.name || null,
-            })),
-            shifts,
-            supervisors: supervisors.map(s => ({
-                ...s,
-                role: s.role as UserRole | null
-            })),
-            allAttendance,
-            regions,
-            allUsers: (allUsers || []).map(u => ({
-                ...u,
-                role: u.role as UserRole | null
-            })),
-        };
-    } catch (error) {
-        console.error("Manpower data error:", error);
-        return {
-            workers: [],
-            shifts: [],
-            supervisors: [],
-            allAttendance: [],
-            regions: [],
-            allUsers: [],
-        };
-    }
-}
-
 
 export default async function ManpowerPage() {
-    const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions);
 
-    if (!session) {
-        return null;
-    }
+  if (!session) {
+    return null;
+  }
 
-    const user = session.user;
-    const data = await getManpowerData(user);
+  const user = session.user;
+  const data = await getCachedManpowerData(user.role === "manager");
 
-    // Handle substitute zones if user is a supervisor
-    let effectiveRegion = user.region || "";
-    // Merge newer multi-regions field if available
-    if (user.regions) {
-        const regions = new Set([
-            ...effectiveRegion.split(",").map(r => r.trim()).filter(Boolean),
-            ...user.regions.split(",").map(r => r.trim()).filter(Boolean)
-        ]);
-        effectiveRegion = Array.from(regions).join(",");
-    }
+  let effectiveRegion = user.region || "";
 
-    if (user.role === 'supervisor') {
-        const today = new Date().toISOString().split('T')[0];
-        const subRes = await getSubstituteZones(Number.parseInt(user.id, 10), today);
+  if (user.regions) {
+    const regions = new Set([
+      ...effectiveRegion
+        .split(",")
+        .map((region) => region.trim())
+        .filter(Boolean),
+      ...user.regions
+        .split(",")
+        .map((region) => region.trim())
+        .filter(Boolean),
+    ]);
+    effectiveRegion = Array.from(regions).join(",");
+  }
 
-        if (subRes.success && subRes.data && subRes.data.length > 0) {
-            const currentRegions = effectiveRegion.split(",").map(r => r.trim()).filter(Boolean);
-            const allRegions = new Set([...currentRegions, ...subRes.data]);
-            effectiveRegion = Array.from(allRegions).join(",");
-        }
-    }
-
-    return (
-        <ManpowerClient
-            data={data}
-            userRole={user.role}
-            userName={user.name || undefined}
-            userRegion={effectiveRegion || undefined}
-            userShiftId={user.shiftId || undefined}
-            userShiftName={user.shiftName || undefined}
-            userAllowedShifts={user.allowedShifts || undefined}
-        />
+  if (user.role === "supervisor") {
+    const today = new Date().toISOString().split("T")[0];
+    const substituteResult = await getSubstituteZones(
+      Number.parseInt(user.id, 10),
+      today
     );
+
+    if (
+      substituteResult.success &&
+      substituteResult.data &&
+      substituteResult.data.length > 0
+    ) {
+      const currentRegions = effectiveRegion
+        .split(",")
+        .map((region) => region.trim())
+        .filter(Boolean);
+      const allRegions = new Set([...currentRegions, ...substituteResult.data]);
+      effectiveRegion = Array.from(allRegions).join(",");
+    }
+  }
+
+  return (
+    <ManpowerClient
+      data={data}
+      userRole={user.role}
+      userName={user.name || undefined}
+      userRegion={effectiveRegion || undefined}
+      userShiftId={user.shiftId || undefined}
+      userShiftName={user.shiftName || undefined}
+      userAllowedShifts={user.allowedShifts || undefined}
+    />
+  );
 }

@@ -1,10 +1,10 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAudit } from "@/app/actions/audit";
+import { revalidateWarehouseData } from "@/lib/cache-tags";
 
 export async function createInventoryItem(formData: FormData) {
     const session = await getServerSession(authOptions);
@@ -40,7 +40,7 @@ export async function createInventoryItem(formData: FormData) {
         });
 
         await logAudit(session.user.name || session.user.username, "Create Item", `Created item ${nameEn} in ${location}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Item created successfully" };
     } catch (error) {
         console.error("Create inventory error:", error);
@@ -82,7 +82,7 @@ export async function addInventoryItem(
             },
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Item added successfully" };
     } catch (error) {
         console.error("Add inventory error:", error);
@@ -136,7 +136,7 @@ export async function updateInventoryItem(
         });
 
         await logAudit(session.user.name || session.user.username, "Update Item", `Updated item ID ${id}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Item updated successfully" };
     } catch (error) {
         console.error("Update inventory error:", error);
@@ -160,7 +160,7 @@ export async function deleteInventoryItem(id: number) {
         await prisma.inventory.delete({ where: { id } });
 
         await logAudit(session.user.name || session.user.username, "Delete Item", `Deleted item ID ${id}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Item deleted successfully" };
     } catch (error) {
         console.error("Delete inventory error:", error);
@@ -218,7 +218,7 @@ export async function updateStock(
             });
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Stock updated successfully" };
     } catch (error) {
         console.error("Update stock error:", error);
@@ -335,7 +335,7 @@ export async function transferStock(
             });
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Transfer completed successfully" };
     } catch (error) {
         console.error("Transfer error:", error);
@@ -391,7 +391,7 @@ export async function lendStock(
             });
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Successfully lent to ${projectName}` };
     } catch (error) {
         console.error("Lend error:", error);
@@ -474,7 +474,7 @@ export async function returnStock(
             });
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Successfully returned from ${projectName}` };
     } catch (error) {
         console.error("Return error:", error);
@@ -511,7 +511,7 @@ export async function createRequest(
         });
 
         await logAudit(session.user.name || session.user.username, "Create Request", `Created request for ${itemName}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Request created" };
     } catch (error) {
         console.error("Create request error:", error);
@@ -555,7 +555,7 @@ export async function createBulkRequest(
             )
         );
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Submitted ${validItems.length} requests successfully` };
     } catch (error) {
         console.error("Create bulk request error:", error);
@@ -585,7 +585,7 @@ export async function updateRequestStatus(
         });
 
         await logAudit(session.user.name || session.user.username, "Update Request", `Updated Request #${reqId} status to ${status}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Request updated" };
     } catch (error) {
         console.error("Update request error:", error);
@@ -652,7 +652,7 @@ export async function confirmReceipt(reqId: number) {
         });
 
         await logAudit(session.user.name || session.user.username, "Confirm Receipt", `Confirmed receipt of Request #${reqId}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Receipt confirmed and local inventory updated" };
     } catch (error) {
         console.error("Confirm receipt error:", error);
@@ -726,7 +726,7 @@ export async function issueRequest(
         });
 
         await logAudit(user, "Issue Request", `Issued ${itemName} to ${region} (${issueQty} ${unit})`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Item issued" };
     } catch (error) {
         console.error("Issue request error:", error);
@@ -744,7 +744,7 @@ export async function deleteRequest(reqId: number) {
     try {
         await prisma.request.delete({ where: { reqId } });
         await logAudit(session.user.name || session.user.username, "Delete Request", `Deleted Request #${reqId}`, "Warehouse");
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Request deleted" };
     } catch (error) {
         console.error("Delete request error:", error);
@@ -790,7 +790,7 @@ export async function updateBulkStock(
             await prisma.$transaction(operations);
         }
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Updated ${items.filter((i) => i.oldQty !== i.newQty).length} items` };
     } catch (error) {
         console.error("Bulk stock update error:", error);
@@ -832,7 +832,7 @@ export async function updateLocalInventory(
             },
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Inventory updated" };
     } catch (error) {
         console.error("Update local inventory error:", error);
@@ -877,7 +877,7 @@ export async function bulkUpdateLocalInventory(
 
         await prisma.$transaction(operations);
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Updated ${items.length} items` };
     } catch (error) {
         console.error("Bulk local inventory update error:", error);
@@ -970,7 +970,7 @@ export async function bulkIssueRequests(
 
         await prisma.$transaction(operations);
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Successfully issued ${items.length} requests` };
     } catch (error) {
         console.error("Bulk issue error:", error);
@@ -1025,7 +1025,7 @@ export async function bulkConfirmReceipt(reqIds: number[]) {
             }
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Successfully confirmed ${reqIds.length} items` };
     } catch (error) {
         console.error("Bulk confirm receipt error:", error);
@@ -1050,7 +1050,7 @@ export async function bulkApproveRequests(reqIds: number[]) {
             },
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Approved ${reqIds.length} requests` };
     } catch (error) {
         console.error("Bulk approve error:", error);
@@ -1074,7 +1074,7 @@ export async function bulkRejectRequests(reqIds: number[], reason?: string) {
             },
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: `Rejected ${reqIds.length} requests` };
     } catch (error) {
         console.error("Bulk reject error:", error);
@@ -1104,7 +1104,7 @@ export async function updateRequest(
             data,
         });
 
-        revalidatePath("/warehouse");
+        revalidateWarehouseData();
         return { success: true, message: "Request updated successfully" };
     } catch (error) {
         console.error("Update request error:", error);

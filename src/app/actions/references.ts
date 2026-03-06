@@ -1,9 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { revalidateReferenceData } from "@/lib/cache-tags";
 
 // =====================
 // Projects
@@ -64,8 +64,7 @@ export async function createRegion(name: string) {
         }
 
         await prisma.region.create({ data: { name } });
-        revalidatePath("/manpower");
-        revalidatePath("/settings");
+        revalidateReferenceData();
         return { success: true, message: "Region created successfully" };
     } catch (error) {
         console.error("Create region error:", error);
@@ -84,8 +83,7 @@ export async function updateRegion(id: number, name: string) {
             where: { id },
             data: { name }
         });
-        revalidatePath("/manpower");
-        revalidatePath("/settings");
+        revalidateReferenceData();
         return { success: true, message: "Region updated successfully" };
     } catch (error) {
         console.error("Update region error:", error);
@@ -101,8 +99,7 @@ export async function deleteRegion(id: number) {
 
     try {
         await prisma.region.delete({ where: { id } });
-        revalidatePath("/manpower");
-        revalidatePath("/settings");
+        revalidateReferenceData();
         return { success: true, message: "Region deleted successfully" };
     } catch (error) {
         console.error("Delete region error:", error);
@@ -139,8 +136,7 @@ export async function createShift(data: { name: string; startTime?: string; endT
                 endTime: data.endTime || null,
             }
         });
-        revalidatePath("/manpower");
-        revalidatePath("/settings");
+        revalidateReferenceData();
         return { success: true, message: "Shift created successfully" };
     } catch (error) {
         console.error("Create shift error:", error);
@@ -159,8 +155,7 @@ export async function updateShift(id: number, data: { name?: string; startTime?:
             where: { id },
             data
         });
-        revalidatePath("/manpower");
-        revalidatePath("/settings");
+        revalidateReferenceData();
         return { success: true, message: "Shift updated successfully" };
     } catch (error) {
         console.error("Update shift error:", error);
@@ -184,8 +179,7 @@ export async function deleteShift(id: number) {
         }
 
         await prisma.shift.delete({ where: { id } });
-        revalidatePath("/manpower");
-        revalidatePath("/settings");
+        revalidateReferenceData();
         return { success: true, message: "Shift deleted successfully" };
     } catch (error) {
         console.error("Delete shift error:", error);
