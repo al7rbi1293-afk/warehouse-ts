@@ -252,6 +252,48 @@ function parseDateInput(dateStr?: string): Date | null {
     return parsed;
 }
 
+type ParsedDateRange = {
+    startDate: Date;
+    endDate: Date;
+    startLabel: string;
+    endLabel: string;
+};
+
+function parseDateRangeInput(
+    startDateStr: string,
+    endDateStr: string
+): ParsedDateRange | ActionError {
+    const startLabel = startDateStr.trim();
+    const endLabel = endDateStr.trim();
+    const startDate = parseDateInput(startLabel);
+    if (!startDate) {
+        return { success: false, message: "Invalid start date" };
+    }
+
+    const endDate = parseDateInput(endLabel);
+    if (!endDate) {
+        return { success: false, message: "Invalid end date" };
+    }
+
+    if (startDate.getTime() > endDate.getTime()) {
+        return {
+            success: false,
+            message: "Start date must be earlier than or equal to end date",
+        };
+    }
+
+    return {
+        startDate,
+        endDate,
+        startLabel,
+        endLabel,
+    };
+}
+
+function isActionError(value: ParsedDateRange | ActionError): value is ActionError {
+    return "success" in value;
+}
+
 function getRole(session: { user?: { role?: string } } | null | undefined) {
     return session?.user?.role || "";
 }
@@ -1321,6 +1363,64 @@ export async function getDailyReportSubmissions(
     };
 }
 
+export async function getDailyReportSubmissionsByDateRange(
+    startDateStr: string,
+    endDateStr: string
+): Promise<
+    ActionResult<{
+        mode: "manager";
+        submissions: DailySubmissionDto[];
+        allowedRegions: string[];
+    }>
+> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const parsedRange = parseDateRangeInput(startDateStr, endDateStr);
+    if (isActionError(parsedRange)) {
+        return parsedRange;
+    }
+
+    const templateSections = await getActiveDailyTemplateSections();
+
+    const records = await prisma.dailyReportSubmission.findMany({
+        where: {
+            reportDate: {
+                gte: parsedRange.startDate,
+                lte: parsedRange.endDate,
+            },
+        },
+        orderBy: [
+            { reportDate: "desc" },
+            { supervisorName: "asc" },
+            { roundNumber: "asc" },
+            { updatedAt: "desc" },
+        ],
+    });
+
+    return {
+        success: true,
+        message: "OK",
+        data: {
+            mode: "manager",
+            allowedRegions: [],
+            submissions: records.map((record) => ({
+                id: record.id,
+                reportDate: record.reportDate.toISOString(),
+                supervisorName: record.supervisorName,
+                region: record.region,
+                roundNumber: record.roundNumber,
+                checklistAnswers: parseChecklistAnswers(record.checklistAnswers, templateSections),
+                updatedAt: record.updatedAt.toISOString(),
+            })),
+        },
+    };
+}
+
 export async function getDischargeReportData(
     reportDate: string
 ): Promise<
@@ -1712,6 +1812,87 @@ export async function deleteDailyReportSubmission(
         submissionId,
     });
     return { success: true, message: "Daily report deleted" };
+}
+
+export async function deleteDailyReportSubmissionsByDateRange(
+    startDateStr: string,
+    endDateStr: string
+): Promise<ActionResult<{ deleted: number }>> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const parsedRange = parseDateRangeInput(startDateStr, endDateStr);
+    if (isActionError(parsedRange)) {
+        return parsedRange;
+    }
+
+    const deleted = await prisma.dailyReportSubmission.deleteMany({
+        where: {
+            reportDate: {
+                gte: parsedRange.startDate,
+                lte: parsedRange.endDate,
+            },
+        },
+    });
+
+    revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Manager",
+        "Delete Daily Reports By Date Range",
+        `Deleted daily report submissions from ${parsedRange.startLabel} to ${parsedRange.endLabel} (${deleted.count})`,
+        "Reports"
+    );
+    logServerInfo("daily_reports_deleted_by_range", {
+        startDate: parsedRange.startLabel,
+        endDate: parsedRange.endLabel,
+        deleted: deleted.count,
+    });
+
+    return {
+        success: true,
+        message:
+            deleted.count > 0
+                ? `Deleted ${deleted.count} daily report submission(s)`
+                : "No daily reports found in selected range",
+        data: { deleted: deleted.count },
+    };
+}
+
+export async function deleteAllDailyReportSubmissions(): Promise<
+    ActionResult<{ deleted: number }>
+> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !MANAGER_ROLES.has(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const deleted = await prisma.dailyReportSubmission.deleteMany({});
+
+    revalidatePath("/reports");
+    await logAudit(
+        session.user.name || session.user.username || "Manager",
+        "Delete All Daily Reports",
+        `Deleted all daily report submissions (${deleted.count})`,
+        "Reports"
+    );
+    logServerInfo("daily_reports_deleted_all", {
+        deleted: deleted.count,
+    });
+
+    return {
+        success: true,
+        message:
+            deleted.count > 0
+                ? `Deleted ${deleted.count} daily report submission(s)`
+                : "No daily reports found to delete",
+        data: { deleted: deleted.count },
+    };
 }
 
 export async function deleteDischargeSupervisorReport(

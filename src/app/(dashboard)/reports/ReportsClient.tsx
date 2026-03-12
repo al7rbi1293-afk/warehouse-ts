@@ -5,9 +5,12 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import {
     deleteDischargeSupervisorReport,
+    deleteAllDailyReportSubmissions,
     deleteDailyReportSubmission,
+    deleteDailyReportSubmissionsByDateRange,
     deleteSupervisorReportAnswers,
     getDischargeReportData,
+    getDailyReportSubmissionsByDateRange,
 
     getMonthlyDischargeReportData,
     getDailyReportTemplate,
@@ -468,6 +471,8 @@ function getWeeklyQuestionIdMap(questions: ReportQuestionItem[]) {
 export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [activeTab, setActiveTab] = useState<ReportType>("daily");
     const [reportDate, setReportDate] = useState(getTodayLocalDateString());
+    const [dailyManagerFromDate, setDailyManagerFromDate] = useState(getTodayLocalDateString());
+    const [dailyManagerToDate, setDailyManagerToDate] = useState(getTodayLocalDateString());
     const [questions, setQuestions] = useState<ReportQuestionItem[]>([]);
     const [managerAnswers, setManagerAnswers] = useState<ManagerAnswerItem[]>([]);
     const [dailySubmissions, setDailySubmissions] = useState<DailySubmissionItem[]>([]);
@@ -512,6 +517,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     const isManager = managerRoles.has(userRole);
     const isSupervisor = supervisorRoles.has(userRole);
+    const isDailyManagerDateRangeValid =
+        isValidDateInput(dailyManagerFromDate) &&
+        isValidDateInput(dailyManagerToDate) &&
+        dailyManagerFromDate <= dailyManagerToDate;
     const loadTokenRef = useRef(0);
 
     const beginLoad = () => {
@@ -607,10 +616,42 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
     };
 
-    const loadDailyData = async (token: number, requestedDate: string) => {
+    const loadDailyData = async (
+        token: number,
+        requestedDate: string,
+        requestedStartDate: string,
+        requestedEndDate: string
+    ) => {
         try {
+            if (
+                isManager &&
+                (!isValidDateInput(requestedStartDate) ||
+                    !isValidDateInput(requestedEndDate) ||
+                    requestedStartDate > requestedEndDate)
+            ) {
+                const templateResult = await getDailyReportTemplate();
+                if (!isLatestLoad(token)) {
+                    return;
+                }
+
+                const templateSections =
+                    templateResult.success && templateResult.data
+                        ? templateResult.data.sections
+                        : DAILY_REPORT_SECTIONS;
+                setDailyTemplateSections(templateSections);
+                setDailyTemplateUpdatedAt(
+                    templateResult.success && templateResult.data ? templateResult.data.updatedAt : null
+                );
+                setDailySubmissions([]);
+                setAvailableRegions([]);
+                return;
+            }
+
+            const dailyPromise = isManager
+                ? getDailyReportSubmissionsByDateRange(requestedStartDate, requestedEndDate)
+                : getDailyReportSubmissions(requestedDate);
             const [result, templateResult] = await Promise.all([
-                getDailyReportSubmissions(requestedDate),
+                dailyPromise,
                 getDailyReportTemplate(),
             ]);
 
@@ -771,7 +812,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     useEffect(() => {
         const token = beginLoad();
         if (activeTab === "daily") {
-            void loadDailyData(token, reportDate);
+            void loadDailyData(token, reportDate, dailyManagerFromDate, dailyManagerToDate);
         } else if (activeTab === "discharge") {
             setDischargeLoadError(null);
             void loadDischargeData(token, reportDate);
@@ -779,7 +820,16 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             void loadQuestionnaireData(token, activeTab, reportDate, weeklyManagerRange);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeTab, reportDate, dischargeReportType, dischargeMonth, dischargeYear, weeklyManagerRange]);
+    }, [
+        activeTab,
+        reportDate,
+        dischargeReportType,
+        dischargeMonth,
+        dischargeYear,
+        weeklyManagerRange,
+        dailyManagerFromDate,
+        dailyManagerToDate,
+    ]);
 
     useEffect(() => {
         if (!isSupervisor) {
@@ -940,7 +990,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             toast.success(result.message);
             clearDraft(getDailyDraftKey(reportDate));
             const token = beginLoad();
-            await loadDailyData(token, reportDate);
+            await loadDailyData(token, reportDate, dailyManagerFromDate, dailyManagerToDate);
         });
     };
 
@@ -1000,7 +1050,59 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             toast.success(result.message);
             const token = beginLoad();
-            await loadDailyData(token, reportDate);
+            await loadDailyData(token, reportDate, dailyManagerFromDate, dailyManagerToDate);
+        });
+    };
+
+    const handleDeleteDailyReportsByDateRange = () => {
+        if (!isDailyManagerDateRangeValid) {
+            toast.error("Please select a valid date range");
+            return;
+        }
+
+        if (
+            !confirm(
+                `Delete daily reports from ${dailyManagerFromDate} to ${dailyManagerToDate}?`
+            )
+        ) {
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await deleteDailyReportSubmissionsByDateRange(
+                dailyManagerFromDate,
+                dailyManagerToDate
+            );
+            if (!result.success) {
+                toast.error(result.message);
+                return;
+            }
+
+            toast.success(result.message);
+            const token = beginLoad();
+            await loadDailyData(token, reportDate, dailyManagerFromDate, dailyManagerToDate);
+        });
+    };
+
+    const handleDeleteAllDailyReports = () => {
+        if (
+            !confirm(
+                "Delete all daily reports permanently? This action cannot be undone."
+            )
+        ) {
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await deleteAllDailyReportSubmissions();
+            if (!result.success) {
+                toast.error(result.message);
+                return;
+            }
+
+            toast.success(result.message);
+            const token = beginLoad();
+            await loadDailyData(token, reportDate, dailyManagerFromDate, dailyManagerToDate);
         });
     };
 
@@ -1084,8 +1186,13 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             const workbook = XLSX.utils.book_new();
 
             if (activeTab === "daily") {
+                if (!isDailyManagerDateRangeValid) {
+                    toast.error("Please select a valid date range before export");
+                    return;
+                }
+
                 const [dailyResult, templateResult] = await Promise.all([
-                    getDailyReportSubmissions(reportDate),
+                    getDailyReportSubmissionsByDateRange(dailyManagerFromDate, dailyManagerToDate),
                     getDailyReportTemplate(),
                 ]);
                 if (!dailyResult.success || !dailyResult.data) {
@@ -1120,7 +1227,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                 if (dailyRows.length === 0) {
                     dailyRows.push({
-                        Date: reportDate,
+                        Date: `${dailyManagerFromDate} to ${dailyManagerToDate}`,
                         Supervisor: "",
                         Area: "",
                         Round: "",
@@ -1136,7 +1243,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                     XLSX.utils.json_to_sheet(dailyRows),
                     "Daily Report"
                 );
-                XLSX.writeFile(workbook, `daily-report-${reportDate}.xlsx`);
+                XLSX.writeFile(
+                    workbook,
+                    `daily-report-${dailyManagerFromDate}-to-${dailyManagerToDate}.xlsx`
+                );
                 toast.success("Daily reports exported");
                 return;
             }
@@ -1522,7 +1632,15 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
     useEffect(() => {
         setDailyPage(1);
-    }, [dailyAreaFilter, dailyRoundFilter, dailySearchTerm, dailySortKey, reportDate]);
+    }, [
+        dailyAreaFilter,
+        dailyRoundFilter,
+        dailySearchTerm,
+        dailySortKey,
+        reportDate,
+        dailyManagerFromDate,
+        dailyManagerToDate,
+    ]);
 
     useEffect(() => {
         if (dischargePage > dischargeTotalPages) {
@@ -1600,7 +1718,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         </div>
                     )}
 
-                    {(activeTab === "daily" ||
+                    {((activeTab === "daily" && !isManager) ||
                         (activeTab === "discharge" && dischargeReportType === "daily")) && (
                         <>
                             <label htmlFor="report-date" className="text-sm font-medium text-slate-700">
@@ -1826,7 +1944,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <div>
                                             <h2 className="text-lg font-semibold text-slate-900">Supervisor Responses</h2>
                                             <p className="text-sm text-slate-500">
-                                                Responses submitted on {reportDate}
+                                                Responses submitted from {dailyManagerFromDate} to {dailyManagerToDate}
                                             </p>
                                             {dailyTemplateUpdatedAt && (
                                                 <p className="text-xs text-slate-400 mt-1">
@@ -1841,6 +1959,60 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                             Edit daily template
                                         </Link>
                                     </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">From date</label>
+                                            <input
+                                                type="date"
+                                                value={dailyManagerFromDate}
+                                                onChange={(event) => setDailyManagerFromDate(event.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-semibold text-slate-600">To date</label>
+                                            <input
+                                                type="date"
+                                                value={dailyManagerToDate}
+                                                onChange={(event) => setDailyManagerToDate(event.target.value)}
+                                                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const today = getTodayLocalDateString();
+                                                setDailyManagerFromDate(today);
+                                                setDailyManagerToDate(today);
+                                            }}
+                                            className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                                        >
+                                            Today only
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteDailyReportsByDateRange}
+                                            disabled={isPending || !isDailyManagerDateRangeValid}
+                                            className="px-3 py-2 text-xs font-semibold rounded-lg border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-60"
+                                        >
+                                            Delete range
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleDeleteAllDailyReports}
+                                            disabled={isPending}
+                                            className="px-3 py-2 text-xs font-semibold rounded-lg border border-red-300 bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+                                        >
+                                            Delete all reports
+                                        </button>
+                                    </div>
+
+                                    {!isDailyManagerDateRangeValid && (
+                                        <p className="text-xs text-red-600">
+                                            Date range is invalid. Start date must be earlier than or equal to end date.
+                                        </p>
+                                    )}
 
                                     <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                                         <div className="space-y-1 md:col-span-2">
@@ -1927,7 +2099,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                     {sortedDailySubmissions.length === 0 ? (
                                         <p className="text-sm text-slate-500">
                                             {dailySubmissions.length === 0
-                                                ? "No responses submitted for this date."
+                                                ? "No responses submitted for selected date range."
                                                 : "No daily submissions match your current filters."}
                                         </p>
                                     ) : (
