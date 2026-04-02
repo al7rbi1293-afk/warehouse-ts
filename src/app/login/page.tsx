@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { getSession, signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { TEXT } from "@/lib/constants";
 import { toast } from "sonner";
+import { getDefaultAuthenticatedPath } from "@/lib/roles";
 
 export default function LoginPage() {
     const [isLoading, setIsLoading] = useState(false);
@@ -28,8 +29,10 @@ export default function LoginPage() {
             if (result?.error) {
                 toast.error(TEXT.error_login);
             } else {
+                const session = await getSession();
+                const targetPath = getDefaultAuthenticatedPath(session?.user?.role);
                 toast.success("Login successful");
-                router.push("/dashboard");
+                router.push(targetPath);
                 router.refresh();
             }
         } catch {
