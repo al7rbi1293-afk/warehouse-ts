@@ -2,8 +2,7 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { ReportsClient } from "./ReportsClient";
-
-const allowedRoles = new Set(["manager", "admin", "supervisor", "night_supervisor"]);
+import { canAccessReports, getDefaultAuthenticatedPath } from "@/lib/roles";
 
 export default async function ReportsPage() {
     const session = await getServerSession(authOptions);
@@ -12,8 +11,8 @@ export default async function ReportsPage() {
         redirect("/login");
     }
 
-    if (!allowedRoles.has(session.user.role)) {
-        redirect("/warehouse");
+    if (!canAccessReports(session.user.role)) {
+        redirect(getDefaultAuthenticatedPath(session.user.role));
     }
 
     return <ReportsClient userRole={session.user.role} userName={session.user.name || ""} />;

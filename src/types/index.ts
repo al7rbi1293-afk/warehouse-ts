@@ -21,7 +21,13 @@ export interface User {
 
 export type SafeUser = Omit<User, 'password'>;
 
-export type UserRole = 'manager' | 'supervisor' | 'storekeeper' | 'night_supervisor';
+export type UserRole =
+  | 'manager'
+  | 'admin'
+  | 'supervisor'
+  | 'storekeeper'
+  | 'night_supervisor'
+  | 'senior';
 
 export interface SessionUser {
   username: string;

@@ -8,6 +8,11 @@ import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/app/actions/audit";
 import { logServerError, logServerInfo } from "@/lib/observability";
 import {
+    isDischargeOperatorRole,
+    isManagerRole,
+    isStandardSupervisorRole,
+} from "@/lib/roles";
+import {
     encodeAreaValue,
     getAreaDetailOptions,
     hasMultipleRoomValues,
@@ -104,8 +109,6 @@ interface DischargeEntryDto {
 
 const REPORT_TYPES: ReportType[] = ["daily", "weekly", "discharge"];
 const WEEKLY_MANAGER_RANGES: WeeklyManagerRange[] = ["daily", "weekly", "monthly"];
-const MANAGER_ROLES = new Set(["manager", "admin"]);
-const SUPERVISOR_ROLES = new Set(["supervisor", "night_supervisor"]);
 const DISCHARGE_ROOM_TYPES: DischargeRoomType[] = ["normal_patient", "isolation"];
 
 const DEFAULT_QUESTIONS: Record<ReportType, string[]> = {
@@ -296,6 +299,18 @@ function isActionError(value: ParsedDateRange | ActionError): value is ActionErr
 
 function getRole(session: { user?: { role?: string } } | null | undefined) {
     return session?.user?.role || "";
+}
+
+function canAccessReportType(role: string, reportType: ReportType) {
+    if (isManagerRole(role)) {
+        return true;
+    }
+
+    if (reportType === "discharge") {
+        return isDischargeOperatorRole(role);
+    }
+
+    return isStandardSupervisorRole(role);
 }
 
 async function ensureDischargeDateSchema(): Promise<ActionError | null> {
@@ -630,7 +645,7 @@ async function getSupervisorAllowedRegions(
 ): Promise<string[]> {
     const user = await prisma.user.findUnique({
         where: { id: supervisorId },
-        select: { region: true, regions: true },
+        select: { role: true, region: true, regions: true },
     });
 
     const values: string[] = [];
@@ -648,6 +663,25 @@ async function getSupervisorAllowedRegions(
 
     pushValues(user?.region);
     pushValues(user?.regions);
+
+    if (user?.role === "senior") {
+        const seniorAreas = await prisma.user.findMany({
+            where: {
+                role: {
+                    in: ["supervisor", "night_supervisor"],
+                },
+            },
+            select: {
+                region: true,
+                regions: true,
+            },
+        });
+
+        for (const seniorArea of seniorAreas) {
+            pushValues(seniorArea.region);
+            pushValues(seniorArea.regions);
+        }
+    }
 
     const substitutions = await prisma.staffAttendance.findMany({
         where: {
@@ -697,12 +731,12 @@ export async function getReportQuestionnaireData(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
-        return { success: false, message: "Unauthorized" };
-    }
-
     if (!isReportType(reportType)) {
         return { success: false, message: "Invalid report type" };
+    }
+
+    if (!session || !canAccessReportType(role, reportType)) {
+        return { success: false, message: "Unauthorized" };
     }
 
     if (!isWeeklyManagerRange(weeklyRange)) {
@@ -735,7 +769,7 @@ export async function getReportQuestionnaireData(
         orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     });
 
-    if (MANAGER_ROLES.has(role)) {
+    if (isManagerRole(role)) {
         const managerAnswers = await prisma.reportAnswer.findMany({
             where: {
                 ...(reportType === "weekly" ? {} : { reportDate: normalizedDate }),
@@ -851,7 +885,7 @@ export async function addReportQuestion(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -890,7 +924,7 @@ export async function updateReportQuestion(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -916,7 +950,7 @@ export async function deleteReportQuestion(questionId: number): Promise<ActionRe
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -941,7 +975,7 @@ export async function submitSupervisorReportAnswers(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !SUPERVISOR_ROLES.has(role)) {
+    if (!session || !isStandardSupervisorRole(role)) {
         return { success: false, message: "Only supervisors can submit answers" };
     }
 
@@ -1079,7 +1113,7 @@ export async function deleteSupervisorReportAnswers(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1204,7 +1238,7 @@ export async function getDailyReportTemplate(): Promise<
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+    if (!session || (!isManagerRole(role) && !isStandardSupervisorRole(role))) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1253,7 +1287,7 @@ export async function updateDailyReportTemplate(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1315,7 +1349,7 @@ export async function getDailyReportSubmissions(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+    if (!session || (!isManagerRole(role) && !isStandardSupervisorRole(role))) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1323,11 +1357,11 @@ export async function getDailyReportSubmissions(
 
     const normalizedDate = normalizeReportDate(reportDate);
     const supervisorId = Number(session.user.id);
-    if (SUPERVISOR_ROLES.has(role) && !Number.isFinite(supervisorId)) {
+    if (isStandardSupervisorRole(role) && !Number.isFinite(supervisorId)) {
         return { success: false, message: "Invalid supervisor session" };
     }
 
-    const isManager = MANAGER_ROLES.has(role);
+    const isManager = isManagerRole(role);
     const whereClause = isManager
         ? { reportDate: normalizedDate }
         : {
@@ -1376,7 +1410,7 @@ export async function getDailyReportSubmissionsByDateRange(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1433,7 +1467,7 @@ export async function getDischargeReportData(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+    if (!session || (!isManagerRole(role) && !isDischargeOperatorRole(role))) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1443,7 +1477,7 @@ export async function getDischargeReportData(
     }
 
     const normalizedDate = normalizeReportDate(reportDate);
-    const isManager = MANAGER_ROLES.has(role);
+    const isManager = isManagerRole(role);
 
     if (isManager) {
         const records = await prisma.dischargeReportEntry.findMany({
@@ -1524,7 +1558,7 @@ export async function submitDailyReportForm(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !SUPERVISOR_ROLES.has(role)) {
+    if (!session || !isStandardSupervisorRole(role)) {
         return { success: false, message: "Only supervisors can submit daily reports" };
     }
 
@@ -1614,7 +1648,7 @@ export async function submitDischargeReport(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !SUPERVISOR_ROLES.has(role)) {
+    if (!session || !isDischargeOperatorRole(role)) {
         return { success: false, message: "Only supervisors can submit discharge reports" };
     }
 
@@ -1785,7 +1819,7 @@ export async function deleteDailyReportSubmission(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1821,7 +1855,7 @@ export async function deleteDailyReportSubmissionsByDateRange(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1868,7 +1902,7 @@ export async function deleteAllDailyReportSubmissions(): Promise<
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1903,7 +1937,7 @@ export async function deleteDischargeSupervisorReport(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || !MANAGER_ROLES.has(role)) {
+    if (!session || !isManagerRole(role)) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1979,7 +2013,7 @@ export async function getMonthlyDischargeReportData(
     const session = await getServerSession(authOptions);
     const role = getRole(session);
 
-    if (!session || (!MANAGER_ROLES.has(role) && !SUPERVISOR_ROLES.has(role))) {
+    if (!session || (!isManagerRole(role) && !isDischargeOperatorRole(role))) {
         return { success: false, message: "Unauthorized" };
     }
 
@@ -1993,7 +2027,7 @@ export async function getMonthlyDischargeReportData(
     const startDate = new Date(Date.UTC(year, month - 1, 1));
     const endDate = new Date(Date.UTC(year, month, 0)); // Last day of the month
 
-    const isManager = MANAGER_ROLES.has(role);
+    const isManager = isManagerRole(role);
 
     if (isManager) {
         const records = await prisma.dischargeReportEntry.findMany({

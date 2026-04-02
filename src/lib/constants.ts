@@ -44,6 +44,7 @@ export const AREAS = ["SNC", "NSTC"];
 export const USER_ROLES = {
     MANAGER: "manager",
     SUPERVISOR: "supervisor",
+    SENIOR: "senior",
     STOREKEEPER: "storekeeper",
     NIGHT_SUPERVISOR: "night_supervisor"
 };

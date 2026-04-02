@@ -32,6 +32,7 @@ export function UserList({ users, onEdit, onDelete }: UserListProps) {
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
                                         ${user.role === 'manager' ? 'bg-purple-100 text-purple-700' :
                                             user.role === 'supervisor' ? 'bg-blue-100 text-blue-700' :
+                                                user.role === 'senior' ? 'bg-amber-100 text-amber-700' :
                                                 'bg-slate-100 text-slate-700'}`}>
                                         {user.role}
                                     </span>

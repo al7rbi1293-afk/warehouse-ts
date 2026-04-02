@@ -5,6 +5,12 @@ import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TEXT } from "@/lib/constants";
+import {
+    canAccessManpower,
+    canAccessReports,
+    canAccessWarehouse,
+    isManagerRole,
+} from "@/lib/roles";
 
 // Reuse icons concept for mobile
 const Icons = {
@@ -71,18 +77,19 @@ export function MobileNav() {
                 <div className="p-4 flex flex-col h-[calc(100%-89px)]">
                     <nav className="space-y-1">
                         {/* Manager Only */}
-                        {session.user.role === "manager" && (
+                        {isManagerRole(session.user.role) && (
                             <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Dashboard</Link>
                         )}
 
-                        <Link href="/warehouse" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Inventory and Supply Request</Link>
+                        {canAccessWarehouse(session.user.role) && (
+                            <Link href="/warehouse" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Inventory and Supply Request</Link>
+                        )}
 
-                        {/* Manager & Supervisor Only */}
-                        {["manager", "supervisor"].includes(session.user.role) && (
+                        {canAccessManpower(session.user.role) && (
                             <Link href="/manpower" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Manpower</Link>
                         )}
 
-                        {["manager", "supervisor", "night_supervisor"].includes(session.user.role) && (
+                        {canAccessReports(session.user.role) && (
                             <Link href="/reports" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Reports</Link>
                         )}
 

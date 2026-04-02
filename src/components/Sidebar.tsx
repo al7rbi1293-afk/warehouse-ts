@@ -5,6 +5,12 @@ import { useSession, signOut } from "next-auth/react";
 import { usePathname } from "next/navigation";
 import { useUI } from "./UIProvider";
 import { useEffect } from "react";
+import {
+    canAccessManpower,
+    canAccessReports,
+    canAccessWarehouse,
+    isManagerRole,
+} from "@/lib/roles";
 
 // Define the exact icons from the mockup conceptually
 const Icons = {
@@ -67,13 +73,13 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     if (!session?.user) return null;
 
     const navItems = [
-        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard, roles: ["manager"] },
-        { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory, roles: ["manager", "supervisor", "storekeeper"] },
-        { name: "Manpower", href: "/manpower", icon: Icons.Reports, roles: ["manager", "supervisor"] },
-        { name: "Reports", href: "/reports", icon: Icons.Requests, roles: ["manager", "supervisor", "night_supervisor"] },
+        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard, visible: isManagerRole(session.user.role) },
+        { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory, visible: canAccessWarehouse(session.user.role) },
+        { name: "Manpower", href: "/manpower", icon: Icons.Reports, visible: canAccessManpower(session.user.role) },
+        { name: "Reports", href: "/reports", icon: Icons.Requests, visible: canAccessReports(session.user.role) },
     ];
 
-    const filteredNavItems = navItems.filter(item => item.roles.includes(session.user.role as string));
+    const filteredNavItems = navItems.filter((item) => item.visible);
 
     const bottomItems = [
         { name: "Settings", href: "/settings", icon: Icons.Settings },

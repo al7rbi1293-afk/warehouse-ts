@@ -39,6 +39,12 @@ import {
     splitRoomValues,
 } from "@/lib/dischargeLocations";
 import { DischargeSpreadsheet } from "@/components/reports/DischargeSpreadsheet";
+import {
+    canAccessReportTab,
+    isDischargeOperatorRole,
+    isManagerRole,
+    isStandardSupervisorRole,
+} from "@/lib/roles";
 
 interface ReportsClientProps {
     userRole: string;
@@ -139,9 +145,6 @@ const reportTabs: Array<{ key: ReportType; label: string }> = [
     { key: "weekly", label: "Weekly report" },
     { key: "discharge", label: "Discharge report" },
 ];
-
-const managerRoles = new Set(["manager", "admin"]);
-const supervisorRoles = new Set(["supervisor", "night_supervisor"]);
 
 function getTodayLocalDateString() {
     const now = new Date();
@@ -469,7 +472,12 @@ function getWeeklyQuestionIdMap(questions: ReportQuestionItem[]) {
 }
 
 export function ReportsClient({ userRole, userName }: ReportsClientProps) {
-    const [activeTab, setActiveTab] = useState<ReportType>("daily");
+    const visibleTabs = useMemo(
+        () => reportTabs.filter((tab) => canAccessReportTab(userRole, tab.key)),
+        [userRole]
+    );
+    const defaultTab = visibleTabs[0]?.key || "discharge";
+    const [activeTab, setActiveTab] = useState<ReportType>(defaultTab);
     const [reportDate, setReportDate] = useState(getTodayLocalDateString());
     const [dailyManagerFromDate, setDailyManagerFromDate] = useState(getTodayLocalDateString());
     const [dailyManagerToDate, setDailyManagerToDate] = useState(getTodayLocalDateString());
@@ -515,13 +523,20 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dischargeMonth, setDischargeMonth] = useState(new Date().getMonth() + 1);
     const [dischargeYear, setDischargeYear] = useState(new Date().getFullYear());
 
-    const isManager = managerRoles.has(userRole);
-    const isSupervisor = supervisorRoles.has(userRole);
+    const isManager = isManagerRole(userRole);
+    const isSupervisor = isStandardSupervisorRole(userRole);
+    const isDischargeOperator = isDischargeOperatorRole(userRole);
     const isDailyManagerDateRangeValid =
         isValidDateInput(dailyManagerFromDate) &&
         isValidDateInput(dailyManagerToDate) &&
         dailyManagerFromDate <= dailyManagerToDate;
     const loadTokenRef = useRef(0);
+
+    useEffect(() => {
+        if (!visibleTabs.some((tab) => tab.key === activeTab)) {
+            setActiveTab(defaultTab);
+        }
+    }, [activeTab, defaultTab, visibleTabs]);
 
     const beginLoad = () => {
         const token = loadTokenRef.current + 1;
@@ -756,7 +771,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 const message = result.message || "Failed to load discharge reports";
                 toast.error(message);
                 setDischargeLoadError(message);
-                if (!isSupervisor) {
+                if (!isDischargeOperator) {
                     setDischargeEntries([]);
                 }
                 return;
@@ -768,7 +783,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             setDischargeEntries(expandedEntries);
             setDischargeAllowedRegions(result.data.allowedRegions || []);
 
-            if (isSupervisor) {
+            if (isDischargeOperator) {
                 const rowsFromServer = expandedEntries.map((entry) => ({
                     dischargeDate: entry.dischargeDate.slice(0, 10),
                     roomNumber: entry.roomNumber,
@@ -799,7 +814,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             const message = "Failed to load discharge reports";
             toast.error(message);
             setDischargeLoadError(message);
-            if (!isSupervisor) {
+            if (!isDischargeOperator) {
                 setDischargeEntries([]);
             }
         } finally {
@@ -846,11 +861,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     }, [isSupervisor, reportDate, weeklyForm]);
 
     useEffect(() => {
-        if (!isSupervisor) {
+        if (!isDischargeOperator) {
             return;
         }
         writeDraft(getDischargeDraftKey(reportDate), dischargeRows);
-    }, [dischargeRows, isSupervisor, reportDate]);
+    }, [dischargeRows, isDischargeOperator, reportDate]);
 
     const handleRetryDischargeLoad = () => {
         const token = beginLoad();
@@ -1676,7 +1691,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
                 <div className="overflow-x-auto pb-2 -mx-1 px-1 md:mx-0 md:px-0">
                     <div className="bg-slate-50 p-1 rounded-xl border border-slate-200 inline-flex shadow-sm min-w-max">
-                        {reportTabs.map((tab) => (
+                        {visibleTabs.map((tab) => (
                             <button
                                 key={tab.key}
                                 type="button"
@@ -2221,7 +2236,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
                     {activeTab === "discharge" && (
                         <div className="space-y-6">
-                            {isSupervisor && (
+                            {isDischargeOperator && (
                                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
                                     <div>
                                         <h2 className="text-lg font-semibold text-slate-900">Discharge Report Sheet</h2>
@@ -2657,7 +2672,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         </div>
                     )}
 
-                    {!isManager && !isSupervisor && (
+                    {!isManager && !isSupervisor && !isDischargeOperator && (
                         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                             <p className="text-sm text-slate-500">You are not authorized to access reports.</p>
                         </div>

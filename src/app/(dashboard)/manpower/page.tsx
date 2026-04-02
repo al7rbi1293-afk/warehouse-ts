@@ -1,8 +1,10 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getSubstituteZones } from "@/app/actions/staff";
 import { getCachedManpowerData } from "@/lib/cached-data";
 import { ManpowerClient } from "./ManpowerClient";
+import { canAccessManpower, getDefaultAuthenticatedPath } from "@/lib/roles";
 
 export default async function ManpowerPage() {
   const session = await getServerSession(authOptions);
@@ -12,6 +14,10 @@ export default async function ManpowerPage() {
   }
 
   const user = session.user;
+  if (!canAccessManpower(user.role)) {
+    redirect(getDefaultAuthenticatedPath(user.role));
+  }
+
   const data = await getCachedManpowerData(user.role === "manager");
 
   let effectiveRegion = user.region || "";

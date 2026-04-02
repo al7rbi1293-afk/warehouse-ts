@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import {
+    canAccessManpower,
+    canAccessReports,
+    canAccessWarehouse,
+    getDefaultAuthenticatedPath,
+    isManagerRole,
+} from "@/lib/roles";
 
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_RATE_LIMIT_MAX_ATTEMPTS = 10;
@@ -121,9 +128,28 @@ export async function proxy(request: NextRequest) {
         // Role-based access control
         const userRole = token.role as string;
 
-        // Dashboard is manager only
-        if (pathname.startsWith("/dashboard") && userRole !== "manager") {
-            return NextResponse.redirect(new URL("/warehouse", request.url));
+        if (pathname.startsWith("/dashboard") && !isManagerRole(userRole)) {
+            return NextResponse.redirect(
+                new URL(getDefaultAuthenticatedPath(userRole), request.url)
+            );
+        }
+
+        if (pathname.startsWith("/warehouse") && !canAccessWarehouse(userRole)) {
+            return NextResponse.redirect(
+                new URL(getDefaultAuthenticatedPath(userRole), request.url)
+            );
+        }
+
+        if (pathname.startsWith("/manpower") && !canAccessManpower(userRole)) {
+            return NextResponse.redirect(
+                new URL(getDefaultAuthenticatedPath(userRole), request.url)
+            );
+        }
+
+        if (pathname.startsWith("/reports") && !canAccessReports(userRole)) {
+            return NextResponse.redirect(
+                new URL(getDefaultAuthenticatedPath(userRole), request.url)
+            );
         }
     }
 
