@@ -1,4 +1,4 @@
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 
 export const CACHE_TAGS = {
   dashboard: "dashboard",
@@ -9,7 +9,7 @@ export const CACHE_TAGS = {
 
 function revalidateTags(tags: string[]) {
   for (const tag of tags) {
-    revalidateTag(tag, "max");
+    updateTag(tag);
   }
 }
 

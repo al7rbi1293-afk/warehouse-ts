@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Worker, Shift, Region } from "@/types";
 import { createWorker, updateWorker } from "@/app/actions/manpower";
@@ -11,16 +11,27 @@ interface WorkerModalProps {
     worker?: Worker | null;
     shifts: Shift[];
     regions: Region[];
-    onSuccess: () => void;
+    onSuccess: () => void | Promise<void>;
 }
 
 export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSuccess }: WorkerModalProps) {
     const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+
+    useEffect(() => {
+        if (!isOpen) {
+            setErrorMessage("");
+            setIsLoading(false);
+        }
+    }, [isOpen, worker]);
 
     if (!isOpen) return null;
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (isLoading) return;
+
+        setErrorMessage("");
         setIsLoading(true);
 
         const formData = new FormData(e.currentTarget);
@@ -44,9 +55,10 @@ export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSucces
                 const result = await updateWorker(worker.id, data);
                 if (result.success) {
                     toast.success("Worker updated successfully");
-                    onSuccess();
+                    await onSuccess();
                     onClose();
                 } else {
+                    setErrorMessage(result.message);
                     toast.error(result.message);
                 }
             } else {
@@ -54,13 +66,15 @@ export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSucces
                 const result = await createWorker(formData);
                 if (result.success) {
                     toast.success("Worker added successfully");
-                    onSuccess();
+                    await onSuccess();
                     onClose();
                 } else {
+                    setErrorMessage(result.message);
                     toast.error(result.message);
                 }
             }
         } catch {
+            setErrorMessage("An unexpected error occurred");
             toast.error("An error occurred");
         } finally {
             setIsLoading(false);
@@ -74,12 +88,22 @@ export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSucces
                     <h3 className="text-xl font-bold text-slate-800">
                         {worker ? "Edit Worker" : "Add New Worker"}
                     </h3>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <button
+                        onClick={onClose}
+                        disabled={isLoading}
+                        className="text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50"
+                    >
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                     </button>
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                    {errorMessage && (
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                            {errorMessage}
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-4">
                         <div className="col-span-2">
                             <label className="block text-sm font-semibold text-slate-700 mb-1">Full Name</label>
@@ -119,9 +143,10 @@ export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSucces
                             <label className="block text-sm font-semibold text-slate-700 mb-1">Region</label>
                             <select
                                 name="region"
-                                defaultValue={worker?.region || "Riyadh"}
+                                defaultValue={worker?.region || ""}
                                 className="w-full px-4 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 outline-none bg-white"
                             >
+                                <option value="">No Region</option>
                                 {regions.map(region => (
                                     <option key={region.id} value={region.name}>{region.name}</option>
                                 ))}
@@ -162,6 +187,7 @@ export function WorkerModal({ isOpen, onClose, worker, shifts, regions, onSucces
                         <button
                             type="button"
                             onClick={onClose}
+                            disabled={isLoading}
                             className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors"
                         >
                             Cancel

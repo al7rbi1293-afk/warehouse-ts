@@ -6,31 +6,121 @@ import { authOptions } from "@/lib/auth";
 import { logAudit } from "@/app/actions/audit";
 import { revalidateManpowerData } from "@/lib/cache-tags";
 
+function sanitizeRequiredText(value: FormDataEntryValue | null, fieldName: string) {
+    const text = typeof value === "string" ? value.trim() : "";
+    if (!text) {
+        throw new Error(`${fieldName} is required`);
+    }
+    return text;
+}
+
+function sanitizeOptionalText(value: FormDataEntryValue | null) {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text || null;
+}
+
+function parseOptionalShiftId(value: FormDataEntryValue | null) {
+    const text = typeof value === "string" ? value.trim() : "";
+    if (!text) {
+        return null;
+    }
+
+    const parsed = Number.parseInt(text, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw new Error("Shift is invalid");
+    }
+
+    return parsed;
+}
+
+async function ensureWorkerIdSequence() {
+    await prisma.$executeRawUnsafe(`
+        SELECT setval(
+            pg_get_serial_sequence('workers', 'id'),
+            GREATEST(COALESCE((SELECT MAX(id) FROM workers), 0), 1),
+            true
+        )
+    `);
+}
+
+function isWorkerIdConflict(error: unknown) {
+    if (!error || typeof error !== "object") {
+        return false;
+    }
+
+    const candidate = error as {
+        code?: string;
+        meta?: { target?: string[] | string };
+    };
+
+    if (candidate.code !== "P2002") {
+        return false;
+    }
+
+    const target = candidate.meta?.target;
+    if (Array.isArray(target)) {
+        return target.includes("id");
+    }
+
+    return target === "id";
+}
+
+function getWorkerMutationErrorMessage(error: unknown, fallback: string) {
+    if (error instanceof Error && error.message.trim()) {
+        return error.message;
+    }
+
+    return fallback;
+}
+
+async function createWorkerRecord(data: {
+    name: string;
+    empId: string | null;
+    role: string | null;
+    region: string | null;
+    shiftId: number | null;
+}) {
+    await prisma.worker.create({
+        data: {
+            ...data,
+            status: "Active",
+        },
+    });
+}
+
 export async function createWorker(formData: FormData) {
     const session = await getServerSession(authOptions);
     if (!session || !['manager', 'supervisor'].includes(session.user.role)) {
         return { success: false, message: "Unauthorized" };
     }
 
-    const name = formData.get("name") as string;
-    const empId = formData.get("empId") as string;
-    const role = formData.get("role") as string;
-    const region = formData.get("region") as string;
-    const shiftId = formData.get("shiftId") as string;
-
     try {
-        await prisma.worker.create({
-            data: {
-                name,
-                empId,
-                role,
-                region,
-                shiftId: shiftId ? parseInt(shiftId) : null,
-                status: "Active",
-            },
-        });
+        const name = sanitizeRequiredText(formData.get("name"), "Worker name");
+        const empId = sanitizeOptionalText(formData.get("empId"));
+        const role = sanitizeOptionalText(formData.get("role"));
+        const region = sanitizeOptionalText(formData.get("region"));
+        const shiftId = parseOptionalShiftId(formData.get("shiftId"));
 
+        const createData = {
+            name,
+            empId,
+            role,
+            region,
+            shiftId,
+        };
 
+        await ensureWorkerIdSequence();
+
+        try {
+            await createWorkerRecord(createData);
+        } catch (error) {
+            if (!isWorkerIdConflict(error)) {
+                throw error;
+            }
+
+            await ensureWorkerIdSequence();
+            await createWorkerRecord(createData);
+        }
 
         await logAudit(session.user.name || session.user.username, "Create Worker", `Created worker ${name} (${role})`, "Manpower");
 
@@ -38,7 +128,10 @@ export async function createWorker(formData: FormData) {
         return { success: true, message: "Worker added successfully" };
     } catch (error) {
         console.error("Create worker error:", error);
-        return { success: false, message: "Failed to add worker" };
+        return {
+            success: false,
+            message: getWorkerMutationErrorMessage(error, "Failed to add worker"),
+        };
     }
 }
 

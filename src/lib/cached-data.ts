@@ -281,58 +281,51 @@ const getWarehouseRoleData = unstable_cache(
   }
 );
 
-const getManpowerBaseData = unstable_cache(
-  async () => {
-    const attendanceWindowStart = new Date();
-    attendanceWindowStart.setDate(attendanceWindowStart.getDate() - 14);
+async function getManpowerBaseData() {
+  const attendanceWindowStart = new Date();
+  attendanceWindowStart.setDate(attendanceWindowStart.getDate() - 14);
 
-    const [workers, shifts, supervisors, allAttendance, regions] =
-      await Promise.all([
-        prisma.worker.findMany({
-          include: { shift: true },
-          orderBy: { id: "desc" },
-        }),
-        prisma.shift.findMany({
-          orderBy: { id: "asc" },
-        }),
-        prisma.user.findMany({
-          where: { role: { not: "manager" } },
-          orderBy: { name: "asc" },
-        }),
-        prisma.attendance.findMany({
-          where: {
-            date: {
-              gte: attendanceWindowStart,
-            },
+  const [workers, shifts, supervisors, allAttendance, regions] =
+    await Promise.all([
+      prisma.worker.findMany({
+        include: { shift: true },
+        orderBy: { id: "desc" },
+      }),
+      prisma.shift.findMany({
+        orderBy: { id: "asc" },
+      }),
+      prisma.user.findMany({
+        where: { role: { not: "manager" } },
+        orderBy: { name: "asc" },
+      }),
+      prisma.attendance.findMany({
+        where: {
+          date: {
+            gte: attendanceWindowStart,
           },
-          include: { worker: true },
-          orderBy: { date: "desc" },
-        }),
-        prisma.region.findMany({
-          orderBy: { name: "asc" },
-        }),
-      ]);
+        },
+        include: { worker: true },
+        orderBy: { date: "desc" },
+      }),
+      prisma.region.findMany({
+        orderBy: { name: "asc" },
+      }),
+    ]);
 
-    return {
-      workers: workers.map((worker) => ({
-        ...worker,
-        shiftName: worker.shift?.name || null,
-      })),
-      shifts,
-      supervisors: supervisors.map((supervisor) => ({
-        ...supervisor,
-        role: supervisor.role as UserRole | null,
-      })),
-      allAttendance,
-      regions,
-    };
-  },
-  ["manpower-base-data"],
-  {
-    revalidate: 60,
-    tags: [CACHE_TAGS.manpower, CACHE_TAGS.references],
-  }
-);
+  return {
+    workers: workers.map((worker) => ({
+      ...worker,
+      shiftName: worker.shift?.name || null,
+    })),
+    shifts,
+    supervisors: supervisors.map((supervisor) => ({
+      ...supervisor,
+      role: supervisor.role as UserRole | null,
+    })),
+    allAttendance,
+    regions,
+  };
+}
 
 const getManagerUsers = unstable_cache(
   async () => {

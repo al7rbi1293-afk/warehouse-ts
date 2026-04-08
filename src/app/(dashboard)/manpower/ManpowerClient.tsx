@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { ManpowerData, Attendance, DailyReport, Worker, User } from "@/types";
 import { WorkerModal } from "@/components/WorkerModal";
@@ -96,6 +96,23 @@ export function ManpowerClient({
         return existing?.notes || "";
     };
 
+    const matchesSelectedShift = useCallback((worker: Worker, shiftValue: string) => {
+        if (shiftValue === "All") {
+            return true;
+        }
+
+        const shiftObj = data.shifts.find((shift) => shift.id.toString() === shiftValue);
+        if (!shiftObj) {
+            return worker.shiftId?.toString() === shiftValue;
+        }
+
+        if (shiftObj.name === "A" || shiftObj.name === "B") {
+            return worker.shiftName?.startsWith(shiftObj.name) ?? false;
+        }
+
+        return worker.shiftId?.toString() === shiftValue;
+    }, [data.shifts]);
+
     // Handle single worker status change
     const handleStatusChange = (workerId: number, status: string) => {
         setAttendanceBuffer(prev => ({
@@ -131,18 +148,8 @@ export function ManpowerClient({
             }
 
             // 2. Shift Filter (Smart Parent/Child)
-            if (selectedShift !== "All") {
-                const shiftObj = data.shifts.find(s => s.id.toString() === selectedShift);
-                if (shiftObj) {
-                    // Strict filter for the current view
-                    if (shiftObj.name === "A" || shiftObj.name === "B") {
-                        // If filtering by "A", show "A", "A1", "A2" etc.
-                        if (!w.shiftName || !w.shiftName.startsWith(shiftObj.name)) return false;
-                    } else {
-                        // Regular specific shift match
-                        if (w.shiftId?.toString() !== selectedShift) return false;
-                    }
-                }
+            if (!matchesSelectedShift(w, selectedShift)) {
+                return false;
             }
 
             // 3. Search
@@ -151,7 +158,7 @@ export function ManpowerClient({
 
             return true;
         });
-    }, [data.workers, selectedRegion, selectedShift, searchTerm, data.shifts]);
+    }, [data.workers, selectedRegion, selectedShift, searchTerm, matchesSelectedShift]);
 
 
 
@@ -342,6 +349,10 @@ export function ManpowerClient({
         }
     };
 
+    const handleWorkerMutationSuccess = () => {
+        router.refresh();
+    };
+
     // Filter workers based on search (for Management Tab)
     const filteredWorkers = data.workers.filter(w => {
         // Search Filter
@@ -353,7 +364,7 @@ export function ManpowerClient({
         if (selectedRegion !== "All" && w.region !== selectedRegion) return false;
 
         // Global Shift Filter
-        if (selectedShift !== "All" && w.shiftId?.toString() !== selectedShift) return false;
+        if (!matchesSelectedShift(w, selectedShift)) return false;
 
         return true;
     });
@@ -732,7 +743,7 @@ export function ManpowerClient({
                 worker={editingWorker}
                 shifts={data.shifts}
                 regions={data.regions}
-                onSuccess={() => { }}
+                onSuccess={handleWorkerMutationSuccess}
             />
         </div>
     );
