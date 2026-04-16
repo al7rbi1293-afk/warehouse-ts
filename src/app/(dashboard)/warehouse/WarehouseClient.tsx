@@ -23,6 +23,7 @@ import { EditRequestModal } from "@/components/EditRequestModal";
 import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkConfirmReceipt } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ExportButton } from "@/components/ExportButton";
 
 // Define simplified props matching what the page actually sends
@@ -312,6 +313,14 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     <h1 className="text-2xl font-bold text-slate-900">Inventory Management</h1>
                     <p className="text-slate-500 text-sm">Manage stock, transfers, and warehouse operations</p>
                 </div>
+                {userRole === "manager" && (
+                    <Link
+                        href="/warehouse/kpi"
+                        className="inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50 hover:text-slate-900"
+                    >
+                        Open KPI Dashboard
+                    </Link>
+                )}
             </div>
 
             {/* Navigation Tabs */}

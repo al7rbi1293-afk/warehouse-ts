@@ -97,6 +97,7 @@ model Inventory {
   category    String
   location    String
   qty         Int       @default(0)
+  minThreshold Int      @default(10) @map("min_threshold")
   unit        String
   status      String    @default("Available")
   lastUpdated DateTime? @map("last_updated") @db.Timestamp(6)
@@ -131,8 +132,11 @@ model Request {
   issuedAt       DateTime? @map("issued_at")
   shiftId        Int?      @map("shift_id")
   shiftName      String?   @map("shift_name")
+  reviewedBy     String?   @map("reviewed_by")
+  reviewedAt     DateTime? @map("reviewed_at")
   approvedBy     String?   @map("approved_by")
   approvedAt     DateTime? @map("approved_at")
+  receivedAt     DateTime? @map("received_at")
 
   @@index([status])
   @@index([region])
@@ -196,14 +200,15 @@ model Region {
 }
 
 model loan {
-  id       Int    @id(map: "Loan_pkey") @default(autoincrement())
-  itemId   Int
-  itemName String
-  project  String
-  quantity Int
-  type     String
-  date     String
-  status   String @default("Active")
+  id              Int    @id(map: "Loan_pkey") @default(autoincrement())
+  itemId          Int
+  itemName        String
+  project         String
+  quantity        Int
+  type            String
+  sourceWarehouse String? @map("source_warehouse")
+  date            String
+  status          String @default("Active")
 }
 
 model ReportQuestion {

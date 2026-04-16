@@ -117,6 +117,7 @@ export interface InventoryItem {
   category: string | null;
   unit: string | null;
   qty: number;
+  minThreshold: number;
   location: WarehouseLocation;
   status: string | null;
   lastUpdated: Date | null;
@@ -161,8 +162,11 @@ export interface Request {
   issuedAt?: Date | null;
   shiftId?: number | null;
   shiftName?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: Date | null;
   approvedBy?: string | null;
   approvedAt?: Date | null;
+  receivedAt?: Date | null;
 }
 
 export type RequestStatus = 'Pending' | 'Approved' | 'Rejected' | 'Issued' | 'Received' | string;

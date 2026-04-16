@@ -20,6 +20,7 @@ export function EditInventoryModal({ isOpen, onClose, item, userName }: EditInve
         nameEn: item.nameEn,
         category: item.category || "",
         qty: item.qty,
+        minThreshold: item.minThreshold,
         unit: item.unit || "PCS",
     });
 
@@ -36,6 +37,7 @@ export function EditInventoryModal({ isOpen, onClose, item, userName }: EditInve
                     nameEn: formData.nameEn,
                     category: formData.category,
                     qty: Number(formData.qty), // Ensure it's a number
+                    minThreshold: Number(formData.minThreshold),
                     unit: formData.unit,
                 },
                 userName
@@ -110,6 +112,20 @@ export function EditInventoryModal({ isOpen, onClose, item, userName }: EditInve
                                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                             />
                         </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">Minimum Threshold</label>
+                            <input
+                                type="number"
+                                required
+                                min="0"
+                                value={formData.minThreshold}
+                                onChange={(e) => setFormData({ ...formData, minThreshold: Number(e.target.value) })}
+                                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-1">Unit</label>
                             <select

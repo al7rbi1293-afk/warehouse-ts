@@ -17,6 +17,7 @@ export async function createInventoryItem(formData: FormData) {
     const unit = formData.get("unit") as string;
     const qty = parseInt(formData.get("qty") as string);
     const location = formData.get("location") as string;
+    const minThreshold = parseInt((formData.get("minThreshold") as string) || "10");
 
     try {
         // Check if item exists
@@ -34,6 +35,7 @@ export async function createInventoryItem(formData: FormData) {
                 category,
                 unit,
                 qty,
+                minThreshold: Number.isNaN(minThreshold) ? 10 : minThreshold,
                 location,
                 status: "Available",
             },
@@ -54,7 +56,8 @@ export async function addInventoryItem(
     category: string,
     unit: string,
     qty: number,
-    location: string
+    location: string,
+    minThreshold = 10
 ) {
     const session = await getServerSession(authOptions);
     if (!session || !['manager', 'storekeeper'].includes(session.user.role)) {
@@ -77,6 +80,7 @@ export async function addInventoryItem(
                 category,
                 unit,
                 qty,
+                minThreshold,
                 location,
                 status: "Available",
             },
@@ -98,6 +102,7 @@ export async function updateInventoryItem(
         category?: string;
         unit?: string;
         qty?: number;
+        minThreshold?: number;
     },
     userName: string
 ) {
@@ -389,6 +394,19 @@ export async function lendStock(
                     unit,
                 },
             });
+
+            await tx.loan.create({
+                data: {
+                    itemId: item.id,
+                    itemName: item.nameEn,
+                    project: projectName,
+                    quantity: qty,
+                    type: "Lend",
+                    sourceWarehouse: item.location,
+                    date: new Date().toISOString(),
+                    status: "Open",
+                },
+            });
         });
 
         revalidateWarehouseData();
@@ -470,6 +488,49 @@ export async function returnStock(
                     actionBy: user,
                     actionType: `Returned from ${projectName}${notes ? ` - ${notes}` : ''}`,
                     unit,
+                },
+            });
+
+            const openLoans = await tx.loan.findMany({
+                where: {
+                    itemName: item.nameEn,
+                    project: projectName,
+                    status: { in: ["Active", "Open"] },
+                },
+                orderBy: { id: "asc" },
+            });
+
+            let remainingQty = qty;
+
+            for (const loanRecord of openLoans) {
+                if (remainingQty <= 0) {
+                    break;
+                }
+
+                const settledQty = Math.min(loanRecord.quantity, remainingQty);
+                const nextQty = loanRecord.quantity - settledQty;
+
+                await tx.loan.update({
+                    where: { id: loanRecord.id },
+                    data: {
+                        quantity: nextQty,
+                        status: nextQty === 0 ? "Closed" : loanRecord.status,
+                    },
+                });
+
+                remainingQty -= settledQty;
+            }
+
+            await tx.loan.create({
+                data: {
+                    itemId: item.id,
+                    itemName: item.nameEn,
+                    project: projectName,
+                    quantity: qty,
+                    type: "Borrow",
+                    sourceWarehouse: location,
+                    date: new Date().toISOString(),
+                    status: "Closed",
                 },
             });
         });
@@ -575,12 +636,23 @@ export async function updateRequestStatus(
     }
 
     try {
+        const isApproval = status === "Approved";
+        const isReviewDecision = status === "Approved" || status === "Rejected";
+
         await prisma.request.update({
             where: { reqId },
             data: {
                 status,
-                ...(qty !== undefined && { qty }),
+                ...(isApproval && qty !== undefined && { qty }),
                 ...(notes !== undefined && { notes }),
+                ...(isReviewDecision && {
+                    reviewedBy: session.user.name || session.user.username,
+                    reviewedAt: new Date(),
+                }),
+                ...(isApproval && {
+                    approvedBy: session.user.name || session.user.username,
+                    approvedAt: new Date(),
+                }),
             },
         });
 
@@ -622,7 +694,10 @@ export async function confirmReceipt(reqId: number) {
             // Update request status
             await tx.request.update({
                 where: { reqId },
-                data: { status: "Received" },
+                data: {
+                    status: "Received",
+                    receivedAt: new Date(),
+                },
             });
 
             // Add to local inventory
@@ -920,7 +995,7 @@ export async function bulkIssueRequests(
             });
 
             if (!currentRequest) throw new Error(`Request #${item.reqId} not found`);
-            if (currentRequest.status !== "Pending") {
+            if (currentRequest.status !== "Approved") {
                 throw new Error(`Request #${item.reqId} is already ${currentRequest.status}`);
             }
 
@@ -963,6 +1038,8 @@ export async function bulkIssueRequests(
                     data: {
                         status: "Issued",
                         qty: item.qty,
+                        issuedBy: user,
+                        issuedAt: new Date(),
                     },
                 })
             );
@@ -996,7 +1073,10 @@ export async function bulkConfirmReceipt(reqIds: number[]) {
                 // Update request status
                 await tx.request.update({
                     where: { reqId: request.reqId },
-                    data: { status: "Received" },
+                    data: {
+                        status: "Received",
+                        receivedAt: new Date(),
+                    },
                 });
 
                 // Add to local inventory using Atomic Upsert
@@ -1045,6 +1125,8 @@ export async function bulkApproveRequests(reqIds: number[]) {
             where: { reqId: { in: reqIds }, status: "Pending" },
             data: {
                 status: "Approved",
+                reviewedBy: session.user.name,
+                reviewedAt: new Date(),
                 approvedBy: session.user.name,
                 approvedAt: new Date()
             },
@@ -1070,6 +1152,8 @@ export async function bulkRejectRequests(reqIds: number[], reason?: string) {
             where: { reqId: { in: reqIds }, status: "Pending" },
             data: {
                 status: "Rejected",
+                reviewedBy: session.user.name,
+                reviewedAt: new Date(),
                 notes: reason || "Rejected by Manager"
             },
         });

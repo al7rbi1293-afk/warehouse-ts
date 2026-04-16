@@ -95,6 +95,17 @@ export function AddInventoryItemForm({ warehouses }: Props) {
                     />
                 </div>
                 <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-2">Minimum Threshold</label>
+                    <input
+                        type="number"
+                        name="minThreshold"
+                        min="0"
+                        defaultValue="10"
+                        className="w-full px-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        placeholder="10"
+                    />
+                </div>
+                <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-2">Unit</label>
                     <select
                         name="unit"
