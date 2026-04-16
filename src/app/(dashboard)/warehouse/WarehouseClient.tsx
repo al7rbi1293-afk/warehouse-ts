@@ -16,15 +16,16 @@ import { AddInventoryItemForm } from "@/components/AddInventoryItemForm";
 import { StockTransferForm } from "@/components/StockTransferForm";
 import { EditInventoryModal } from "@/components/EditInventoryModal";
 import { BulkRequestForm } from "@/components/BulkRequestForm";
-import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse, AuditLog } from "@/types";
+import { InventoryItem, Request, StockLog, LocalInventoryItem, Warehouse, AuditLog, LoanRecord } from "@/types";
 import { ReviewRequestModal } from "@/components/ReviewRequestModal";
 import { IssueRequestModal } from "@/components/IssueRequestModal";
 import { EditRequestModal } from "@/components/EditRequestModal";
+import { BulkDispatchModal } from "@/components/BulkDispatchModal";
 import { deleteInventoryItem, confirmReceipt, bulkUpdateLocalInventory, bulkConfirmReceipt } from "@/app/actions/inventory";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ExportButton } from "@/components/ExportButton";
+import { WarehouseExportButton } from "@/components/WarehouseExportButton";
 
 // Define simplified props matching what the page actually sends
 interface Props {
@@ -32,6 +33,7 @@ interface Props {
         inventory: InventoryItem[];
         pendingRequests: Request[];
         approvedRequests: Request[];
+        loans: LoanRecord[];
         stockLogs: StockLog[];
         localInventory: LocalInventoryItem[];
         myPendingRequests: Request[];
@@ -79,9 +81,21 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
     const [issueRequest, setIssueRequest] = useState<Request | null>(null);
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
+    const [bulkDispatchRequests, setBulkDispatchRequests] = useState<Request[] | null>(null);
 
     const [editingRequest, setEditingRequest] = useState<Request | null>(null);
     const [isEditRequestModalOpen, setIsEditRequestModalOpen] = useState(false);
+
+    const [requestSearch, setRequestSearch] = useState("");
+    const [requestRegionFilter, setRequestRegionFilter] = useState("All");
+    const [requestDateFrom, setRequestDateFrom] = useState("");
+    const [requestDateTo, setRequestDateTo] = useState("");
+    const [trackingStatusFilter, setTrackingStatusFilter] = useState("All");
+    const [stockCategoryFilter, setStockCategoryFilter] = useState("All");
+    const [logSearch, setLogSearch] = useState("");
+    const [logActionFilter, setLogActionFilter] = useState("All");
+    const [logDateFrom, setLogDateFrom] = useState("");
+    const [logDateTo, setLogDateTo] = useState("");
 
     const handleConfirmReceipt = async (reqId: number) => {
         try {
@@ -168,11 +182,79 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
     // Filter Logic
     const currentInventory = data.inventory.filter(item => item.location === warehouseFilter);
     const filteredInventory = currentInventory.filter(item =>
-        item.nameEn.toLowerCase().includes(searchTerm.toLowerCase())
+        item.nameEn.toLowerCase().includes(searchTerm.toLowerCase()) &&
+        (stockCategoryFilter === "All" || (item.category || "Uncategorized") === stockCategoryFilter)
     );
 
     // Combined inventory for transfer dropdown
     const allInventory = data.inventory;
+
+    const categoryOptions = Array.from(new Set(data.inventory.map(item => item.category || "Uncategorized"))).sort();
+    const requestRegionOptions = Array.from(
+        new Set(
+            [
+                ...data.pendingRequests.map(request => request.region || ""),
+                ...data.approvedRequests.map(request => request.region || ""),
+                ...(data.allRequests || []).map(request => request.region || ""),
+            ].filter(Boolean)
+        )
+    ).sort();
+
+    const requestMatchesFilters = (request: Request) => {
+        const searchValue = requestSearch.trim().toLowerCase();
+        const requestDate = request.requestDate ? new Date(request.requestDate) : null;
+        const withinFrom = !requestDateFrom || (requestDate && requestDate >= new Date(requestDateFrom));
+        const dateToValue = requestDateTo ? new Date(requestDateTo) : null;
+        if (dateToValue) {
+            dateToValue.setHours(23, 59, 59, 999);
+        }
+        const withinTo = !dateToValue || (requestDate && requestDate <= dateToValue);
+
+        const searchMatch = !searchValue || [
+            request.itemName,
+            request.region,
+            request.supervisorName,
+            request.notes,
+            request.category,
+        ]
+            .filter(Boolean)
+            .some((value) => `${value}`.toLowerCase().includes(searchValue));
+
+        return searchMatch &&
+            (requestRegionFilter === "All" || request.region === requestRegionFilter) &&
+            withinFrom &&
+            withinTo;
+    };
+
+    const filteredPendingRequests = data.pendingRequests.filter(requestMatchesFilters);
+    const filteredApprovedRequests = data.approvedRequests.filter(requestMatchesFilters);
+    const filteredAllRequests = (data.allRequests || [])
+        .filter(requestMatchesFilters)
+        .filter(request => trackingStatusFilter === "All" || request.status === trackingStatusFilter);
+
+    const filteredStockLogs = data.stockLogs.filter(log => {
+        const logDate = log.logDate ? new Date(log.logDate) : null;
+        const from = logDateFrom ? new Date(logDateFrom) : null;
+        const to = logDateTo ? new Date(logDateTo) : null;
+        if (to) {
+            to.setHours(23, 59, 59, 999);
+        }
+
+        const searchValue = logSearch.trim().toLowerCase();
+        const searchMatch = !searchValue || [
+            log.itemName,
+            log.actionType,
+            log.location,
+            log.actionBy,
+        ]
+            .filter(Boolean)
+            .some((value) => `${value}`.toLowerCase().includes(searchValue));
+
+        return searchMatch &&
+            (logActionFilter === "All" || (log.actionType || "").includes(logActionFilter)) &&
+            (!from || (logDate && logDate >= from)) &&
+            (!to || (logDate && logDate <= to));
+    });
 
     const inventoryColumns = [
         {
@@ -330,7 +412,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     if (userRole === "manager") {
                         tabs = ["stock", "add", "transfer", "requests", "tracking", "approved", "audit", "regional_stock", "logs"];
                     } else if (userRole === "storekeeper") {
-                        tabs = ["requests", "approved", "stock"];
+                        tabs = ["requests", "approved", "transfer", "stock"];
                     } else if (userRole === "supervisor") {
                         tabs = ["my_requests", "rejected", "new_request", "local_stock"];
                     }
@@ -366,31 +448,64 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
             {/* Requests Tab */}
             {activeTab === "requests" && (
                 <div className="space-y-8">
-                    <div className="flex justify-between items-center mb-4">
-                        <div>
-                            <h2 className="text-lg font-bold text-slate-800">
-                                {userRole === "storekeeper" ? "Approved Requests" : "Pending Requests"}
-                            </h2>
-                            <p className="text-sm text-slate-500">
-                                {userRole === "storekeeper" ? "Requests waiting for issuance" : "Requests requiring approval"}
-                            </p>
+                    <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">
+                                    {userRole === "storekeeper" ? "Approved Requests Queue" : "Pending Requests"}
+                                </h2>
+                                <p className="text-sm text-slate-500">
+                                    {userRole === "storekeeper" ? "Review and dispatch approved requests by region" : "Review and approve supervisor requests"}
+                                </p>
+                            </div>
+                            <WarehouseExportButton
+                                module="requests"
+                                filters={{
+                                    search: requestSearch,
+                                    region: requestRegionFilter === "All" ? "" : requestRegionFilter,
+                                    dateFrom: requestDateFrom,
+                                    dateTo: requestDateTo,
+                                }}
+                            />
                         </div>
-                        <ExportButton
-                            data={(userRole === "storekeeper" ? data.approvedRequests : data.pendingRequests).map(req => ({
-                                Region: req.region,
-                                Item: req.itemName,
-                                Quantity: req.qty,
-                                Unit: req.unit,
-                                Supervisor: req.supervisorName,
-                                Date: req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-",
-                                Status: req.status
-                            }))}
-                            fileName={`${userRole === "storekeeper" ? "Approved" : "Pending"}_Requests_${new Date().toISOString().split('T')[0]}`}
-                        />
+
+                        <div className="grid gap-3 md:grid-cols-4">
+                            <input
+                                type="text"
+                                value={requestSearch}
+                                onChange={(event) => setRequestSearch(event.target.value)}
+                                placeholder="Search item, region, supervisor"
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                            <select
+                                value={requestRegionFilter}
+                                onChange={(event) => setRequestRegionFilter(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            >
+                                <option value="All">All regions</option>
+                                {requestRegionOptions.map((region) => (
+                                    <option key={region} value={region}>
+                                        {region}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="date"
+                                value={requestDateFrom}
+                                onChange={(event) => setRequestDateFrom(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                            <input
+                                type="date"
+                                value={requestDateTo}
+                                onChange={(event) => setRequestDateTo(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                        </div>
                     </div>
                     {(() => {
                         // Select data based on role
-                        const requestsToShow = userRole === "storekeeper" ? data.approvedRequests : data.pendingRequests;
+                        const requestsToShow = userRole === "storekeeper" ? filteredApprovedRequests : filteredPendingRequests;
 
                         if (requestsToShow.length === 0) {
                             return (
@@ -444,34 +559,6 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             }
                         };
 
-                        const handleBulkIssue = async (region: string, reqs: Request[]) => {
-                            // Verify stock availability logic should ideally be on server, but we can fast-fail here if needed?
-                            // For now, let server handle it.
-                            if (!confirm(`Issue all ${reqs.length} requests for ${region}? This will deduct stock from NSTC.`)) return;
-
-                            try {
-                                const items = reqs.map(r => ({
-                                    reqId: r.reqId,
-                                    qty: r.qty || 0,
-                                    itemName: r.itemName || "Unknown",
-                                    region: region,
-                                    unit: r.unit || "pcs"
-                                }));
-
-                                const { bulkIssueRequests } = await import("@/app/actions/inventory");
-                                const res = await bulkIssueRequests(userName, items);
-
-                                if (res.success) {
-                                    toast.success(res.message);
-                                    router.refresh();
-                                } else {
-                                    toast.error(res.message);
-                                }
-                            } catch {
-                                toast.error("Failed to issue requests");
-                            }
-                        };
-
                         return Object.entries(groupedRequests).sort().map(([region, requests]) => (
                             <div key={region} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                                 <div className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -486,10 +573,10 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
                                         {userRole === "storekeeper" ? (
                                             <button
-                                                onClick={() => handleBulkIssue(region, requests)}
+                                                onClick={() => setBulkDispatchRequests(requests)}
                                                 className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-medium hover:bg-blue-700 transition-colors shadow-sm"
                                             >
-                                                Issue All
+                                                Bulk Dispatch
                                             </button>
                                         ) : (
                                             <>
@@ -550,28 +637,24 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             <h2 className="text-lg font-bold text-slate-800">Approved Requests</h2>
                             <p className="text-sm text-slate-500">History of approved supply requests</p>
                         </div>
-                        <ExportButton
-                            data={data.approvedRequests.map(req => ({
-                                Region: req.region,
-                                Item: req.itemName,
-                                Quantity: req.qty,
-                                Unit: req.unit,
-                                Supervisor: req.supervisorName,
-                                Date: req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-",
-                                Approver: req.approvedBy || "-",
-                                Status: req.status
-                            }))}
-                            fileName={`Approved_Requests_${new Date().toISOString().split('T')[0]}`}
+                        <WarehouseExportButton
+                            module="approved"
+                            filters={{
+                                search: requestSearch,
+                                region: requestRegionFilter === "All" ? "" : requestRegionFilter,
+                                dateFrom: requestDateFrom,
+                                dateTo: requestDateTo,
+                            }}
                         />
                     </div>
-                    {data.approvedRequests.length === 0 ? (
+                    {filteredApprovedRequests.length === 0 ? (
                         <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
                             No approved requests found
                         </div>
                     ) : (
                         <PremiumTable
                             columns={requestColumns}
-                            data={data.approvedRequests}
+                            data={filteredApprovedRequests}
                         />
                     )}
                 </div>
@@ -580,34 +663,77 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
             {/* Tracking Tab (Manager) */}
             {activeTab === "tracking" && (
                 <div className="space-y-8">
-                    <div className="flex justify-between items-center mb-4">
-                        <div>
-                            <h2 className="text-lg font-bold text-slate-800">Request Tracking</h2>
-                            <p className="text-sm text-slate-500">Lifecycle view of all requests</p>
+                    <div className="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+                            <div>
+                                <h2 className="text-lg font-bold text-slate-800">Request Tracking</h2>
+                                <p className="text-sm text-slate-500">Lifecycle view of all requests</p>
+                            </div>
+                            <WarehouseExportButton
+                                module="tracking"
+                                filters={{
+                                    search: requestSearch,
+                                    region: requestRegionFilter === "All" ? "" : requestRegionFilter,
+                                    status: trackingStatusFilter === "All" ? "" : trackingStatusFilter,
+                                    dateFrom: requestDateFrom,
+                                    dateTo: requestDateTo,
+                                }}
+                            />
                         </div>
-                        <ExportButton
-                            data={(data.allRequests || []).map(req => ({
-                                Region: req.region,
-                                Item: req.itemName,
-                                Quantity: req.qty,
-                                Unit: req.unit,
-                                Supervisor: req.supervisorName,
-                                Date: req.requestDate ? new Date(req.requestDate).toLocaleDateString() : "-",
-                                Status: req.status,
-                                Approver: req.approvedBy || "-",
-                                IssuedBy: req.issuedBy || "-",
-                                Notes: req.notes || "-"
-                            }))}
-                            fileName={`Tracking_Requests_${new Date().toISOString().split('T')[0]}`}
-                        />
+
+                        <div className="grid gap-3 md:grid-cols-5">
+                            <input
+                                type="text"
+                                value={requestSearch}
+                                onChange={(event) => setRequestSearch(event.target.value)}
+                                placeholder="Search item, region, supervisor"
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                            <select
+                                value={requestRegionFilter}
+                                onChange={(event) => setRequestRegionFilter(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            >
+                                <option value="All">All regions</option>
+                                {requestRegionOptions.map((region) => (
+                                    <option key={region} value={region}>
+                                        {region}
+                                    </option>
+                                ))}
+                            </select>
+                            <select
+                                value={trackingStatusFilter}
+                                onChange={(event) => setTrackingStatusFilter(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            >
+                                <option value="All">All statuses</option>
+                                {["Pending", "Approved", "Rejected", "Issued", "Received"].map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="date"
+                                value={requestDateFrom}
+                                onChange={(event) => setRequestDateFrom(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                            <input
+                                type="date"
+                                value={requestDateTo}
+                                onChange={(event) => setRequestDateTo(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                        </div>
                     </div>
-                    {(!data.allRequests || data.allRequests.length === 0) ? (
+                    {filteredAllRequests.length === 0 ? (
                         <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-100 italic">
                             No requests found
                         </div>
                     ) : (
                         (() => {
-                            const groupedAll = (data.allRequests || []).reduce((acc, req) => {
+                            const groupedAll = filteredAllRequests.reduce((acc, req) => {
                                 const region = req.region || "Unassigned";
                                 if (!acc[region]) acc[region] = [];
                                 acc[region].push(req);
@@ -687,16 +813,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                             <h2 className="text-lg font-bold text-slate-800">Audit Logs</h2>
                             <p className="text-sm text-slate-500">System activities and tracked actions</p>
                         </div>
-                        <ExportButton
-                            data={data.auditLogs.map(log => ({
-                                Date: new Date(log.timestamp).toLocaleString(),
-                                User: log.userName,
-                                Action: log.action,
-                                Module: log.module,
-                                Details: log.details
-                            }))}
-                            fileName={`Audit_Logs_${new Date().toISOString().split('T')[0]}`}
-                        />
+                        <WarehouseExportButton module="audit" />
                     </div>
                     <PremiumTable
                         columns={[
@@ -715,15 +832,16 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
             {activeTab === "transfer" && (
                 <StockTransferForm
                     inventory={allInventory}
-                    userName={userName}
+                    loans={data.loans}
                     stockLogs={data.stockLogs}
                 />
             )}
+            {["stock", "logs", "new_request", "my_requests", "regional_stock", "local_stock"].includes(activeTab) && (
             <div className="card-premium p-6 min-h-[500px]">
 
                 {/* Stock View Controls */}
                 {activeTab === "stock" && (
-                    <div className="flex flex-col md:flex-row gap-4 mb-6">
+                    <div className="flex flex-col gap-4 mb-6 md:flex-row">
                         <div className="relative flex-1">
                             <input
                                 type="text"
@@ -733,6 +851,18 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 className="w-full pl-4 pr-10 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                             />
                         </div>
+                        <select
+                            value={stockCategoryFilter}
+                            onChange={(event) => setStockCategoryFilter(event.target.value)}
+                            className="rounded-lg border border-slate-200 px-4 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                        >
+                            <option value="All">All categories</option>
+                            {categoryOptions.map((category) => (
+                                <option key={category} value={category}>
+                                    {category}
+                                </option>
+                            ))}
+                        </select>
                         <div className="flex rounded-lg bg-slate-100 p-1">
                             {data.warehouses.length > 0 ? (
                                 data.warehouses.filter(w => w.name !== "CWW").map(wh => (
@@ -768,16 +898,13 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 {activeTab === "stock" && (
                     <div className="space-y-8">
                         <div className="flex justify-end">
-                            <ExportButton
-                                data={filteredInventory.map(item => ({
-                                    Name: item.nameEn,
-                                    Category: item.category,
-                                    Quantity: item.qty,
-                                    Unit: item.unit,
-                                    Warehouse: item.location,
-                                    Status: item.status
-                                }))}
-                                fileName={`Inventory_Stock_${new Date().toISOString().split('T')[0]}`}
+                            <WarehouseExportButton
+                                module="stock"
+                                filters={{
+                                    search: searchTerm,
+                                    warehouse: warehouseFilter,
+                                    category: stockCategoryFilter === "All" ? "" : stockCategoryFilter,
+                                }}
                             />
                         </div>
 
@@ -806,18 +933,6 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                             {category}
                                         </h3>
                                         <div className="flex gap-2">
-                                            <ExportButton
-                                                data={items.map(i => ({
-                                                    Name: i.nameEn,
-                                                    Category: i.category,
-                                                    Quantity: i.qty,
-                                                    Unit: i.unit,
-                                                    Location: i.location
-                                                }))}
-                                                fileName={`${category}_Inventory`}
-                                                label="Export"
-                                                className="bg-slate-600 hover:bg-slate-700"
-                                            />
                                             <span className="text-xs font-medium text-slate-500 bg-white px-2 py-1 rounded-full border border-slate-200 flex items-center">
                                                 {items.length} Items
                                             </span>
@@ -850,26 +965,56 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                 )}
 
                 {activeTab === "logs" && (
-                    <>
-                        <div className="flex justify-end mb-4">
-                            <ExportButton
-                                data={data.stockLogs.map(log => ({
-                                    Date: log.logDate ? new Date(log.logDate).toLocaleString() : '-',
-                                    Item: log.itemName,
-                                    Change: log.changeAmount,
-                                    NewQty: log.newQty,
-                                    Action: log.actionType,
-                                    User: log.actionBy,
-                                    Location: log.location
-                                }))}
-                                fileName={`Stock_Logs_${new Date().toISOString().split('T')[0]}`}
+                    <div className="space-y-4">
+                        <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm md:grid-cols-5">
+                            <input
+                                type="text"
+                                value={logSearch}
+                                onChange={(event) => setLogSearch(event.target.value)}
+                                placeholder="Search item, action, user"
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
                             />
+                            <select
+                                value={logActionFilter}
+                                onChange={(event) => setLogActionFilter(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            >
+                                <option value="All">All actions</option>
+                                {["Transfer", "Lent", "Returned", "Issued", "Stock Take", "Manual Edit"].map((value) => (
+                                    <option key={value} value={value}>
+                                        {value}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="date"
+                                value={logDateFrom}
+                                onChange={(event) => setLogDateFrom(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                            <input
+                                type="date"
+                                value={logDateTo}
+                                onChange={(event) => setLogDateTo(event.target.value)}
+                                className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10"
+                            />
+                            <div className="flex justify-end">
+                                <WarehouseExportButton
+                                    module="movements"
+                                    filters={{
+                                        search: logSearch,
+                                        action: logActionFilter === "All" ? "" : logActionFilter,
+                                        dateFrom: logDateFrom,
+                                        dateTo: logDateTo,
+                                    }}
+                                />
+                            </div>
                         </div>
                         <PremiumTable
                             columns={logColumns}
-                            data={data.stockLogs}
+                            data={filteredStockLogs}
                         />
-                    </>
+                    </div>
                 )}
 
                 {/* Supervisor Views */}
@@ -890,6 +1035,9 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
 
                 {activeTab === "my_requests" && (
                     <div className="space-y-8">
+                        <div className="flex justify-end">
+                            <WarehouseExportButton module="tracking" label="Export My Request History" />
+                        </div>
                         {/* Ready for Pickup Section */}
                         {data.readyForPickup.length > 0 && (
                             <div className="space-y-6">
@@ -1028,6 +1176,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                 <h2 className="text-lg font-bold text-slate-800">Regional Stock Overview</h2>
                                 <p className="text-sm text-slate-500">Inventory levels across all project regions</p>
                             </div>
+                            <WarehouseExportButton module="regional-stock" />
                         </div>
 
                         {data.localInventory.length === 0 ? (
@@ -1085,6 +1234,12 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                                     </h2>
                                     <p className="text-sm text-slate-500">Current inventory in your region</p>
                                 </div>
+                                <WarehouseExportButton
+                                    module="regional-stock"
+                                    filters={{
+                                        region: selectedLocalRegion === "All" ? "" : selectedLocalRegion,
+                                    }}
+                                />
                             </div>
 
                             {/* Region Tabs */}
@@ -1260,6 +1415,19 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     />
                 )}
 
+                {bulkDispatchRequests && (
+                    <BulkDispatchModal
+                        isOpen={!!bulkDispatchRequests}
+                        onClose={() => {
+                            setBulkDispatchRequests(null);
+                            router.refresh();
+                        }}
+                        approvedRequests={bulkDispatchRequests}
+                        inventory={data.inventory}
+                        userName={userName}
+                    />
+                )}
+
                 {/* Supervisor Edit Request Modal */}
                 {editingRequest && (
                     <EditRequestModal
@@ -1272,6 +1440,7 @@ export function WarehouseClient({ data, userName, userRole = "manager", userRegi
                     />
                 )}
             </div>
+            )}
         </div>
     );
 }

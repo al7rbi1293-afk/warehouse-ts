@@ -182,6 +182,7 @@ const getWarehouseSharedData = unstable_cache(
       inventory,
       pendingRequests,
       approvedRequests,
+      loans,
       stockLogs,
       localInventory,
       warehouses,
@@ -197,6 +198,10 @@ const getWarehouseSharedData = unstable_cache(
       prisma.request.findMany({
         where: { status: "Approved" },
         orderBy: { region: "asc" },
+      }),
+      prisma.loan.findMany({
+        orderBy: { id: "desc" },
+        take: 300,
       }),
       prisma.stockLog.findMany({
         orderBy: { logDate: "desc" },
@@ -217,6 +222,7 @@ const getWarehouseSharedData = unstable_cache(
       inventory,
       pendingRequests,
       approvedRequests,
+      loans,
       stockLogs,
       localInventory,
       warehouses,
@@ -412,6 +418,7 @@ export async function getCachedWarehouseData(userRole: string, userName: string)
       inventory: [],
       pendingRequests: [],
       approvedRequests: [],
+      loans: [],
       stockLogs: [],
       localInventory: [],
       myPendingRequests: [],

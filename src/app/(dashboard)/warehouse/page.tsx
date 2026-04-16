@@ -24,7 +24,7 @@ export default async function WarehousePage() {
       data={data}
       userRole={user.role}
       userName={user.name || ""}
-      userRegion={user.region}
+      userRegion={user.regions || user.region}
     />
   );
 }

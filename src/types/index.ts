@@ -114,6 +114,8 @@ export interface AttendanceFormData {
 export interface InventoryItem {
   id: number;
   nameEn: string;
+  nameAr?: string | null;
+  itemCode?: string | null;
   category: string | null;
   unit: string | null;
   qty: number;
@@ -195,6 +197,24 @@ export interface StockLog {
   userName: string | null;
 }
 
+export interface LoanRecord {
+  id: number;
+  itemId: number;
+  itemName: string;
+  project: string;
+  quantity: number;
+  originalQuantity?: number | null;
+  returnedQuantity?: number | null;
+  type: string;
+  sourceWarehouse?: string | null;
+  date: string;
+  status: string;
+  expectedReturnDate?: Date | null;
+  returnDate?: Date | null;
+  reference?: string | null;
+  notes?: string | null;
+}
+
 // =====================
 // Audit Log Types
 // =====================
@@ -205,6 +225,62 @@ export interface AuditLog {
   action: string;
   details: string | null;
   module: string | null;
+}
+
+export interface Warehouse {
+  id: number;
+  name: string;
+  type?: string | null;
+  location?: string | null;
+  createdAt?: Date | null;
+}
+
+export type WarehouseBulkOperationType =
+  | "REQUEST"
+  | "TRANSFER"
+  | "LEND"
+  | "BORROW"
+  | "ISSUE";
+
+export interface WarehouseBulkOperation {
+  id: number;
+  operationNo: string;
+  operationType: WarehouseBulkOperationType | string;
+  status: string;
+  createdBy: string;
+  createdByUserId?: number | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  submittedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WarehouseBulkOperationLine {
+  id: number;
+  bulkOperationId: number;
+  lineNo: number;
+  entityType?: string | null;
+  entityId?: number | null;
+  status: string;
+  itemId?: number | null;
+  itemName: string;
+  itemCode?: string | null;
+  category?: string | null;
+  unit?: string | null;
+  quantity: number;
+  approvedQty?: number | null;
+  fulfilledQty?: number | null;
+  availableQtySnapshot?: number | null;
+  fromWarehouse?: string | null;
+  toWarehouse?: string | null;
+  region?: string | null;
+  projectName?: string | null;
+  expectedReturnDate?: Date | null;
+  notes?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // =====================
@@ -221,6 +297,19 @@ export interface DashboardMetrics {
 export interface ChartData {
   name: string;
   value: number;
+}
+
+export interface WarehouseExportFilterState {
+  search?: string;
+  status?: string;
+  warehouse?: string;
+  region?: string;
+  supervisor?: string;
+  category?: string;
+  action?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  scope?: string;
 }
 
 // =====================
@@ -266,10 +355,4 @@ export interface ManpowerData {
 export interface Region {
   id: number;
   name: string;
-}
-
-export interface Warehouse {
-  id: number;
-  name: string;
-  location: string | null;
 }

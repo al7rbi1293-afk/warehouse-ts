@@ -94,6 +94,8 @@ model Attendance {
 model Inventory {
   id          Int       @id(map: "Inventory_pkey") @default(autoincrement())
   nameEn      String    @map("name_en")
+  nameAr      String?   @map("name_ar")
+  itemCode    String?   @map("item_code")
   category    String
   location    String
   qty         Int       @default(0)
@@ -102,6 +104,7 @@ model Inventory {
   status      String    @default("Available")
   lastUpdated DateTime? @map("last_updated") @db.Timestamp(6)
 
+  @@index([itemCode])
   @@map("inventory")
 }
 
@@ -172,6 +175,61 @@ model AuditLog {
   @@map("audit_logs")
 }
 
+model WarehouseBulkOperation {
+  id              Int                        @id @default(autoincrement())
+  operationNo     String                     @unique @map("operation_no")
+  operationType   String                     @map("operation_type")
+  status          String                     @default("Completed")
+  createdBy       String                     @map("created_by")
+  createdByUserId Int?                       @map("created_by_user_id")
+  notes           String?
+  metadata        Json?
+  submittedAt     DateTime?                  @map("submitted_at") @db.Timestamp(6)
+  createdAt       DateTime                   @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime                   @updatedAt @map("updated_at") @db.Timestamp(6)
+  lines           WarehouseBulkOperationLine[]
+
+  @@index([operationType])
+  @@index([status])
+  @@index([createdAt])
+  @@map("warehouse_bulk_operations")
+}
+
+model WarehouseBulkOperationLine {
+  id                  Int                    @id @default(autoincrement())
+  bulkOperationId     Int                    @map("bulk_operation_id")
+  lineNo              Int                    @map("line_no")
+  entityType          String?                @map("entity_type")
+  entityId            Int?                   @map("entity_id")
+  status              String                 @default("Pending")
+  itemId              Int?                   @map("item_id")
+  itemName            String                 @map("item_name")
+  itemCode            String?                @map("item_code")
+  category            String?
+  unit                String?
+  quantity            Int
+  approvedQty         Int?                   @map("approved_qty")
+  fulfilledQty        Int?                   @map("fulfilled_qty")
+  availableQtySnapshot Int?                  @map("available_qty_snapshot")
+  fromWarehouse       String?                @map("from_warehouse")
+  toWarehouse         String?                @map("to_warehouse")
+  region              String?
+  projectName         String?                @map("project_name")
+  expectedReturnDate  DateTime?              @map("expected_return_date") @db.Timestamp(6)
+  notes               String?
+  metadata            Json?
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamp(6)
+  bulkOperation       WarehouseBulkOperation @relation(fields: [bulkOperationId], references: [id], onDelete: Cascade)
+
+  @@unique([bulkOperationId, lineNo])
+  @@index([entityType, entityId])
+  @@index([status])
+  @@index([itemName])
+  @@index([fromWarehouse, toWarehouse])
+  @@map("warehouse_bulk_operation_lines")
+}
+
 model Project {
   id        Int       @id @default(autoincrement())
   name      String    @unique @db.VarChar(255)
@@ -185,6 +243,7 @@ model Project {
 model Warehouse {
   id        Int       @id @default(autoincrement())
   name      String    @unique
+  type      String?   @map("type")
   location  String?
   createdAt DateTime? @default(now()) @map("created_at")
 
@@ -205,10 +264,16 @@ model loan {
   itemName        String
   project         String
   quantity        Int
+  originalQuantity Int?  @map("original_quantity")
+  returnedQuantity Int   @default(0) @map("returned_quantity")
   type            String
   sourceWarehouse String? @map("source_warehouse")
   date            String
   status          String @default("Active")
+  expectedReturnDate DateTime? @map("expected_return_date") @db.Timestamp(6)
+  returnDate      DateTime? @map("return_date") @db.Timestamp(6)
+  reference       String?
+  notes           String?
 }
 
 model ReportQuestion {
