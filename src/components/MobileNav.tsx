@@ -78,7 +78,10 @@ export function MobileNav() {
                     <nav className="space-y-1">
                         {/* Manager Only */}
                         {isManagerRole(session.user.role) && (
-                            <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Dashboard</Link>
+                            <>
+                                <Link href="/dashboard" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Dashboard</Link>
+                                <Link href="/dashboard/kpi" onClick={() => setIsOpen(false)} className="block px-4 py-3 text-white font-medium hover:bg-white/10 rounded-xl">Executive KPI</Link>
+                            </>
                         )}
 
                         {canAccessWarehouse(session.user.role) && (
