@@ -24,6 +24,17 @@ export const DAILY_REPORT_ROUNDS = [
     "8. (اذا تطلب الامر)",
 ];
 
+export function isMandatoryDailyReportRound(roundNumber: string) {
+    return roundNumber.includes("إلزامي");
+}
+
+export const MANDATORY_DAILY_REPORT_ROUNDS = DAILY_REPORT_ROUNDS.filter(
+    isMandatoryDailyReportRound
+);
+
+export const DAILY_REQUIRED_SUPERVISOR_REPORTS =
+    MANDATORY_DAILY_REPORT_ROUNDS.length;
+
 export const DAILY_REPORT_SECTIONS: DailyReportSection[] = [
     {
         id: "personal_followup",

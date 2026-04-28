@@ -60,4 +60,5 @@ export function revalidateReportsData() {
     CACHE_TAGS.dashboard,
   ]);
   revalidatePath("/reports");
+  revalidatePath("/dashboard");
 }

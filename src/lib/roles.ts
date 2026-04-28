@@ -71,6 +71,10 @@ export function getDefaultAuthenticatedPath(role?: string | null) {
         return "/reports";
     }
 
+    if (isStandardSupervisorRole(role)) {
+        return "/dashboard";
+    }
+
     if (canAccessWarehouse(role)) {
         return "/warehouse";
     }

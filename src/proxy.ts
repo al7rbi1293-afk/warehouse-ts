@@ -7,6 +7,7 @@ import {
     canAccessWarehouse,
     getDefaultAuthenticatedPath,
     isManagerRole,
+    isStandardSupervisorRole,
 } from "@/lib/roles";
 
 const AUTH_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
@@ -128,7 +129,17 @@ export async function proxy(request: NextRequest) {
         // Role-based access control
         const userRole = token.role as string;
 
-        if (pathname.startsWith("/dashboard") && !isManagerRole(userRole)) {
+        if (pathname.startsWith("/dashboard/kpi") && !isManagerRole(userRole)) {
+            return NextResponse.redirect(
+                new URL(getDefaultAuthenticatedPath(userRole), request.url)
+            );
+        }
+
+        if (
+            pathname.startsWith("/dashboard") &&
+            !isManagerRole(userRole) &&
+            !isStandardSupervisorRole(userRole)
+        ) {
             return NextResponse.redirect(
                 new URL(getDefaultAuthenticatedPath(userRole), request.url)
             );

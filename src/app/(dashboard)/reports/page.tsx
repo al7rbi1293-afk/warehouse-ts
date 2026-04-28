@@ -4,7 +4,10 @@ import { authOptions } from "@/lib/auth";
 import { ReportsClient } from "./ReportsClient";
 import { canAccessReports, getDefaultAuthenticatedPath } from "@/lib/roles";
 
-export default async function ReportsPage() {
+export default async function ReportsPage(props: {
+    searchParams: Promise<{ date?: string }>;
+}) {
+    const searchParams = await props.searchParams;
     const session = await getServerSession(authOptions);
 
     if (!session) {
@@ -15,5 +18,12 @@ export default async function ReportsPage() {
         redirect(getDefaultAuthenticatedPath(session.user.role));
     }
 
-    return <ReportsClient userRole={session.user.role} userName={session.user.name || ""} />;
+    return (
+        <ReportsClient
+            userId={Number(session.user.id)}
+            userRole={session.user.role}
+            userName={session.user.name || ""}
+            initialReportDate={searchParams.date}
+        />
+    );
 }

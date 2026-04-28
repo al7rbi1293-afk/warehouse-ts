@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma } from "@prisma/client";
 
-import { DAILY_REPORT_ROUNDS } from "@/lib/dailyReportTemplate";
+import { MANDATORY_DAILY_REPORT_ROUNDS } from "@/lib/dailyReportTemplate";
 import {
   calculateAchievementPercentage,
   calculateAttendanceCommitment,
@@ -12,7 +12,7 @@ import {
   formatSignatureForMatching,
   getExpectedSeniorAttendance,
   getExpectedSupervisorAttendance,
-  getExpectedSupervisorReports,
+  getExpectedSupervisorReportsForMonth,
   getExpectedSupervisorWorkDays,
   getExpectedWorkerAttendance,
   getDaysInMonth,
@@ -132,9 +132,6 @@ type PortalFilters = {
 const SUPERVISOR_ROLES = ["supervisor", "night_supervisor"] as const;
 const WORKER_ROLES = new Set(["Housekeeper", "Housekeper"]);
 const SENIOR_WORKER_ROLE = "Senior Housekeeper";
-const MANDATORY_DAILY_REPORT_ROUNDS = DAILY_REPORT_ROUNDS.filter((round) =>
-  round.includes("إلزامي")
-);
 
 function createMonthKey(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}`;
@@ -511,8 +508,8 @@ function buildMonthlySupervisorRows(
 ) {
   const daysInMonth = getDaysInMonth(year, month);
   const monthKey = createMonthKey(year, month);
-  const expectedReports = getExpectedSupervisorReports(daysInMonth);
-  const expectedWorkDays = getExpectedSupervisorWorkDays(daysInMonth);
+  const expectedReports = getExpectedSupervisorReportsForMonth(year, month);
+  const expectedWorkDays = getExpectedSupervisorWorkDays(year, month);
   const baseExpectedAttendance = getExpectedSupervisorAttendance(daysInMonth);
 
   return sortByName(

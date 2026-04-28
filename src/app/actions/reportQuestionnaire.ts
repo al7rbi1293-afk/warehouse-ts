@@ -18,6 +18,7 @@ import {
     isStandardSupervisorRole,
 } from "@/lib/roles";
 import {
+    decodeAreaValue,
     encodeAreaValue,
     getAreaDetailOptions,
     hasMultipleRoomValues,
@@ -27,6 +28,7 @@ import {
 import {
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
+    isMandatoryDailyReportRound,
     type DailyReportSection,
 } from "@/lib/dailyReportTemplate";
 
@@ -737,6 +739,21 @@ async function getSupervisorAllowedRegions(
     }
 
     return Array.from(dedup.values()).sort((a, b) => a.localeCompare(b, "ar"));
+}
+
+function filterDischargeRecordsByAllowedRegions<T extends { area: string }>(
+    records: T[],
+    allowedRegions: string[]
+) {
+    if (allowedRegions.length === 0) {
+        return records;
+    }
+
+    const allowedAreaKeys = new Set(allowedRegions.map(normalizeAreaKey));
+    return records.filter((record) => {
+        const decodedArea = decodeAreaValue(record.area);
+        return allowedAreaKeys.has(normalizeAreaKey(decodedArea.area));
+    });
 }
 
 export async function getReportQuestionnaireData(
@@ -1593,16 +1610,22 @@ export async function getDischargeReportData(
         return { success: false, message: "Invalid supervisor session" };
     }
 
+    const canViewAssignedAreaReports = isStandardSupervisorRole(role);
     const [records, allowedRegions] = await Promise.all([
         prisma.dischargeReportEntry.findMany({
-            where: {
-                reportDate: normalizedDate,
-                supervisorId,
-            },
+            where: canViewAssignedAreaReports
+                ? { reportDate: normalizedDate }
+                : {
+                    reportDate: normalizedDate,
+                    supervisorId,
+                },
             orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
         }),
         getSupervisorAllowedRegions(supervisorId, normalizedDate),
     ]);
+    const scopedRecords = canViewAssignedAreaReports
+        ? filterDischargeRecordsByAllowedRegions(records, allowedRegions)
+        : records;
 
     return {
         success: true,
@@ -1610,7 +1633,7 @@ export async function getDischargeReportData(
         data: {
             mode: "supervisor",
             allowedRegions,
-            entries: records.map((record) => ({
+            entries: scopedRecords.map((record) => ({
                 id: record.id,
                 reportDate: record.reportDate.toISOString(),
                 dischargeDate: record.dischargeDate.toISOString(),
@@ -1667,6 +1690,30 @@ export async function submitDailyReportForm(
         return { success: false, message: "Please select a valid round number" };
     }
 
+    const isMandatoryRound = isMandatoryDailyReportRound(roundNumber);
+    const roundIdentity = {
+        reportDate: normalizedDate,
+        supervisorId,
+        roundNumber,
+    };
+
+    if (isMandatoryRound) {
+        const existingMandatoryRound = await prisma.dailyReportSubmission.findUnique({
+            where: {
+                reportDate_supervisorId_roundNumber: roundIdentity,
+            },
+            select: { id: true },
+        });
+
+        if (existingMandatoryRound) {
+            return {
+                success: false,
+                message:
+                    "This mandatory round has already been submitted for the selected date.",
+            };
+        }
+    }
+
     const templateSections = await getActiveDailyTemplateSections();
     const checklistAnswers = sanitizeChecklistAnswers(payload.checklistAnswers || {}, templateSections);
 
@@ -1679,28 +1726,48 @@ export async function submitDailyReportForm(
         }
     }
 
-    await prisma.dailyReportSubmission.upsert({
-        where: {
-            reportDate_supervisorId_roundNumber: {
-                reportDate: normalizedDate,
-                supervisorId,
-                roundNumber,
-            },
-        },
-        update: {
-            supervisorName,
-            region,
-            checklistAnswers,
-        },
-        create: {
-            reportDate: normalizedDate,
-            supervisorId,
-            supervisorName,
-            region,
-            roundNumber,
-            checklistAnswers,
-        },
-    });
+    const submissionData = {
+        reportDate: normalizedDate,
+        supervisorId,
+        supervisorName,
+        region,
+        roundNumber,
+        checklistAnswers,
+    };
+
+    try {
+        if (isMandatoryRound) {
+            await prisma.dailyReportSubmission.create({
+                data: submissionData,
+            });
+        } else {
+            await prisma.dailyReportSubmission.upsert({
+                where: {
+                    reportDate_supervisorId_roundNumber: roundIdentity,
+                },
+                update: {
+                    supervisorName,
+                    region,
+                    checklistAnswers,
+                },
+                create: submissionData,
+            });
+        }
+    } catch (error) {
+        if (
+            error instanceof Prisma.PrismaClientKnownRequestError &&
+            error.code === "P2002" &&
+            isMandatoryRound
+        ) {
+            return {
+                success: false,
+                message:
+                    "This mandatory round has already been submitted for the selected date.",
+            };
+        }
+
+        throw error;
+    }
 
     revalidateReportsData();
     await logAudit(
@@ -1720,7 +1787,8 @@ export async function submitDailyReportForm(
 
 export async function submitDischargeReport(
     reportDate: string,
-    rows: DischargeEntryInput[]
+    rows: DischargeEntryInput[],
+    targetSupervisorId?: number
 ): Promise<ActionResult<{ submitted: number }>> {
     const session = await getServerSession(authOptions);
     const role = getRole(session);
@@ -1734,21 +1802,93 @@ export async function submitDischargeReport(
         return schemaCheck;
     }
 
-    const supervisorId = Number(session.user.id);
-    if (!Number.isFinite(supervisorId)) {
+    const actorSupervisorId = Number(session.user.id);
+    if (!Number.isFinite(actorSupervisorId)) {
         return { success: false, message: "Invalid supervisor session" };
     }
 
     const normalizedDate = normalizeReportDate(reportDate);
-    const supervisorName = (session.user.name || session.user.username || "").trim();
+    const requestedTargetSupervisorId =
+        typeof targetSupervisorId === "number" && Number.isFinite(targetSupervisorId)
+            ? targetSupervisorId
+            : actorSupervisorId;
+    if (requestedTargetSupervisorId <= 0) {
+        return { success: false, message: "Invalid target supervisor" };
+    }
+
+    const isEditingAnotherSupervisor = requestedTargetSupervisorId !== actorSupervisorId;
+    if (
+        isEditingAnotherSupervisor &&
+        !isManagerRole(role) &&
+        !isStandardSupervisorRole(role)
+    ) {
+        return { success: false, message: "You can only edit your own discharge report" };
+    }
+
+    const targetUser = isEditingAnotherSupervisor
+        ? await prisma.user.findUnique({
+            where: { id: requestedTargetSupervisorId },
+            select: { id: true, username: true, name: true, role: true },
+        })
+        : null;
+
+    if (isEditingAnotherSupervisor && !targetUser) {
+        return { success: false, message: "Target discharge report owner was not found" };
+    }
+
+    if (targetUser && !isDischargeOperatorRole(targetUser.role)) {
+        return { success: false, message: "Target user cannot own discharge reports" };
+    }
+
+    const supervisorId = requestedTargetSupervisorId;
+    const supervisorName = (
+        isEditingAnotherSupervisor
+            ? targetUser?.name || targetUser?.username || ""
+            : session.user.name || session.user.username || ""
+    ).trim();
     if (!supervisorName) {
         return { success: false, message: "Supervisor profile name is required" };
     }
 
-    const allowedRegions = await getSupervisorAllowedRegions(supervisorId, normalizedDate);
+    const allowedRegions = isManagerRole(role)
+        ? []
+        : await getSupervisorAllowedRegions(actorSupervisorId, normalizedDate);
     const regionByKey = new Map(
         allowedRegions.map((region) => [region.trim().toUpperCase(), region])
     );
+
+    if (isEditingAnotherSupervisor && !isManagerRole(role)) {
+        if (allowedRegions.length === 0) {
+            return { success: false, message: "No assigned areas found for your account" };
+        }
+
+        const existingRows = await prisma.dischargeReportEntry.findMany({
+            where: {
+                reportDate: normalizedDate,
+                supervisorId,
+            },
+            select: {
+                area: true,
+            },
+        });
+
+        if (existingRows.length === 0) {
+            return { success: false, message: "Target discharge report was not found" };
+        }
+
+        const allowedAreaKeys = new Set(allowedRegions.map(normalizeAreaKey));
+        const hasRestrictedExistingRow = existingRows.some((entry) => {
+            const decodedArea = decodeAreaValue(entry.area);
+            return !allowedAreaKeys.has(normalizeAreaKey(decodedArea.area));
+        });
+
+        if (hasRestrictedExistingRow) {
+            return {
+                success: false,
+                message: "You can only edit discharge reports inside your assigned areas",
+            };
+        }
+    }
 
     const cleaned: Array<{
         dischargeDate: Date;
@@ -1874,18 +2014,22 @@ export async function submitDischargeReport(
     revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Supervisor",
-        "Submit Discharge Report",
-        `Submitted discharge report for submission date ${reportDate} (${cleaned.length} rows)`,
+        isEditingAnotherSupervisor ? "Edit Discharge Report" : "Submit Discharge Report",
+        `${isEditingAnotherSupervisor ? `Edited discharge report for ${supervisorName}` : "Submitted discharge report"} for submission date ${reportDate} (${cleaned.length} rows)`,
         "Reports"
     );
     logServerInfo("discharge_report_submitted", {
         reportDate,
         supervisorId,
+        actorSupervisorId,
         submitted: cleaned.length,
+        editedForAnotherSupervisor: isEditingAnotherSupervisor,
     });
     return {
         success: true,
-        message: "Discharge report submitted successfully",
+        message: isEditingAnotherSupervisor
+            ? "Discharge report updated successfully"
+            : "Discharge report submitted successfully",
         data: { submitted: cleaned.length },
     };
 }
@@ -2164,10 +2308,11 @@ export async function getMonthlyDischargeReportData(
         return { success: false, message: "Invalid supervisor session" };
     }
 
+    const canViewAssignedAreaReports = isStandardSupervisorRole(role);
     const [records, allowedRegions] = await Promise.all([
         prisma.dischargeReportEntry.findMany({
             where: {
-                supervisorId,
+                ...(canViewAssignedAreaReports ? {} : { supervisorId }),
                 dischargeDate: {
                     gte: startDate,
                     lte: endDate,
@@ -2180,6 +2325,9 @@ export async function getMonthlyDischargeReportData(
         }),
         getSupervisorAllowedRegions(supervisorId, new Date()), // Region check is general, so current date is fine/safe enough or we could pick start of month
     ]);
+    const scopedRecords = canViewAssignedAreaReports
+        ? filterDischargeRecordsByAllowedRegions(records, allowedRegions)
+        : records;
 
     return {
         success: true,
@@ -2187,7 +2335,7 @@ export async function getMonthlyDischargeReportData(
         data: {
             mode: "supervisor",
             allowedRegions,
-            entries: records.map((record) => ({
+            entries: scopedRecords.map((record) => ({
                 id: record.id,
                 reportDate: record.reportDate.toISOString(),
                 dischargeDate: record.dischargeDate.toISOString(),

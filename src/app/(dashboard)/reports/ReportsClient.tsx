@@ -26,8 +26,11 @@ import {
     type WeeklyManagerRange,
 } from "@/app/actions/reportQuestionnaire";
 import {
+    DAILY_REQUIRED_SUPERVISOR_REPORTS,
     DAILY_REPORT_ROUNDS,
     DAILY_REPORT_SECTIONS,
+    MANDATORY_DAILY_REPORT_ROUNDS,
+    isMandatoryDailyReportRound,
     type DailyReportSection,
 } from "@/lib/dailyReportTemplate";
 import {
@@ -47,8 +50,10 @@ import {
 } from "@/lib/roles";
 
 interface ReportsClientProps {
+    userId?: number;
     userRole: string;
     userName?: string;
+    initialReportDate?: string;
 }
 
 interface ReportQuestionItem {
@@ -91,6 +96,21 @@ interface DischargeEntryItem {
     roomNumber: string;
     roomType: DischargeRoomType;
     updatedAt: string;
+}
+
+interface DischargeEditTarget {
+    supervisorId: number;
+    supervisorName: string;
+    reportDate: string;
+}
+
+interface DischargeReportGroup {
+    groupKey: string;
+    supervisorId: number;
+    supervisorName: string;
+    reportDate: string;
+    latestUpdatedAt: string;
+    rows: DischargeEntryItem[];
 }
 
 interface DailyFormState {
@@ -372,6 +392,16 @@ function hydrateDischargeEntries(rawEntries: Array<Omit<DischargeEntryItem, "are
     });
 }
 
+function createDischargeRowsFromEntries(entries: DischargeEntryItem[]) {
+    return entries.map((entry) => ({
+        dischargeDate: entry.dischargeDate.slice(0, 10),
+        roomNumber: entry.roomNumber,
+        roomType: entry.roomType,
+        area: entry.area,
+        areaDetail: entry.areaDetail,
+    }));
+}
+
 function buildDischargePayload(
     rows: DischargeEntryInput[],
     allowedRegions: string[]
@@ -472,14 +502,18 @@ function getWeeklyQuestionIdMap(questions: ReportQuestionItem[]) {
     };
 }
 
-export function ReportsClient({ userRole, userName }: ReportsClientProps) {
+export function ReportsClient({ userId, userRole, userName, initialReportDate }: ReportsClientProps) {
     const visibleTabs = useMemo(
         () => reportTabs.filter((tab) => canAccessReportTab(userRole, tab.key)),
         [userRole]
     );
     const defaultTab = visibleTabs[0]?.key || "discharge";
     const [activeTab, setActiveTab] = useState<ReportType>(defaultTab);
-    const [reportDate, setReportDate] = useState(getTodayLocalDateString());
+    const [reportDate, setReportDate] = useState(() =>
+        initialReportDate && isValidDateInput(initialReportDate)
+            ? initialReportDate
+            : getTodayLocalDateString()
+    );
     const [dailyManagerFromDate, setDailyManagerFromDate] = useState(getTodayLocalDateString());
     const [dailyManagerToDate, setDailyManagerToDate] = useState(getTodayLocalDateString());
     const [questions, setQuestions] = useState<ReportQuestionItem[]>([]);
@@ -511,6 +545,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const [dischargeAreaFilter, setDischargeAreaFilter] = useState("all");
     const [dischargeSortKey, setDischargeSortKey] = useState<DischargeSortKey>("submission_desc");
     const [dischargePage, setDischargePage] = useState(1);
+    const [editingDischargeTarget, setEditingDischargeTarget] =
+        useState<DischargeEditTarget | null>(null);
     const [dailySearchTerm, setDailySearchTerm] = useState("");
     const [dailyAreaFilter, setDailyAreaFilter] = useState("all");
     const [dailyRoundFilter, setDailyRoundFilter] = useState("all");
@@ -527,6 +563,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
     const isManager = isManagerRole(userRole);
     const isSupervisor = isStandardSupervisorRole(userRole);
     const isDischargeOperator = isDischargeOperatorRole(userRole);
+    const currentUserId =
+        typeof userId === "number" && Number.isFinite(userId) ? userId : null;
     const isDailyManagerDateRangeValid =
         isValidDateInput(dailyManagerFromDate) &&
         isValidDateInput(dailyManagerToDate) &&
@@ -785,21 +823,32 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             setDischargeAllowedRegions(result.data.allowedRegions || []);
 
             if (isDischargeOperator) {
-                const rowsFromServer = expandedEntries.map((entry) => ({
-                    dischargeDate: entry.dischargeDate.slice(0, 10),
-                    roomNumber: entry.roomNumber,
-                    roomType: entry.roomType,
-                    area: entry.area,
-                    areaDetail: entry.areaDetail,
-                }));
+                const activeEditTarget =
+                    editingDischargeTarget?.reportDate === requestedDate
+                        ? editingDischargeTarget
+                        : null;
+                const targetSupervisorId =
+                    activeEditTarget?.supervisorId ?? currentUserId;
+                const rowsFromServer =
+                    dischargeReportType === "daily" && targetSupervisorId !== null
+                        ? createDischargeRowsFromEntries(
+                            expandedEntries.filter(
+                                (entry) =>
+                                    entry.supervisorId === targetSupervisorId &&
+                                    entry.reportDate.slice(0, 10) === requestedDate
+                            )
+                        )
+                        : [];
                 const draftRows = coerceDischargeDraftRows(
                     readDraft<DischargeEntryInput[]>(getDischargeDraftKey(requestedDate))
                 );
 
                 setDischargeRows(
-                    rowsFromServer.length > 0
+                    dischargeReportType === "daily" && rowsFromServer.length > 0
                         ? rowsFromServer
-                        : draftRows.length > 0
+                        : dischargeReportType === "daily" &&
+                            !activeEditTarget &&
+                            draftRows.length > 0
                             ? draftRows
                             : [createEmptyDischargeRow()]
                 );
@@ -842,6 +891,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         dischargeReportType,
         dischargeMonth,
         dischargeYear,
+        editingDischargeTarget?.reportDate,
+        editingDischargeTarget?.supervisorId,
         weeklyManagerRange,
         dailyManagerFromDate,
         dailyManagerToDate,
@@ -968,6 +1019,39 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }));
     };
 
+    const submittedMandatoryRoundSet = useMemo(() => {
+        return new Set(
+            dailySubmissions
+                .filter((submission) => isMandatoryDailyReportRound(submission.roundNumber))
+                .map((submission) => submission.roundNumber)
+        );
+    }, [dailySubmissions]);
+
+    const completedRequiredDailyReports = submittedMandatoryRoundSet.size;
+    const remainingRequiredDailyReports = Math.max(
+        0,
+        DAILY_REQUIRED_SUPERVISOR_REPORTS - completedRequiredDailyReports
+    );
+    const dailyAchievementRate =
+        DAILY_REQUIRED_SUPERVISOR_REPORTS > 0
+            ? (completedRequiredDailyReports / DAILY_REQUIRED_SUPERVISOR_REPORTS) * 100
+            : 0;
+    const optionalDailyReports = dailySubmissions.filter(
+        (submission) => !isMandatoryDailyReportRound(submission.roundNumber)
+    ).length;
+    const missingMandatoryDailyRounds = MANDATORY_DAILY_REPORT_ROUNDS.filter(
+        (round) => !submittedMandatoryRoundSet.has(round)
+    );
+    const selectedMandatoryRoundAlreadySubmitted =
+        isMandatoryDailyReportRound(dailyForm.roundNumber) &&
+        submittedMandatoryRoundSet.has(dailyForm.roundNumber);
+    const dailyProgressStatus =
+        completedRequiredDailyReports >= DAILY_REQUIRED_SUPERVISOR_REPORTS
+            ? dailySubmissions.length > DAILY_REQUIRED_SUPERVISOR_REPORTS
+                ? "Exceeded"
+                : "Complete"
+            : "Incomplete";
+
     const handleSubmitDailyReport = () => {
         if (!dailyForm.region.trim()) {
             toast.error("Please select an area");
@@ -976,6 +1060,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
         if (!dailyForm.roundNumber) {
             toast.error("Please select round number");
+            return;
+        }
+
+        if (selectedMandatoryRoundAlreadySubmitted) {
+            toast.error("This mandatory round has already been submitted for the selected date.");
             return;
         }
 
@@ -1038,7 +1127,13 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         }
 
         startTransition(async () => {
-            const result = await submitDischargeReport(reportDate, payload);
+            const result = await submitDischargeReport(
+                reportDate,
+                payload,
+                editingDischargeTarget?.reportDate === reportDate
+                    ? editingDischargeTarget.supervisorId
+                    : undefined
+            );
             if (!result.success) {
                 toast.error(result.message);
                 return;
@@ -1046,6 +1141,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
             toast.success(result.message);
             setDischargeRowErrors({});
+            setEditingDischargeTarget(null);
             clearDraft(getDischargeDraftKey(reportDate));
             const token = beginLoad();
             await loadDischargeData(token, reportDate);
@@ -1600,7 +1696,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
 
         const groups = new Map<
             string,
-            { groupKey: string; supervisorId: number; supervisorName: string; reportDate: string; rows: DischargeEntryItem[] }
+            DischargeReportGroup
         >();
 
         for (const entry of sortedRows) {
@@ -1608,6 +1704,9 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             const existing = groups.get(groupKey);
             if (existing) {
                 existing.rows.push(entry);
+                if (entry.updatedAt.localeCompare(existing.latestUpdatedAt, "en") > 0) {
+                    existing.latestUpdatedAt = entry.updatedAt;
+                }
                 continue;
             }
 
@@ -1616,6 +1715,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                 supervisorId: entry.supervisorId,
                 supervisorName: entry.supervisorName,
                 reportDate: entry.reportDate.slice(0, 10),
+                latestUpdatedAt: entry.updatedAt,
                 rows: [entry],
             });
         }
@@ -1628,6 +1728,42 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
             return a.supervisorName.localeCompare(b.supervisorName, "en");
         });
     }, [dischargeAreaFilter, dischargeEntries, dischargeSearchTerm, dischargeSortKey]);
+
+    const recentDischargeReportGroups = useMemo(() => {
+        return [...groupedDischargeEntries]
+            .sort((a, b) => b.latestUpdatedAt.localeCompare(a.latestUpdatedAt, "en"))
+            .slice(0, 6);
+    }, [groupedDischargeEntries]);
+
+    const canEditDischargeGroup = (group: DischargeReportGroup) => {
+        if (!isDischargeOperator) {
+            return false;
+        }
+
+        if (currentUserId !== null && group.supervisorId === currentUserId) {
+            return true;
+        }
+
+        return isSupervisor;
+    };
+
+    const handleEditDischargeGroup = (group: DischargeReportGroup) => {
+        if (!canEditDischargeGroup(group)) {
+            toast.error("You can only edit reports you are allowed to manage.");
+            return;
+        }
+
+        setEditingDischargeTarget({
+            supervisorId: group.supervisorId,
+            supervisorName: group.supervisorName,
+            reportDate: group.reportDate,
+        });
+        setDischargeReportType("daily");
+        setReportDate(group.reportDate);
+        setDischargeRows(createDischargeRowsFromEntries(group.rows));
+        setDischargeRowErrors({});
+        toast.success(`Loaded discharge report entered by ${group.supervisorName}`);
+    };
 
     const dischargeTotalPages = Math.max(
         1,
@@ -1720,7 +1856,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         <div className="flex bg-slate-100 rounded-lg p-1 mr-2">
                             <button
                                 type="button"
-                                onClick={() => setDischargeReportType("daily")}
+                                onClick={() => {
+                                    setEditingDischargeTarget(null);
+                                    setDischargeReportType("daily");
+                                }}
                                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${dischargeReportType === "daily"
                                     ? "bg-white text-slate-900 shadow-sm"
                                     : "text-slate-500 hover:text-slate-700"
@@ -1730,7 +1869,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setDischargeReportType("monthly")}
+                                onClick={() => {
+                                    setEditingDischargeTarget(null);
+                                    setDischargeReportType("monthly");
+                                }}
                                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${dischargeReportType === "monthly"
                                     ? "bg-white text-slate-900 shadow-sm"
                                     : "text-slate-500 hover:text-slate-700"
@@ -1751,19 +1893,28 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 id="report-date"
                                 type="date"
                                 value={reportDate}
-                                onChange={(e) => setReportDate(e.target.value)}
+                                onChange={(e) => {
+                                    setEditingDischargeTarget(null);
+                                    setReportDate(e.target.value);
+                                }}
                                 className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                             />
                             <button
                                 type="button"
-                                onClick={() => setReportDate(getTodayLocalDateString())}
+                                onClick={() => {
+                                    setEditingDischargeTarget(null);
+                                    setReportDate(getTodayLocalDateString());
+                                }}
                                 className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                             >
                                 Today
                             </button>
                             <button
                                 type="button"
-                                onClick={() => setReportDate(getShiftedLocalDateString(-1))}
+                                onClick={() => {
+                                    setEditingDischargeTarget(null);
+                                    setReportDate(getShiftedLocalDateString(-1));
+                                }}
                                 className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
                             >
                                 Yesterday
@@ -1775,7 +1926,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         <>
                             <select
                                 value={dischargeMonth}
-                                onChange={(e) => setDischargeMonth(Number(e.target.value))}
+                                onChange={(e) => {
+                                    setEditingDischargeTarget(null);
+                                    setDischargeMonth(Number(e.target.value));
+                                }}
                                 className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                                 aria-label="Select month"
                             >
@@ -1787,7 +1941,10 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             </select>
                             <select
                                 value={dischargeYear}
-                                onChange={(e) => setDischargeYear(Number(e.target.value))}
+                                onChange={(e) => {
+                                    setEditingDischargeTarget(null);
+                                    setDischargeYear(Number(e.target.value));
+                                }}
                                 className="px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                                 aria-label="Select year"
                             >
@@ -1828,6 +1985,64 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <h2 className="text-lg font-semibold text-slate-900">Daily Supervision Report</h2>
                                         <p className="text-sm text-slate-500">
                                             Complete all required checklist sections before submission.
+                                        </p>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Required
+                                            </p>
+                                            <p className="mt-1 text-2xl font-bold text-slate-900">
+                                                {DAILY_REQUIRED_SUPERVISOR_REPORTS}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Completed
+                                            </p>
+                                            <p className="mt-1 text-2xl font-bold text-slate-900">
+                                                {completedRequiredDailyReports}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Remaining
+                                            </p>
+                                            <p className="mt-1 text-2xl font-bold text-slate-900">
+                                                {remainingRequiredDailyReports}
+                                            </p>
+                                        </div>
+                                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Achievement
+                                            </p>
+                                            <p className="mt-1 text-2xl font-bold text-slate-900">
+                                                {dailyAchievementRate.toFixed(2)}%
+                                            </p>
+                                        </div>
+                                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Status
+                                            </p>
+                                            <p className="mt-1 text-2xl font-bold text-slate-900">
+                                                {dailyProgressStatus}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2 rounded-lg border border-slate-200 bg-white px-3 py-3">
+                                        <div className="h-2 rounded-full bg-slate-100">
+                                            <div
+                                                className="h-2 rounded-full bg-blue-600"
+                                                style={{ width: `${Math.min(dailyAchievementRate, 100)}%` }}
+                                            />
+                                        </div>
+                                        <p className="text-xs text-slate-500">
+                                            Optional rounds submitted for this date: {optionalDailyReports}.
+                                            {missingMandatoryDailyRounds.length > 0
+                                                ? ` Missing mandatory rounds: ${missingMandatoryDailyRounds.join(", ")}.`
+                                                : " All mandatory rounds are complete."}
                                         </p>
                                     </div>
 
@@ -1882,11 +2097,27 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                 className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
                                             >
                                                 {DAILY_REPORT_ROUNDS.map((round) => (
-                                                    <option key={round} value={round}>
+                                                    <option
+                                                        key={round}
+                                                        value={round}
+                                                        disabled={
+                                                            isMandatoryDailyReportRound(round) &&
+                                                            submittedMandatoryRoundSet.has(round)
+                                                        }
+                                                    >
                                                         {round}
+                                                        {isMandatoryDailyReportRound(round) &&
+                                                        submittedMandatoryRoundSet.has(round)
+                                                            ? " - Submitted"
+                                                            : ""}
                                                     </option>
                                                 ))}
                                             </select>
+                                            {selectedMandatoryRoundAlreadySubmitted && (
+                                                <p className="text-xs text-red-600">
+                                                    This mandatory round has already been submitted for this date.
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1952,7 +2183,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         <button
                                             type="button"
                                             onClick={handleSubmitDailyReport}
-                                            disabled={isPending || availableRegions.length === 0}
+                                            disabled={
+                                                isPending ||
+                                                availableRegions.length === 0 ||
+                                                selectedMandatoryRoundAlreadySubmitted
+                                            }
                                             className="px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
                                         >
                                             {isPending ? "Submitting..." : "Submit daily report"}
@@ -2301,6 +2536,25 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         Resus) and for ward floors (example: 5th floor to 50 or 51).
                                     </p>
 
+                                    {editingDischargeTarget && dischargeReportType === "daily" && (
+                                        <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm text-blue-700 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                            <span>
+                                                Editing report entered by{" "}
+                                                <span className="font-semibold">
+                                                    {editingDischargeTarget.supervisorName}
+                                                </span>{" "}
+                                                on {editingDischargeTarget.reportDate}.
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setEditingDischargeTarget(null)}
+                                                className="self-start rounded-md border border-blue-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100 md:self-auto"
+                                            >
+                                                Cancel edit
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <DischargeSpreadsheet
                                         rows={dischargeRows}
                                         rowErrors={dischargeRowErrors}
@@ -2309,10 +2563,97 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         onRowsChange={handleDischargeRowsChange}
                                     />
 
+                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                                        <div className="flex flex-col gap-1 md:flex-row md:items-start md:justify-between">
+                                            <div>
+                                                <h3 className="text-sm font-semibold text-slate-900">
+                                                    Latest submitted discharge reports
+                                                </h3>
+                                                <p className="text-xs text-slate-500">
+                                                    Shows who entered each report. Use Edit to load it into the form.
+                                                </p>
+                                            </div>
+                                            <span className="text-xs font-medium text-slate-500">
+                                                {dischargeReportType === "monthly"
+                                                    ? `${new Date(dischargeYear, dischargeMonth - 1, 1).toLocaleString("default", {
+                                                        month: "long",
+                                                        year: "numeric",
+                                                    })}`
+                                                    : reportDate}
+                                            </span>
+                                        </div>
+
+                                        {recentDischargeReportGroups.length === 0 ? (
+                                            <p className="rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm text-slate-500">
+                                                No discharge reports submitted for the selected scope.
+                                            </p>
+                                        ) : (
+                                            <div className="grid gap-3 lg:grid-cols-2">
+                                                {recentDischargeReportGroups.map((group) => {
+                                                    const canEditGroup = canEditDischargeGroup(group);
+                                                    const areas = Array.from(
+                                                        new Set(
+                                                            group.rows.map((row) =>
+                                                                [row.area, row.areaDetail]
+                                                                    .filter(Boolean)
+                                                                    .join(" / ")
+                                                            )
+                                                        )
+                                                    );
+                                                    const areaPreview = areas.slice(0, 3).join(", ");
+
+                                                    return (
+                                                        <div
+                                                            key={`recent-${group.groupKey}`}
+                                                            className="rounded-lg border border-slate-200 bg-white p-3"
+                                                        >
+                                                            <div className="flex items-start justify-between gap-3">
+                                                                <div>
+                                                                    <p className="text-sm font-semibold text-slate-900">
+                                                                        {group.supervisorName}
+                                                                    </p>
+                                                                    <p className="mt-1 text-xs text-slate-500">
+                                                                        Submission date: {group.reportDate}
+                                                                    </p>
+                                                                </div>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleEditDischargeGroup(group)}
+                                                                    disabled={isPending || !canEditGroup}
+                                                                    className="rounded-md border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                                >
+                                                                    {canEditGroup ? "Edit" : "View only"}
+                                                                </button>
+                                                            </div>
+                                                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                                                                <div className="rounded-md bg-slate-50 px-2 py-1.5">
+                                                                    Rows:{" "}
+                                                                    <span className="font-semibold text-slate-900">
+                                                                        {group.rows.length}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="rounded-md bg-slate-50 px-2 py-1.5">
+                                                                    Updated:{" "}
+                                                                    <span className="font-semibold text-slate-900">
+                                                                        {new Date(group.latestUpdatedAt).toLocaleString()}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <p className="mt-2 text-xs text-slate-500">
+                                                                Areas: {areaPreview || "-"}
+                                                                {areas.length > 3 ? ` +${areas.length - 3} more` : ""}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="flex items-center justify-end gap-3">
                                         {dischargeReportType === "monthly" && (
                                             <p className="text-sm text-amber-600 bg-amber-50 px-3 py-2 rounded-lg border border-amber-100">
-                                                Switch to Daily view to add or edit reports.
+                                                Switch to Daily view or use Edit from latest reports.
                                             </p>
                                         )}
                                         <button

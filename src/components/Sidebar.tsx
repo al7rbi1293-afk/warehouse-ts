@@ -10,6 +10,7 @@ import {
     canAccessReports,
     canAccessWarehouse,
     isManagerRole,
+    isStandardSupervisorRole,
 } from "@/lib/roles";
 
 // Define the exact icons from the mockup conceptually
@@ -76,7 +77,7 @@ export function Sidebar({ className = "", staticPositioning = false }: SidebarPr
     if (!session?.user) return null;
 
     const navItems = [
-        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard, visible: isManagerRole(session.user.role) },
+        { name: "Dashboard", href: "/dashboard", icon: Icons.Dashboard, visible: isManagerRole(session.user.role) || isStandardSupervisorRole(session.user.role) },
         { name: "Executive KPI", href: "/dashboard/kpi", icon: Icons.ExecutiveKpi, visible: isManagerRole(session.user.role) },
         { name: "Inventory and Supply Request", href: "/warehouse", icon: Icons.Inventory, visible: canAccessWarehouse(session.user.role) },
         { name: "Manpower", href: "/manpower", icon: Icons.Reports, visible: canAccessManpower(session.user.role) },

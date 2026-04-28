@@ -1,3 +1,5 @@
+import { DAILY_REQUIRED_SUPERVISOR_REPORTS } from "@/lib/dailyReportTemplate";
+
 export type KpiRoleFocus = "all" | "supervisors" | "workers" | "seniors";
 
 export type KpiPortalTab =
@@ -197,6 +199,7 @@ export const JUSTIFIED_EXCLUDED_STATUSES = new Set<string>([
   "Official Leave",
   "Eid Holiday",
 ]);
+const STANDARD_SUPERVISOR_MONTHLY_DAYS_OFF = 8;
 
 export function roundToTwo(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -206,28 +209,41 @@ export function getDaysInMonth(year: number, month: number) {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-function scaleExpectation(baseValueFor31Days: number, daysInMonth: number) {
+export function getStandardSupervisorWorkingDaysInMonth(
+  year: number,
+  month: number
+) {
+  return getDaysInMonth(year, month) - STANDARD_SUPERVISOR_MONTHLY_DAYS_OFF;
+}
+
+export function getExpectedSupervisorReportsForMonth(
+  year: number,
+  month: number
+) {
+  return (
+    getStandardSupervisorWorkingDaysInMonth(year, month) *
+    DAILY_REQUIRED_SUPERVISOR_REPORTS
+  );
+}
+
+function scaleAttendanceExpectation(baseValueFor31Days: number, daysInMonth: number) {
   return roundToTwo(baseValueFor31Days * (daysInMonth / 31));
 }
 
-export function getExpectedSupervisorWorkDays(daysInMonth: number) {
-  return scaleExpectation(25, daysInMonth);
-}
-
-export function getExpectedSupervisorReports(daysInMonth: number) {
-  return scaleExpectation(100, daysInMonth);
+export function getExpectedSupervisorWorkDays(year: number, month: number) {
+  return getStandardSupervisorWorkingDaysInMonth(year, month);
 }
 
 export function getExpectedSupervisorAttendance(daysInMonth: number) {
-  return scaleExpectation(25, daysInMonth);
+  return scaleAttendanceExpectation(25, daysInMonth);
 }
 
 export function getExpectedWorkerAttendance(daysInMonth: number) {
-  return scaleExpectation(27, daysInMonth);
+  return scaleAttendanceExpectation(27, daysInMonth);
 }
 
 export function getExpectedSeniorAttendance(daysInMonth: number) {
-  return scaleExpectation(27, daysInMonth);
+  return scaleAttendanceExpectation(27, daysInMonth);
 }
 
 export function calculateAchievementPercentage(actual: number, expected: number) {

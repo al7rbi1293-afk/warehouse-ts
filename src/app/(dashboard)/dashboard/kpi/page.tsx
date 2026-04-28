@@ -197,8 +197,8 @@ function buildMonthlySummaryCards(data: ExecutiveKpiPortalData["monthly"]) {
     },
     {
       label: "Expected Reports",
-      value: formatDecimal(data.summary.totalExpectedReports),
-      helper: "Scaled monthly target based on actual month length.",
+      value: formatInteger(data.summary.totalExpectedReports),
+      helper: "Standard supervisor working days multiplied by 4 reports.",
     },
     {
       label: "Reports Achievement",
@@ -247,7 +247,7 @@ function buildAnnualSummaryCards(data: ExecutiveKpiPortalData["annual"]) {
     },
     {
       label: "Expected Reports",
-      value: formatDecimal(data.summary.totalExpectedReports),
+      value: formatInteger(data.summary.totalExpectedReports),
       helper: "Sum of monthly expected report targets across the year.",
     },
     {
@@ -292,7 +292,7 @@ function buildSupervisorMonthlyRows(data: ExecutiveKpiPortalData["monthly"]) {
   return data.supervisors.map((row) => ({
     name: row.name,
     actualReports: formatInteger(row.actualReports),
-    expectedReports: formatDecimal(row.expectedReports),
+    expectedReports: formatInteger(row.expectedReports),
     actualDailyRate: formatDecimal(row.actualDailyReportsRate),
     expectedDailyRate: formatDecimal(row.expectedDailyReportsRate),
     reportsAchievement: formatPercentage(row.reportsAchievementPercentage),
@@ -327,7 +327,7 @@ function buildSupervisorAnnualRows(data: ExecutiveKpiPortalData["annual"]) {
   return data.supervisors.map((row) => ({
     name: row.name,
     actualReports: formatInteger(row.actualReports),
-    expectedReports: formatDecimal(row.expectedReports),
+    expectedReports: formatInteger(row.expectedReports),
     reportsAchievement: formatPercentage(row.reportsAchievementPercentage),
     present: formatInteger(row.present),
     absent: formatInteger(row.absent),
@@ -375,7 +375,7 @@ function buildMonthlyBreakdownRows(data: ExecutiveKpiPortalData["annual"]) {
   return data.monthlyBreakdown.map((row) => ({
     month: row.label,
     actualReports: formatInteger(row.actualReports),
-    expectedReports: formatDecimal(row.expectedReports),
+    expectedReports: formatInteger(row.expectedReports),
     reportsAchievement: formatPercentage(row.reportsAchievementPercentage),
     present: formatInteger(row.present),
     absent: formatInteger(row.absent),
