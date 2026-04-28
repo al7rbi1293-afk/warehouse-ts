@@ -7,6 +7,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { logAudit } from "@/app/actions/audit";
 import { logServerError, logServerInfo } from "@/lib/observability";
+import { revalidateReportsData } from "@/lib/cache-tags";
+import {
+    type ReportReviewStatus,
+    type ReportReviewType,
+} from "@/lib/report-reviews";
 import {
     isDischargeOperatorRole,
     isManagerRole,
@@ -88,6 +93,7 @@ export interface DischargeEntryInput {
 interface DailySubmissionDto {
     id: number;
     reportDate: string;
+    supervisorId: number;
     supervisorName: string;
     region: string;
     roundNumber: string;
@@ -105,6 +111,24 @@ interface DischargeEntryDto {
     roomNumber: string;
     roomType: DischargeRoomType;
     updatedAt: string;
+}
+
+export interface ReportReviewDto {
+    id: number;
+    reportType: ReportReviewType;
+    reportDate: string;
+    supervisorId: number;
+    supervisorName: string;
+    area: string;
+    roundNumber: string;
+    status: ReportReviewStatus;
+    correctionCount: number;
+    resubmissionCount: number;
+    firstSubmittedAt: string;
+    lastSubmittedAt: string;
+    reviewedAt: string | null;
+    reviewedBy: string | null;
+    reviewNotes: string | null;
 }
 
 const REPORT_TYPES: ReportType[] = ["daily", "weekly", "discharge"];
@@ -726,6 +750,7 @@ export async function getReportQuestionnaireData(
         managerAnswers: ManagerAnswerDto[];
         supervisorAnswers: SupervisorAnswerDto[];
         allowedRegions: string[];
+        reviews: ReportReviewDto[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -820,6 +845,7 @@ export async function getReportQuestionnaireData(
                 })),
                 supervisorAnswers: [],
                 allowedRegions: [],
+                reviews: [],
             },
         };
     }
@@ -874,6 +900,7 @@ export async function getReportQuestionnaireData(
                 area: row.area,
             })),
             allowedRegions,
+            reviews: [],
         },
     };
 }
@@ -1082,7 +1109,7 @@ export async function submitSupervisorReportAnswers(
         });
     });
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Supervisor",
         "Submit Report Answers",
@@ -1147,7 +1174,7 @@ export async function deleteSupervisorReportAnswers(
         where,
     });
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete Supervisor Report",
@@ -1166,6 +1193,47 @@ export async function deleteSupervisorReportAnswers(
         success: true,
         message: deleted.count > 0 ? "Report deleted" : "No report was found to delete",
         data: { deleted: deleted.count },
+    };
+}
+
+export async function reviewReportSubmission(input: {
+    reportType: ReportReviewType;
+    reportDate: string;
+    supervisorId: number;
+    supervisorName: string;
+    status: ReportReviewStatus;
+    area?: string;
+    roundNumber?: string;
+    reviewNotes?: string;
+}): Promise<ActionResult<{ review: ReportReviewDto | null }>> {
+    const session = await getServerSession(authOptions);
+    const role = getRole(session);
+
+    if (!session || !isManagerRole(role)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const actorName = session.user.name || session.user.username || "Manager";
+
+    revalidateReportsData();
+    await logAudit(
+        actorName,
+        "Retired Report Review Action",
+        `Ignored deprecated review action for ${input.reportType} report ${input.reportDate}`,
+        "Reports"
+    );
+    logServerInfo("report_submission_review_retired", {
+        reportType: input.reportType,
+        reportDate: input.reportDate,
+        supervisorId: input.supervisorId,
+    });
+
+    return {
+        success: false,
+        message: "Report review workflow has been retired.",
+        data: {
+            review: null,
+        },
     };
 }
 
@@ -1344,6 +1412,7 @@ export async function getDailyReportSubmissions(
         mode: "manager" | "supervisor";
         submissions: DailySubmissionDto[];
         allowedRegions: string[];
+        reviews: ReportReviewDto[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -1387,12 +1456,14 @@ export async function getDailyReportSubmissions(
             submissions: records.map((record) => ({
                 id: record.id,
                 reportDate: record.reportDate.toISOString(),
+                supervisorId: record.supervisorId,
                 supervisorName: record.supervisorName,
                 region: record.region,
                 roundNumber: record.roundNumber,
                 checklistAnswers: parseChecklistAnswers(record.checklistAnswers, templateSections),
                 updatedAt: record.updatedAt.toISOString(),
             })),
+            reviews: [],
         },
     };
 }
@@ -1405,6 +1476,7 @@ export async function getDailyReportSubmissionsByDateRange(
         mode: "manager";
         submissions: DailySubmissionDto[];
         allowedRegions: string[];
+        reviews: ReportReviewDto[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -1445,12 +1517,14 @@ export async function getDailyReportSubmissionsByDateRange(
             submissions: records.map((record) => ({
                 id: record.id,
                 reportDate: record.reportDate.toISOString(),
+                supervisorId: record.supervisorId,
                 supervisorName: record.supervisorName,
                 region: record.region,
                 roundNumber: record.roundNumber,
                 checklistAnswers: parseChecklistAnswers(record.checklistAnswers, templateSections),
                 updatedAt: record.updatedAt.toISOString(),
             })),
+            reviews: [],
         },
     };
 }
@@ -1462,6 +1536,7 @@ export async function getDischargeReportData(
         mode: "manager" | "supervisor";
         entries: DischargeEntryDto[];
         allowedRegions: string[];
+        reviews: ReportReviewDto[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -1508,6 +1583,7 @@ export async function getDischargeReportData(
                         : "normal_patient",
                     updatedAt: record.updatedAt.toISOString(),
                 })),
+                reviews: [],
             },
         };
     }
@@ -1547,6 +1623,7 @@ export async function getDischargeReportData(
                     : "normal_patient",
                 updatedAt: record.updatedAt.toISOString(),
             })),
+            reviews: [],
         },
     };
 }
@@ -1625,7 +1702,7 @@ export async function submitDailyReportForm(
         },
     });
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Supervisor",
         "Submit Daily Report",
@@ -1794,7 +1871,7 @@ export async function submitDischargeReport(
         });
     });
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Supervisor",
         "Submit Discharge Report",
@@ -1827,15 +1904,28 @@ export async function deleteDailyReportSubmission(
         return { success: false, message: "Invalid submission id" };
     }
 
-    try {
-        await prisma.dailyReportSubmission.delete({
-            where: { id: submissionId },
-        });
-    } catch {
+    const submission = await prisma.dailyReportSubmission.findUnique({
+        where: { id: submissionId },
+        select: {
+            id: true,
+            reportDate: true,
+            supervisorId: true,
+            supervisorName: true,
+            roundNumber: true,
+        },
+    });
+
+    if (!submission) {
         return { success: false, message: "Daily report not found" };
     }
 
-    revalidatePath("/reports");
+    await prisma.$transaction(async (tx) => {
+        await tx.dailyReportSubmission.delete({
+            where: { id: submissionId },
+        });
+    });
+
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete Daily Report",
@@ -1873,7 +1963,7 @@ export async function deleteDailyReportSubmissionsByDateRange(
         },
     });
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete Daily Reports By Date Range",
@@ -1908,7 +1998,7 @@ export async function deleteAllDailyReportSubmissions(): Promise<
 
     const deleted = await prisma.dailyReportSubmission.deleteMany({});
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete All Daily Reports",
@@ -1979,7 +2069,7 @@ export async function deleteDischargeSupervisorReport(
         where,
     });
 
-    revalidatePath("/reports");
+    revalidateReportsData();
     await logAudit(
         session.user.name || session.user.username || "Manager",
         "Delete Discharge Report",
@@ -2008,6 +2098,7 @@ export async function getMonthlyDischargeReportData(
         mode: "manager" | "supervisor";
         entries: DischargeEntryDto[];
         allowedRegions: string[];
+        reviews: ReportReviewDto[];
     }>
 > {
     const session = await getServerSession(authOptions);
@@ -2063,6 +2154,7 @@ export async function getMonthlyDischargeReportData(
                         : "normal_patient",
                     updatedAt: record.updatedAt.toISOString(),
                 })),
+                reviews: [],
             },
         };
     }
@@ -2108,6 +2200,7 @@ export async function getMonthlyDischargeReportData(
                     : "normal_patient",
                 updatedAt: record.updatedAt.toISOString(),
             })),
+            reviews: [],
         },
     };
 }

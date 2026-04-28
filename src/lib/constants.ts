@@ -52,7 +52,7 @@ export const USER_ROLES = {
 export const STAFF_ATTENDANCE_STATUSES = [
     "Present",
     "Absent",
-    "Vacation",
-    "Day Off",
-    "Sick Leave"
+    "Sick Leave",
+    "Annual Leave",
+    "Official Leave"
 ] as const;

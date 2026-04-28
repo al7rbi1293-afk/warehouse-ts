@@ -17,6 +17,7 @@ import { StatCard } from "@/components/StatCard";
 import { PremiumTable } from "@/components/PremiumTable";
 import { MasterExportButton } from "@/components/MasterExportButton";
 import { Attendance } from "@/types";
+import { normalizeAttendanceStatus } from "@/lib/attendance-status";
 
 // Lazy load Recharts components to improve initial load performance
 const LineChart = dynamic(() => import("recharts").then(mod => mod.LineChart), { ssr: false });
@@ -87,8 +88,13 @@ export function DashboardClient({ data }: { data: DashboardData }) {
     // State for modal
     const [selectedStat, setSelectedStat] = useState<{ title: string; data: Attendance[] } | null>(null);
 
-    const handleStatClick = (title: string, statusFilter: string) => {
-        const filtered = data.todayAttendance.filter((a: Attendance) => a.status === statusFilter);
+    const handleStatClick = (title: string, statusFilter: string | string[]) => {
+        const statusFilters = Array.isArray(statusFilter) ? statusFilter : [statusFilter];
+        const filtered = data.todayAttendance.filter((a: Attendance) => {
+            const rawStatus = a.status || "";
+            const canonicalStatus = normalizeAttendanceStatus(rawStatus);
+            return statusFilters.includes(rawStatus) || (!!canonicalStatus && statusFilters.includes(canonicalStatus));
+        });
         setSelectedStat({ title, data: filtered });
     };
 
@@ -193,11 +199,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     onClick={() => handleStatClick("Detailed Absent List", "Absent")}
                 />
                 <StatCard
-                    title="On Vacation"
+                    title="On Annual Leave"
                     value={data.metrics.vacationCount}
                     icon={Icons.Vacation}
                     delay={0.3}
-                    onClick={() => handleStatClick("Detailed Vacation List", "Vacation")}
+                    onClick={() => handleStatClick("Detailed Annual Leave List", ["Vacation", "Annual Leave"])}
                 />
                 <StatCard
                     title="Sick Leave"
@@ -207,11 +213,11 @@ export function DashboardClient({ data }: { data: DashboardData }) {
                     onClick={() => handleStatClick("Detailed Sick Leave List", "Sick Leave")}
                 />
                 <StatCard
-                    title="Day Off"
+                    title="On Official Leave"
                     value={data.metrics.dayOffCount}
                     icon={Icons.DayOff}
                     delay={0.5}
-                    onClick={() => handleStatClick("Detailed Day Off List", "Day Off")}
+                    onClick={() => handleStatClick("Detailed Official Leave List", ["Day Off", "Official Leave", "Eid Holiday"])}
                 />
                 <StatCard
                     title="Active Workers"

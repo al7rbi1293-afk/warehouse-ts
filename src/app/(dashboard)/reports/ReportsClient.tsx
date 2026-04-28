@@ -72,6 +72,7 @@ interface ManagerAnswerItem {
 interface DailySubmissionItem {
     id: number;
     reportDate: string;
+    supervisorId: number;
     supervisorName: string;
     region: string;
     roundNumber: string;
@@ -1598,27 +1599,34 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
         });
 
         const groups = new Map<
-            number,
-            { supervisorId: number; supervisorName: string; rows: DischargeEntryItem[] }
+            string,
+            { groupKey: string; supervisorId: number; supervisorName: string; reportDate: string; rows: DischargeEntryItem[] }
         >();
 
         for (const entry of sortedRows) {
-            const existing = groups.get(entry.supervisorId);
+            const groupKey = `${entry.supervisorId}:${entry.reportDate.slice(0, 10)}`;
+            const existing = groups.get(groupKey);
             if (existing) {
                 existing.rows.push(entry);
                 continue;
             }
 
-            groups.set(entry.supervisorId, {
+            groups.set(groupKey, {
+                groupKey,
                 supervisorId: entry.supervisorId,
                 supervisorName: entry.supervisorName,
+                reportDate: entry.reportDate.slice(0, 10),
                 rows: [entry],
             });
         }
 
-        return Array.from(groups.values()).sort((a, b) =>
-            a.supervisorName.localeCompare(b.supervisorName, "en")
-        );
+        return Array.from(groups.values()).sort((a, b) => {
+            const byDate = b.reportDate.localeCompare(a.reportDate, "en");
+            if (byDate !== 0) {
+                return byDate;
+            }
+            return a.supervisorName.localeCompare(b.supervisorName, "en");
+        });
     }, [dischargeAreaFilter, dischargeEntries, dischargeSearchTerm, dischargeSortKey]);
 
     const dischargeTotalPages = Math.max(
@@ -1678,11 +1686,11 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                         ? "Daily report form cloned from the provided Google Form"
                         : activeTab === "weekly"
                             ? isManager
-                                ? "Review weekly submissions from supervisors"
+                                ? "View weekly submissions from supervisors"
                                 : "Submit your weekly report for your assigned area"
                             : activeTab === "discharge"
                                 ? isManager
-                                    ? "Review discharge entries submitted by supervisors"
+                                    ? "View discharge entries submitted by supervisors"
                                     : "Fill the discharge report sheet and submit your rows"
                                 : "Reports overview"}
                 </p>
@@ -2119,66 +2127,70 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </p>
                                     ) : (
                                         <div className="space-y-4">
-                                            {pagedDailySubmissions.map((submission) => (
-                                                <div
-                                                    key={submission.id}
-                                                    className="border border-slate-200 rounded-lg overflow-hidden"
-                                                >
-                                                    <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-start justify-between gap-3">
-                                                        <div>
-                                                            <p className="text-sm font-semibold text-slate-900">
-                                                                {submission.supervisorName}
-                                                            </p>
-                                                            <p className="text-xs text-slate-500 mt-1">
-                                                                Area: {submission.region} | Round: {submission.roundNumber} | Updated:{" "}
-                                                                {new Date(submission.updatedAt).toLocaleString()}
-                                                            </p>
+                                            {pagedDailySubmissions.map((submission) => {
+                                                return (
+                                                    <div
+                                                        key={submission.id}
+                                                        className="border border-slate-200 rounded-lg overflow-hidden"
+                                                    >
+                                                        <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-start justify-between gap-3">
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-slate-900">
+                                                                    {submission.supervisorName}
+                                                                </p>
+                                                                <p className="text-xs text-slate-500 mt-1">
+                                                                    Area: {submission.region} | Round: {submission.roundNumber} | Updated:{" "}
+                                                                    {new Date(submission.updatedAt).toLocaleString()}
+                                                                </p>
+                                                            </div>
+                                                            <div className="flex flex-wrap items-center justify-end gap-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() =>
+                                                                        handleDeleteDailySubmission(
+                                                                            submission.id,
+                                                                            submission.supervisorName
+                                                                        )
+                                                                    }
+                                                                    disabled={isPending}
+                                                                    className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                handleDeleteDailySubmission(
-                                                                    submission.id,
-                                                                    submission.supervisorName
-                                                                )
-                                                            }
-                                                            disabled={isPending}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </div>
-                                                    <div className="p-4 space-y-4">
-                                                        {dailyTemplateSections.map((section) => {
-                                                            const selected = submission.checklistAnswers[section.id] || [];
-                                                            const selectedSet = new Set(selected);
-                                                            return (
-                                                                <div key={section.id} className="space-y-2">
-                                                                    <p className="text-xs font-semibold text-slate-600">
-                                                                        {section.title}
-                                                                    </p>
-                                                                    <div className="flex flex-wrap gap-2">
-                                                                        {section.items.map((item) => {
-                                                                            const isChecked = selectedSet.has(item);
-                                                                            return (
-                                                                                <span
-                                                                                    key={item}
-                                                                                    className={`text-xs rounded-full px-2 py-1 border ${isChecked
-                                                                                        ? "bg-emerald-50 text-emerald-700 border-emerald-100"
-                                                                                        : "bg-red-50 text-red-700 border-red-100"
-                                                                                        }`}
-                                                                                >
-                                                                                    {item}
-                                                                                </span>
-                                                                            );
-                                                                        })}
+                                                        <div className="p-4 space-y-4">
+                                                            {dailyTemplateSections.map((section) => {
+                                                                const selected = submission.checklistAnswers[section.id] || [];
+                                                                const selectedSet = new Set(selected);
+                                                                return (
+                                                                    <div key={section.id} className="space-y-2">
+                                                                        <p className="text-xs font-semibold text-slate-600">
+                                                                            {section.title}
+                                                                        </p>
+                                                                        <div className="flex flex-wrap gap-2">
+                                                                            {section.items.map((item) => {
+                                                                                const isChecked = selectedSet.has(item);
+                                                                                return (
+                                                                                    <span
+                                                                                        key={item}
+                                                                                        className={`text-xs rounded-full px-2 py-1 border ${isChecked
+                                                                                            ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+                                                                                            : "bg-red-50 text-red-700 border-red-100"
+                                                                                            }`}
+                                                                                    >
+                                                                                        {item}
+                                                                                    </span>
+                                                                                );
+                                                                            })}
+                                                                        </div>
                                                                     </div>
-                                                                </div>
-                                                            );
-                                                        })}
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                             <div className="flex items-center justify-between pt-2">
                                                 <p className="text-xs text-slate-500">
                                                     Page {dailyPage} of {dailyTotalPages}
@@ -2223,8 +2235,14 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                     key={submission.id}
                                                     className="border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700"
                                                 >
-                                                    Round: <span className="font-semibold">{submission.roundNumber}</span> | Updated:{" "}
-                                                    {new Date(submission.updatedAt).toLocaleString()}
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span>
+                                                            Round: <span className="font-semibold">{submission.roundNumber}</span>
+                                                        </span>
+                                                    </div>
+                                                    <p className="mt-1 text-xs text-slate-500">
+                                                        Updated: {new Date(submission.updatedAt).toLocaleString()}
+                                                    </p>
                                                 </div>
                                             ))}
                                         </div>
@@ -2395,28 +2413,36 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                         </p>
                                     ) : (
                                         <div className="space-y-4">
-                                            {pagedDischargeEntries.map((group) => (
+                                            {pagedDischargeEntries.map((group) => {
+                                                return (
                                                 <div
-                                                    key={group.supervisorId}
+                                                    key={group.groupKey}
                                                     className="border border-slate-200 rounded-lg overflow-hidden"
                                                 >
                                                     <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
-                                                        <p className="text-sm font-semibold text-slate-800">
-                                                            {group.supervisorName}
-                                                        </p>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                handleDeleteDischargeReport(
-                                                                    group.supervisorId,
-                                                                    group.supervisorName
-                                                                )
-                                                            }
-                                                            disabled={isPending}
-                                                            className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                                        >
-                                                            Delete report
-                                                        </button>
+                                                        <div>
+                                                            <p className="text-sm font-semibold text-slate-800">
+                                                                {group.supervisorName}
+                                                            </p>
+                                                            <p className="text-xs text-slate-500 mt-1">
+                                                                Submission date: {group.reportDate}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center justify-end gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    handleDeleteDischargeReport(
+                                                                        group.supervisorId,
+                                                                        group.supervisorName
+                                                                    )
+                                                                }
+                                                                disabled={isPending}
+                                                                className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                            >
+                                                                Delete report
+                                                            </button>
+                                                        </div>
                                                     </div>
                                                     <div className="overflow-x-auto">
                                                         <table className="min-w-full text-sm">
@@ -2453,7 +2479,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         </table>
                                                     </div>
                                                 </div>
-                                            ))}
+                                                );
+                                            })}
                                             <div className="flex items-center justify-between pt-2">
                                                 <p className="text-xs text-slate-500">
                                                     Page {dischargePage} of {dischargeTotalPages}
@@ -2508,7 +2535,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                 </p>
                             ) : (
                                 <div className="space-y-4">
-                                    {groupedManagerAnswers.map((group) => (
+                                    {groupedManagerAnswers.map((group) => {
+                                        return (
                                         <div key={group.groupKey} className="border border-slate-200 rounded-lg overflow-hidden">
                                             <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
                                                 <div>
@@ -2519,21 +2547,23 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                         Work date: {group.reportDate} | Area: {group.area || "Unspecified"}
                                                     </p>
                                                 </div>
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDeleteSupervisorReport(
-                                                            group.supervisorId,
-                                                            group.supervisorName,
-                                                            group.reportDate,
-                                                            group.area
-                                                        )
-                                                    }
-                                                    disabled={isPending}
-                                                    className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
-                                                >
-                                                    Delete report
-                                                </button>
+                                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDeleteSupervisorReport(
+                                                                group.supervisorId,
+                                                                group.supervisorName,
+                                                                group.reportDate,
+                                                                group.area
+                                                            )
+                                                        }
+                                                        disabled={isPending}
+                                                        className="px-3 py-1.5 text-xs font-medium bg-red-50 text-red-600 rounded-md hover:bg-red-100 disabled:opacity-60"
+                                                    >
+                                                        Delete report
+                                                    </button>
+                                                </div>
                                             </div>
                                             <div className="divide-y divide-slate-100">
                                                 {group.answers.map((answer) => (
@@ -2551,7 +2581,8 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                                                 ))}
                                             </div>
                                         </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -2562,7 +2593,7 @@ export function ReportsClient({ userRole, userName }: ReportsClientProps) {
                             <div>
                                 <h2 className="text-lg font-semibold text-slate-900">Weekly report</h2>
                                 <p className="text-sm text-slate-500">
-                                    Fill your weekly report and submit for manager review.
+                                    Fill your weekly report and submit it for records.
                                 </p>
                             </div>
 

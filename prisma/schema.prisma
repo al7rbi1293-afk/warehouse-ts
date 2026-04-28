@@ -27,6 +27,7 @@ model User {
   reportAnswers ReportAnswer[]
   dailyReportSubmissions DailyReportSubmission[]
   dischargeReportEntries DischargeReportEntry[]
+  reportReviews ReportReview[]
 
   @@map("users")
 }
@@ -348,6 +349,33 @@ model DischargeReportEntry {
   @@index([supervisorId])
   @@index([reportDate, supervisorId])
   @@map("discharge_report_entries")
+}
+
+model ReportReview {
+  id              Int      @id @default(autoincrement())
+  reportType      String   @map("report_type")
+  reportDate      DateTime @map("report_date") @db.Date
+  supervisorId    Int      @map("supervisor_id")
+  supervisorName  String   @map("supervisor_name")
+  area            String   @default("")
+  roundNumber     String   @default("") @map("round_number")
+  status          String   @default("Submitted")
+  correctionCount Int      @default(0) @map("correction_count")
+  resubmissionCount Int    @default(0) @map("resubmission_count")
+  firstSubmittedAt DateTime @default(now()) @map("first_submitted_at") @db.Timestamp(6)
+  lastSubmittedAt DateTime  @default(now()) @map("last_submitted_at") @db.Timestamp(6)
+  reviewedAt      DateTime? @map("reviewed_at") @db.Timestamp(6)
+  reviewedBy      String?   @map("reviewed_by")
+  reviewNotes     String?   @map("review_notes")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+  supervisor      User      @relation(fields: [supervisorId], references: [id], onDelete: Cascade)
+
+  @@unique([reportType, reportDate, supervisorId, area, roundNumber])
+  @@index([reportType, status])
+  @@index([supervisorId, reportDate])
+  @@index([reportType, reportDate])
+  @@map("report_reviews")
 }
 
 model DailyReportTemplate {

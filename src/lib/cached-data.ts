@@ -133,10 +133,15 @@ const getDashboardSnapshot = unstable_cache(
           (attendance) => attendance.status === "Absent"
         ).length,
         vacationCount: combinedAttendance.filter(
-          (attendance) => attendance.status === "Vacation"
+          (attendance) =>
+            attendance.status === "Vacation" ||
+            attendance.status === "Annual Leave"
         ).length,
         dayOffCount: combinedAttendance.filter(
-          (attendance) => attendance.status === "Day Off"
+          (attendance) =>
+            attendance.status === "Day Off" ||
+            attendance.status === "Official Leave" ||
+            attendance.status === "Eid Holiday"
         ).length,
         sickCount: combinedAttendance.filter(
           (attendance) => attendance.status === "Sick Leave"

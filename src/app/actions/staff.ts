@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { revalidateManpowerData } from "@/lib/cache-tags";
+import { isUnavailableAttendanceStatus } from "@/lib/attendance-status";
 
 
 
@@ -68,7 +69,7 @@ export async function markStaffAttendance(
         return { success: false, message: "Unauthorized" };
     }
 
-    const isAbsent = ["Absent", "Vacation", "Day Off", "Sick Leave"].includes(status);
+    const isAbsent = isUnavailableAttendanceStatus(status);
 
     try {
         // Upsert attendance

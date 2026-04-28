@@ -4,6 +4,10 @@ import { useState, useEffect, useCallback } from "react";
 import { PremiumTable } from "@/components/PremiumTable";
 import { getStaffList, getStaffAttendance, markStaffAttendance } from "@/app/actions/staff";
 import { toast } from "sonner";
+import {
+    OFFICIAL_ATTENDANCE_STATUSES,
+    isUnavailableAttendanceStatus,
+} from "@/lib/attendance-status";
 
 interface StaffUser {
     id: number;
@@ -129,7 +133,33 @@ export function StaffManagement({ date: globalDate, selectedRegion }: { date?: s
         return true;
     });
 
-    const supervisors = filteredStaff.filter(s => s.role === "supervisor");
+    const supervisors = filteredStaff.filter(
+        (staffUser) => staffUser.role === "supervisor" || staffUser.role === "night_supervisor"
+    );
+
+    const getStatusClasses = (status: string, active: boolean) => {
+        if (!active) {
+            return "bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50";
+        }
+
+        if (status === "Present") {
+            return "bg-green-100 text-green-700 border border-green-200";
+        }
+
+        if (status === "Absent") {
+            return "bg-red-100 text-red-700 border border-red-200";
+        }
+
+        if (status === "Sick Leave") {
+            return "bg-amber-100 text-amber-700 border border-amber-200";
+        }
+
+        if (status === "Annual Leave") {
+            return "bg-blue-100 text-blue-700 border border-blue-200";
+        }
+
+        return "bg-violet-100 text-violet-700 border border-violet-200";
+    };
 
     const columns = [
         { header: "Name", accessorKey: "name" as const, render: (row: StaffUser) => <span className="font-medium text-slate-900">{row.name}</span> },
@@ -139,21 +169,14 @@ export function StaffManagement({ date: globalDate, selectedRegion }: { date?: s
             header: "Status",
             render: (row: StaffUser) => (
                 <div className="flex gap-2">
-                    {["Present", "Absent", "Vacation", "Day Off", "Sick Leave"].map((status) => (
+                    {OFFICIAL_ATTENDANCE_STATUSES.map((status) => (
                         <button
                             key={status}
                             disabled={busyIds.has(row.id)}
                             onClick={() => handleStatusChange(row.id, status)}
-                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${attendance[row.id]?.status === status
-                                ? (status === "Present" ? "bg-green-100 text-green-700 border border-green-200" :
-                                    status === "Absent" ? "bg-red-100 text-red-700 border border-red-200" :
-                                        status === "Vacation" ? "bg-blue-100 text-blue-700 border border-blue-200" :
-                                            status === "Day Off" ? "bg-indigo-100 text-indigo-700 border border-indigo-200" :
-                                                "bg-amber-100 text-amber-700 border border-amber-200")
-                                : "bg-slate-50 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
-                                }`}
+                            className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${getStatusClasses(status, attendance[row.id]?.status === status)}`}
                         >
-                            {status === "Sick Leave" ? "Sick" : status}
+                            {status}
                         </button>
                     ))}
                 </div>
@@ -163,7 +186,7 @@ export function StaffManagement({ date: globalDate, selectedRegion }: { date?: s
             header: "Covered By",
             render: (row: StaffUser) => {
                 const status = attendance[row.id]?.status;
-                const needsCoverage = ["Absent", "Vacation", "Sick Leave"].includes(status || "");
+                const needsCoverage = isUnavailableAttendanceStatus(status || "");
                 if (!needsCoverage || row.role !== 'supervisor') return <span className="text-slate-400 text-xs">-</span>;
 
                 return (
@@ -195,7 +218,7 @@ export function StaffManagement({ date: globalDate, selectedRegion }: { date?: s
             <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                 <div>
                     <h2 className="text-lg font-bold text-slate-800">Staff Attendance</h2>
-                    <p className="text-sm text-slate-500">Mark attendance for supervisors and management</p>
+                    <p className="text-sm text-slate-500">Mark attendance for supervisors and management using the official attendance states</p>
                 </div>
             </div>
 

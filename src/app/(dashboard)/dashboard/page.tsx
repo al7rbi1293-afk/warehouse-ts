@@ -1,6 +1,8 @@
 import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
 import { authOptions } from "@/lib/auth";
 import { getCachedDashboardData } from "@/lib/cached-data";
+import { getDefaultAuthenticatedPath, isManagerRole } from "@/lib/roles";
 import { DashboardClient } from "./DashboardClient";
 
 export default async function DashboardPage(props: {
@@ -8,7 +10,15 @@ export default async function DashboardPage(props: {
 }) {
   const searchParams = await props.searchParams;
 
-  await getServerSession(authOptions);
+  const session = await getServerSession(authOptions);
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  if (!isManagerRole(session.user.role)) {
+    redirect(getDefaultAuthenticatedPath(session.user.role));
+  }
 
   const data = await getCachedDashboardData(searchParams.date);
 

@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
+import { getWarehouseKpiDataset } from "@/lib/warehouse-kpi";
 import { prisma } from "@/lib/prisma";
 import { canAccessWarehouse } from "@/lib/roles";
 import { WarehouseExportModule, WAREHOUSE_EXPORT_TITLES } from "@/lib/warehouse-export";
@@ -35,6 +36,65 @@ function matchesSearch(value: Array<string | null | undefined>, search: string) 
   return value.some((candidate) => (candidate || "").toLowerCase().includes(term));
 }
 
+function normalizeValue(value?: string | number | null) {
+  return `${value ?? ""}`.trim().toLowerCase();
+}
+
+function matchesExactValue(value: string | null | undefined, filter: string) {
+  const normalizedFilter = normalizeValue(filter);
+  if (!normalizedFilter) return true;
+  return normalizeValue(value) === normalizedFilter;
+}
+
+function matchesLooseValue(value: string | null | undefined, filter: string) {
+  const normalizedFilter = normalizeValue(filter);
+  if (!normalizedFilter) return true;
+
+  const normalizedValue = normalizeValue(value);
+  return (
+    normalizedValue === normalizedFilter ||
+    normalizedValue.includes(normalizedFilter) ||
+    normalizedFilter.includes(normalizedValue)
+  );
+}
+
+function matchesWarehouse(values: Array<string | null | undefined>, filter: string) {
+  const normalizedFilter = normalizeValue(filter);
+  if (!normalizedFilter) return true;
+
+  return values.some((value) => normalizeValue(value) === normalizedFilter);
+}
+
+function matchesItem(
+  itemName: string | null | undefined,
+  itemCode: string | null | undefined,
+  filter: string
+) {
+  const normalizedFilter = normalizeValue(filter);
+  if (!normalizedFilter) return true;
+
+  return [itemName, itemCode].some((value) =>
+    normalizeValue(value).includes(normalizedFilter)
+  );
+}
+
+function matchesDateRange(
+  value: string | Date | null | undefined,
+  dateFrom?: Date | null,
+  dateTo?: Date | null
+) {
+  if (!dateFrom && !dateTo) return true;
+  if (!value) return false;
+
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+
+  if (dateFrom && date < dateFrom) return false;
+  if (dateTo && date > dateTo) return false;
+
+  return true;
+}
+
 function getAllowedRegions(regionString?: string | null, regionsString?: string | null) {
   return (regionsString || regionString || "")
     .split(",")
@@ -58,76 +118,6 @@ function toWorkbookBuffer(rows: Record<string, string | number>[], sheetName: st
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
 }
 
-function getOperationLabel(actionType?: string | null) {
-  if (!actionType) return "";
-  const normalized = actionType.toLowerCase();
-  if (normalized.includes("transfer")) return "Transfer";
-  if (normalized.includes("lent")) return "Lend";
-  if (normalized.includes("returned")) return "Borrow Return";
-  if (normalized.includes("issued")) return "Issue";
-  if (normalized.includes("manual edit")) return "Manual Adjustment";
-  if (normalized.includes("stock take")) return "Stock Take";
-  return actionType;
-}
-
-async function buildRequestOperationMaps(requestIds: number[]) {
-  if (requestIds.length === 0) {
-    return {
-      createdMap: new Map<number, string>(),
-      dispatchMap: new Map<number, string>(),
-    };
-  }
-
-  const lines = await prisma.warehouseBulkOperationLine.findMany({
-    where: {
-      entityType: "request",
-      entityId: { in: requestIds },
-    },
-    include: {
-      bulkOperation: true,
-    },
-    orderBy: [{ createdAt: "asc" }],
-  });
-
-  const createdMap = new Map<number, string>();
-  const dispatchMap = new Map<number, string>();
-
-  for (const line of lines) {
-    if (!line.entityId) continue;
-    if (line.bulkOperation.operationType === "REQUEST" && !createdMap.has(line.entityId)) {
-      createdMap.set(line.entityId, line.bulkOperation.operationNo);
-    }
-    if (line.bulkOperation.operationType === "ISSUE") {
-      dispatchMap.set(line.entityId, line.bulkOperation.operationNo);
-    }
-  }
-
-  return { createdMap, dispatchMap };
-}
-
-async function buildLoanOperationMap(loanIds: number[]) {
-  if (loanIds.length === 0) {
-    return new Map<number, string>();
-  }
-
-  const lines = await prisma.warehouseBulkOperationLine.findMany({
-    where: {
-      entityType: { in: ["loan", "loan_return"] },
-      entityId: { in: loanIds },
-    },
-    include: {
-      bulkOperation: true,
-    },
-  });
-
-  const result = new Map<number, string>();
-  for (const line of lines) {
-    if (!line.entityId) continue;
-    result.set(line.entityId, line.bulkOperation.operationNo);
-  }
-  return result;
-}
-
 export async function GET(request: Request) {
   const session = await getServerSession(authOptions);
   if (!session || !canAccessWarehouse(session.user.role)) {
@@ -143,6 +133,10 @@ export async function GET(request: Request) {
   const supervisor = (searchParams.get("supervisor") || "").trim();
   const category = (searchParams.get("category") || "").trim();
   const action = (searchParams.get("action") || "").trim();
+  const warehouseType = (searchParams.get("warehouseType") || "").trim();
+  const item = (searchParams.get("item") || "").trim();
+  const movementType = (searchParams.get("movementType") || "").trim();
+  const loanType = (searchParams.get("loanType") || "").trim();
   const dateFrom = parseDateInput(searchParams.get("dateFrom"));
   const dateTo = parseDateInput(searchParams.get("dateTo"), true);
 
@@ -209,101 +203,87 @@ export async function GET(request: Request) {
       });
     }
 
-    if (["requests", "approved", "tracking", "dispatch"].includes(exportModule)) {
-      const statusFilter =
+    if (["requests", "approved", "tracking"].includes(exportModule)) {
+      const dataset = await getWarehouseKpiDataset();
+      const requiredStatuses =
         exportModule === "requests"
           ? session.user.role === "storekeeper"
             ? ["Approved"]
             : ["Pending"]
           : exportModule === "approved"
             ? ["Approved"]
-            : exportModule === "dispatch"
-              ? ["Issued", "Received"]
-              : undefined;
+            : undefined;
 
-      const requests = await prisma.request.findMany({
-        where: {
-          ...(statusFilter ? { status: { in: statusFilter } } : {}),
-          ...(status && exportModule === "tracking" ? { status } : {}),
-          ...(region ? { region } : {}),
-          ...(supervisor ? { supervisorName: supervisor } : {}),
-          ...(isSupervisor ? { supervisorName: actorName } : {}),
-          ...(dateFrom || dateTo
-            ? {
-                requestDate: {
-                  ...(dateFrom ? { gte: dateFrom } : {}),
-                  ...(dateTo ? { lte: dateTo } : {}),
-                },
-              }
-            : {}),
-        },
-        orderBy: [{ requestDate: "desc" }],
-      });
+      const supervisorFilter = isSupervisor ? actorName : supervisor;
 
-      const visibleRequests = requests
+      const rows = dataset.requests
+        .filter((row) =>
+          requiredStatuses
+            ? requiredStatuses.some((requiredStatus) =>
+                matchesExactValue(row.status, requiredStatus)
+              )
+            : true
+        )
+        .filter((row) =>
+          exportModule === "tracking" && status ? matchesLooseValue(row.status, status) : true
+        )
+        .filter((row) => matchesDateRange(row.requestDate, dateFrom, dateTo))
+        .filter((row) => matchesExactValue(row.region, region))
+        .filter((row) => matchesExactValue(row.supervisorName, supervisorFilter))
+        .filter((row) => matchesExactValue(row.warehouseType, warehouseType))
+        .filter((row) => matchesWarehouse([row.warehouse], warehouse))
+        .filter((row) => matchesItem(row.itemName, row.itemCode, item))
+        .filter(() => !loanType)
+        .filter(() => matchesLooseValue("Request", movementType))
         .filter((row) =>
           matchesSearch(
-            [row.itemName, row.category, row.region, row.supervisorName, row.notes],
+            [
+              row.requestNo,
+              row.requestOperationNo,
+              row.dispatchOperationNo,
+              row.itemName,
+              row.itemCode,
+              row.category,
+              row.region,
+              row.supervisorName,
+              row.warehouse,
+              row.notes,
+              row.status,
+            ],
             search
           )
         )
-        .filter((row) => !isSupervisor || allowedRegions.length === 0 || allowedRegions.includes(row.region || ""));
-
-      const { createdMap, dispatchMap } = await buildRequestOperationMaps(
-        visibleRequests.map((row) => row.reqId)
-      );
-
-      const inventoryRows = await prisma.inventory.findMany({
-        where: {
-          nameEn: { in: visibleRequests.map((row) => row.itemName || "").filter(Boolean) },
-        },
-        select: {
-          id: true,
-          nameEn: true,
-          itemCode: true,
-          category: true,
-          unit: true,
-        },
-      });
-
-      const inventoryLookup = new Map(inventoryRows.map((row) => [row.nameEn, row]));
-
-      const rows = visibleRequests.map((row) => {
-        const inventoryItem = inventoryLookup.get(row.itemName || "");
-        return {
-          "Transaction Number":
-            exportModule === "dispatch"
-              ? dispatchMap.get(row.reqId) || `REQ-${row.reqId}`
-              : createdMap.get(row.reqId) || `REQ-${row.reqId}`,
-          "Movement Type": exportModule === "dispatch" ? "Issue / Dispatch" : "Request",
+        .filter((row) => !isSupervisor || allowedRegions.length === 0 || allowedRegions.includes(row.region || ""))
+        .map((row) => ({
+          "Transaction Number": row.requestOperationNo || row.requestNo,
+          "Movement Type": "Request",
           "Portal / Source Module": WAREHOUSE_EXPORT_TITLES[exportModule],
           Status: row.status || "",
           "Item Name": row.itemName || "",
-          "Item Code": inventoryItem?.itemCode || "",
-          Category: row.category || inventoryItem?.category || "",
+          "Item Code": row.itemCode || "",
+          Category: row.category || "",
           Quantity: row.qty || 0,
-          Unit: row.unit || inventoryItem?.unit || "",
-          "From Warehouse": "NSTC",
+          Unit: row.unit || "",
+          "From Warehouse": row.warehouse || "",
           "To Warehouse": row.region || "",
-          "Warehouse Type": inferWarehouseType("NSTC"),
+          "Warehouse Type": row.warehouseType || "",
           Supervisor: row.supervisorName || "",
           Region: row.region || "",
           "Requested By": row.supervisorName || "",
           "Approved By": row.approvedBy || "",
           "Issued By": row.issuedBy || "",
-          "Received By": row.status === "Received" ? row.supervisorName || "" : "",
+          "Received By": row.receivedAt ? row.supervisorName || "" : "",
           "Borrow / Lend Type": "",
           "Request Date": formatDateTime(row.requestDate),
-          "Approval Date": formatDateTime(row.approvedAt || row.reviewedAt),
+          "Approval Date": formatDateTime(row.approvedAt),
           "Issue Date": formatDateTime(row.issuedAt),
           "Receive Date": formatDateTime(row.receivedAt),
           "Return Due Date": "",
           "Return Date": "",
           Notes: row.notes || "",
           "Created At": formatDateTime(row.requestDate),
-          "Updated At": formatDateTime(row.receivedAt || row.issuedAt || row.approvedAt || row.reviewedAt || row.requestDate),
-        };
-      });
+          "Updated At": formatDateTime(row.receivedAt || row.issuedAt || row.approvedAt || row.requestDate),
+        }));
 
       const buffer = toWorkbookBuffer(rows, WAREHOUSE_EXPORT_TITLES[exportModule]);
       return new Response(buffer, {
@@ -314,75 +294,152 @@ export async function GET(request: Request) {
       });
     }
 
+    if (exportModule === "dispatch") {
+      const dataset = await getWarehouseKpiDataset();
+      const supervisorFilter = isSupervisor ? actorName : supervisor;
+
+      const rows = dataset.issueDispatches
+        .filter((row) => matchesDateRange(row.date, dateFrom, dateTo))
+        .filter((row) => matchesExactValue(row.region, region))
+        .filter((row) => matchesExactValue(row.supervisorName, supervisorFilter))
+        .filter((row) => matchesLooseValue(row.status, status))
+        .filter((row) => matchesExactValue(row.warehouseType, warehouseType))
+        .filter((row) => matchesWarehouse([row.warehouse], warehouse))
+        .filter((row) => matchesItem(row.itemName, row.itemCode, item))
+        .filter(() => !loanType)
+        .filter(() => matchesLooseValue("Issue / Dispatch", movementType))
+        .filter((row) =>
+          matchesSearch(
+            [
+              row.transactionNo,
+              row.requestNo,
+              row.itemName,
+              row.itemCode,
+              row.warehouse,
+              row.supervisorName,
+              row.region,
+              row.issuedBy,
+              row.receivedBy,
+              row.notes,
+              row.status,
+            ],
+            search
+          )
+        )
+        .filter((row) => !isSupervisor || allowedRegions.length === 0 || allowedRegions.includes(row.region || ""))
+        .map((row) => ({
+          "Transaction Number": row.transactionNo,
+          "Movement Type": "Issue / Dispatch",
+          "Portal / Source Module": WAREHOUSE_EXPORT_TITLES[exportModule],
+          Status: row.status || "",
+          "Item Name": row.itemName || "",
+          "Item Code": row.itemCode || "",
+          Category: "",
+          Quantity: row.quantity,
+          Unit: row.unit || "",
+          "From Warehouse": row.warehouse || "",
+          "To Warehouse": row.region || "",
+          "Warehouse Type": row.warehouseType || "",
+          Supervisor: row.supervisorName || "",
+          Region: row.region || "",
+          "Requested By": row.supervisorName || "",
+          "Approved By": "",
+          "Issued By": row.issuedBy || "",
+          "Received By": row.receivedBy || "",
+          "Borrow / Lend Type": "",
+          "Request Date": "",
+          "Approval Date": "",
+          "Issue Date": formatDateTime(row.date),
+          "Receive Date": "",
+          "Return Due Date": "",
+          "Return Date": "",
+          Notes: row.notes || "",
+          "Created At": formatDateTime(row.date),
+          "Updated At": formatDateTime(row.date),
+        }));
+
+      const buffer = toWorkbookBuffer(rows, WAREHOUSE_EXPORT_TITLES[exportModule]);
+      return new Response(buffer, {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="dispatch.xlsx"`,
+        },
+      });
+    }
+
     if (exportModule === "movements") {
       if (isSupervisor) {
         return Response.json({ error: "Forbidden" }, { status: 403 });
       }
 
-      const logs = await prisma.stockLog.findMany({
-        where: {
-          ...(warehouse ? { location: warehouse } : {}),
-          ...(dateFrom || dateTo
-            ? {
-                logDate: {
-                  ...(dateFrom ? { gte: dateFrom } : {}),
-                  ...(dateTo ? { lte: dateTo } : {}),
-                },
-              }
-            : {}),
-        },
-        orderBy: [{ logDate: "desc" }],
-        take: 5000,
-      });
+      const dataset = await getWarehouseKpiDataset();
+      const movementFilter = movementType || action;
 
-      const inventoryRows = await prisma.inventory.findMany({
-        where: {
-          nameEn: { in: logs.map((row) => row.itemName || "").filter(Boolean) },
-        },
-        select: {
-          nameEn: true,
-          itemCode: true,
-          category: true,
-        },
-      });
-      const inventoryLookup = new Map(inventoryRows.map((row) => [row.nameEn, row]));
-
-      const rows = logs
-        .filter((row) => matchesSearch([row.itemName, row.actionType, row.location, row.actionBy], search))
-        .filter((row) => (action ? (row.actionType || "").toLowerCase().includes(action.toLowerCase()) : true))
-        .map((row) => {
-          const inventoryItem = inventoryLookup.get(row.itemName || "");
-          return {
-            "Transaction Number": `MOV-${row.id}`,
-            "Movement Type": getOperationLabel(row.actionType),
-            "Portal / Source Module": "Stock Movements",
-            Status: "",
-            "Item Name": row.itemName || "",
-            "Item Code": inventoryItem?.itemCode || "",
-            Category: inventoryItem?.category || "",
-            Quantity: row.changeAmount || 0,
-            Unit: row.unit || "",
-            "From Warehouse": row.changeAmount && row.changeAmount < 0 ? row.location || "" : "",
-            "To Warehouse": row.changeAmount && row.changeAmount > 0 ? row.location || "" : "",
-            "Warehouse Type": inferWarehouseType(row.location),
-            Supervisor: "",
-            Region: "",
-            "Requested By": "",
-            "Approved By": "",
-            "Issued By": row.actionBy || "",
-            "Received By": "",
-            "Borrow / Lend Type": "",
-            "Request Date": "",
-            "Approval Date": "",
-            "Issue Date": formatDateTime(row.logDate),
-            "Receive Date": "",
-            "Return Due Date": "",
-            "Return Date": "",
-            Notes: row.actionType || "",
-            "Created At": formatDateTime(row.logDate),
-            "Updated At": formatDateTime(row.logDate),
-          };
-        });
+      const rows = dataset.movements
+        .filter((row) => matchesDateRange(row.date, dateFrom, dateTo))
+        .filter((row) => matchesExactValue(row.region, region))
+        .filter((row) => matchesLooseValue(row.status, status))
+        .filter((row) => matchesExactValue(row.warehouseType, warehouseType))
+        .filter((row) => matchesWarehouse([row.from, row.to], warehouse))
+        .filter((row) => matchesItem(row.itemName, row.itemCode, item))
+        .filter((row) => matchesLooseValue(row.movementType, movementFilter))
+        .filter((row) => (loanType ? matchesLooseValue(row.movementType, loanType) : true))
+        .filter((row) => matchesExactValue(row.supervisorName || row.relatedUser, supervisor))
+        .filter((row) =>
+          matchesSearch(
+            [
+              row.movementNo,
+              row.movementType,
+              row.sourceModule,
+              row.itemName,
+              row.itemCode,
+              row.category,
+              row.from,
+              row.to,
+              row.relatedUser,
+              row.supervisorName,
+              row.region,
+              row.notes,
+              row.status,
+            ],
+            search
+          )
+        )
+        .map((row) => ({
+          "Transaction Number": row.movementNo,
+          "Movement Type": row.movementType,
+          "Portal / Source Module": row.sourceModule,
+          Status: row.status || "",
+          "Item Name": row.itemName || "",
+          "Item Code": row.itemCode || "",
+          Category: row.category || "",
+          Quantity: row.quantity,
+          Unit: row.unit || "",
+          "From Warehouse": row.from || "",
+          "To Warehouse": row.to || "",
+          "Warehouse Type": row.warehouseType || "",
+          Supervisor: row.supervisorName || "",
+          Region: row.region || "",
+          "Requested By": "",
+          "Approved By": "",
+          "Issued By": row.relatedUser || "",
+          "Received By": "",
+          "Borrow / Lend Type":
+            row.movementType.toLowerCase().includes("lend")
+              ? "Lend"
+              : row.movementType.toLowerCase().includes("borrow")
+                ? "Borrow"
+                : "",
+          "Request Date": "",
+          "Approval Date": "",
+          "Issue Date": formatDateTime(row.date),
+          "Receive Date": "",
+          "Return Due Date": "",
+          "Return Date": "",
+          Notes: row.notes || "",
+          "Created At": formatDateTime(row.date),
+          "Updated At": formatDateTime(row.date),
+        }));
 
       const buffer = toWorkbookBuffer(rows, WAREHOUSE_EXPORT_TITLES[exportModule]);
       return new Response(buffer, {
@@ -404,7 +461,10 @@ export async function GET(request: Request) {
 
       const rows = transferLines
         .filter((line) => matchesSearch([line.itemName, line.itemCode, line.fromWarehouse, line.toWarehouse], search))
+        .filter((line) => matchesExactValue(inferWarehouseType(line.fromWarehouse), warehouseType))
         .filter((line) => (warehouse ? line.fromWarehouse === warehouse || line.toWarehouse === warehouse : true))
+        .filter((line) => matchesItem(line.itemName, line.itemCode, item))
+        .filter(() => (movementType ? matchesLooseValue("Transfer", movementType) : true))
         .filter((line) => (dateFrom ? line.createdAt >= dateFrom : true))
         .filter((line) => (dateTo ? line.createdAt <= dateTo : true))
         .map((line) => ({
@@ -448,66 +508,52 @@ export async function GET(request: Request) {
     }
 
     if (exportModule === "borrow-lend") {
-      const loans = await prisma.loan.findMany({
-        where: {
-          ...(warehouse ? { sourceWarehouse: warehouse } : {}),
-        },
-        orderBy: [{ id: "desc" }],
-        take: 5000,
-      });
+      const dataset = await getWarehouseKpiDataset();
 
-      const inventoryRows = await prisma.inventory.findMany({
-        where: {
-          id: { in: loans.map((row) => row.itemId) },
-        },
-        select: {
-          id: true,
-          itemCode: true,
-          category: true,
-          unit: true,
-        },
-      });
-      const inventoryLookup = new Map(inventoryRows.map((row) => [row.id, row]));
-      const operationMap = await buildLoanOperationMap(loans.map((row) => row.id));
-
-      const rows = loans
-        .filter((loan) => matchesSearch([loan.itemName, loan.project, loan.reference, loan.notes], search))
-        .filter((loan) => (status ? loan.status === status : true))
-        .filter((loan) => (dateFrom ? new Date(loan.date) >= dateFrom : true))
-        .filter((loan) => (dateTo ? new Date(loan.date) <= dateTo : true))
-        .map((loan) => {
-          const inventoryItem = inventoryLookup.get(loan.itemId);
-          return {
-            "Transaction Number": operationMap.get(loan.id) || `LON-${loan.id}`,
-            "Movement Type": loan.type === "Borrow" ? "Borrow Return" : "Lend",
-            "Portal / Source Module": "Borrow Lend",
-            Status: loan.status,
-            "Item Name": loan.itemName,
-            "Item Code": inventoryItem?.itemCode || "",
-            Category: inventoryItem?.category || "",
-            Quantity: loan.originalQuantity || loan.quantity,
-            Unit: inventoryItem?.unit || "",
-            "From Warehouse": loan.type === "Borrow" ? loan.project : loan.sourceWarehouse || "",
-            "To Warehouse": loan.type === "Borrow" ? loan.sourceWarehouse || "" : loan.project,
-            "Warehouse Type": inferWarehouseType(loan.sourceWarehouse),
-            Supervisor: "",
-            Region: "",
-            "Requested By": "",
-            "Approved By": "",
-            "Issued By": loan.type === "Lend" ? (loan.sourceWarehouse || "") : "",
-            "Received By": loan.type === "Borrow" ? (loan.sourceWarehouse || "") : "",
-            "Borrow / Lend Type": loan.type,
-            "Request Date": formatDateTime(loan.date),
-            "Approval Date": "",
-            "Issue Date": loan.type === "Lend" ? formatDateTime(loan.date) : "",
-            "Receive Date": loan.type === "Borrow" ? formatDateTime(loan.date) : "",
-            "Return Due Date": formatDate(loan.expectedReturnDate),
-            "Return Date": formatDate(loan.returnDate),
-            Notes: loan.notes || loan.reference || "",
-            "Created At": formatDateTime(loan.date),
-            "Updated At": formatDateTime(loan.returnDate || loan.expectedReturnDate || loan.date),
-          };
-        });
+      const rows = dataset.borrowLend
+        .filter((row) => matchesSearch([row.transactionNo, row.itemName, row.itemCode, row.source, row.destination, row.notes], search))
+        .filter((row) => matchesLooseValue(row.status, status))
+        .filter((row) => matchesDateRange(row.date, dateFrom, dateTo))
+        .filter((row) => matchesExactValue(row.warehouseType, warehouseType))
+        .filter((row) => matchesWarehouse([row.source, row.destination], warehouse))
+        .filter((row) => matchesItem(row.itemName, row.itemCode, item))
+        .filter((row) => matchesLooseValue(row.type, loanType))
+        .filter((row) => matchesLooseValue(row.type, movementType))
+        .filter((row) => {
+          if (!region) return true;
+          return matchesSearch([row.source, row.destination], region);
+        })
+        .filter(() => !supervisor)
+        .map((row) => ({
+          "Transaction Number": row.transactionNo,
+          "Movement Type": row.type,
+          "Portal / Source Module": "Borrow Lend",
+          Status: row.status,
+          "Item Name": row.itemName,
+          "Item Code": row.itemCode || "",
+          Category: row.category || "",
+          Quantity: row.quantity,
+          Unit: row.unit || "",
+          "From Warehouse": row.source || "",
+          "To Warehouse": row.destination || "",
+          "Warehouse Type": row.warehouseType || "",
+          Supervisor: "",
+          Region: "",
+          "Requested By": "",
+          "Approved By": "",
+          "Issued By": row.type === "Lend" ? row.source || "" : "",
+          "Received By": row.type === "Borrow" ? row.destination || "" : "",
+          "Borrow / Lend Type": row.type,
+          "Request Date": formatDateTime(row.date),
+          "Approval Date": "",
+          "Issue Date": row.type === "Lend" ? formatDateTime(row.date) : "",
+          "Receive Date": row.type === "Borrow" ? formatDateTime(row.date) : "",
+          "Return Due Date": formatDate(row.expectedReturnDate),
+          "Return Date": formatDate(row.returnDate),
+          Notes: row.notes || "",
+          "Created At": formatDateTime(row.date),
+          "Updated At": formatDateTime(row.returnDate || row.expectedReturnDate || row.date),
+        }));
 
       const buffer = toWorkbookBuffer(rows, WAREHOUSE_EXPORT_TITLES[exportModule]);
       return new Response(buffer, {

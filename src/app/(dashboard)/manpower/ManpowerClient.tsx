@@ -6,13 +6,14 @@ import { ManpowerData, Attendance, DailyReport, Worker, User } from "@/types";
 import { WorkerModal } from "@/components/WorkerModal";
 import { deleteWorker, submitBulkAttendance } from "@/app/actions/manpower";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { UserManagement } from "@/components/UserManagement";
 import { AttendanceActionControls } from "@/components/AttendanceActionControls";
 import { AttendanceTable } from "@/components/AttendanceTable";
 import { StaffManagement } from "@/components/StaffManagement";
 import { ExportButton } from "@/components/ExportButton";
 import { useAsyncAction } from "@/lib/useDebounce";
+import { isManagerRole } from "@/lib/roles";
 
 interface Props {
     data: ManpowerData & { allUsers?: User[] };
@@ -32,6 +33,7 @@ export function ManpowerClient({
     userShiftId
 }: Props) {
     const router = useRouter();
+    const searchParams = useSearchParams();
     // Default tab based on role? Or just default to Reports
     const [activeTab, setActiveTab] = useState("reports");
     const [searchTerm, setSearchTerm] = useState("");
@@ -369,12 +371,21 @@ export function ManpowerClient({
         return true;
     });
 
-    const tabs = ["reports", "mark_attendance"];
-    const isManager = userRole === "manager";
+    const isManager = isManagerRole(userRole);
+    const tabs = useMemo(() => {
+        const visibleTabs = ["reports", "mark_attendance"];
+        if (isManager) {
+            visibleTabs.push("workers", "users", "staff");
+        }
+        return visibleTabs;
+    }, [isManager]);
 
-    if (isManager) {
-        tabs.push("workers", "users", "staff");
-    }
+    useEffect(() => {
+        const requestedTab = searchParams.get("tab");
+        if (requestedTab && tabs.includes(requestedTab)) {
+            setActiveTab(requestedTab);
+        }
+    }, [searchParams, tabs]);
 
     // Helper data for specific lists to export
     const flatAttendanceList = useMemo(() => {
@@ -405,8 +416,8 @@ export function ManpowerClient({
         <div className="space-y-6 animate-fade-in pb-12">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-900">Manpower Reports</h1>
-                    <p className="text-slate-500 text-sm">Track attendance and workforce dynamics</p>
+                    <h1 className="text-2xl font-bold text-slate-900">Manpower Operations</h1>
+                    <p className="text-slate-500 text-sm">Track attendance workflows, workforce coverage, and manpower controls</p>
                 </div>
             </div>
 

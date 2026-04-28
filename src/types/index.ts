@@ -95,10 +95,12 @@ export interface Attendance {
 export type AttendanceStatus =
   | 'Present'
   | 'Absent'
+  | 'Sick Leave'
+  | 'Annual Leave'
+  | 'Official Leave'
   | 'Vacation'
   | 'Day Off'
   | 'Eid Holiday'
-  | 'Sick Leave'
   | string; // Relaxed to allow string from DB
 
 export interface AttendanceFormData {
@@ -303,10 +305,14 @@ export interface WarehouseExportFilterState {
   search?: string;
   status?: string;
   warehouse?: string;
+  warehouseType?: string;
   region?: string;
   supervisor?: string;
   category?: string;
   action?: string;
+  item?: string;
+  movementType?: string;
+  loanType?: string;
   dateFrom?: string;
   dateTo?: string;
   scope?: string;

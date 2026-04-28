@@ -5,6 +5,7 @@ export const CACHE_TAGS = {
   warehouse: "warehouse",
   manpower: "manpower",
   references: "references",
+  reports: "reports",
 } as const;
 
 function revalidateTags(tags: string[]) {
@@ -44,9 +45,19 @@ export function revalidateReferenceData() {
     CACHE_TAGS.manpower,
     CACHE_TAGS.warehouse,
     CACHE_TAGS.dashboard,
+    CACHE_TAGS.reports,
   ]);
   revalidatePath("/settings");
   revalidatePath("/manpower");
   revalidatePath("/warehouse");
   revalidatePath("/dashboard");
+  revalidatePath("/reports");
+}
+
+export function revalidateReportsData() {
+  revalidateTags([
+    CACHE_TAGS.reports,
+    CACHE_TAGS.dashboard,
+  ]);
+  revalidatePath("/reports");
 }

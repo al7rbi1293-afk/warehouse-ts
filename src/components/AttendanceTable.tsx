@@ -1,4 +1,5 @@
 import { Worker } from "@/types";
+import { OFFICIAL_ATTENDANCE_STATUSES } from "@/lib/attendance-status";
 
 interface AttendanceTableProps {
     workers: Worker[];
@@ -15,6 +16,30 @@ export function AttendanceTable({
     onStatusChange,
     onNotesChange
 }: AttendanceTableProps) {
+    const getStatusClasses = (status: string, active: boolean) => {
+        if (!active) {
+            return "bg-white text-slate-500 border-slate-200 hover:border-slate-300";
+        }
+
+        if (status === "Present") {
+            return "bg-green-100 text-green-700 border-green-200";
+        }
+
+        if (status === "Absent") {
+            return "bg-red-100 text-red-700 border-red-200";
+        }
+
+        if (status === "Sick Leave") {
+            return "bg-amber-100 text-amber-700 border-amber-200";
+        }
+
+        if (status === "Annual Leave") {
+            return "bg-blue-100 text-blue-700 border-blue-200";
+        }
+
+        return "bg-violet-100 text-violet-700 border-violet-200";
+    };
+
     if (workers.length === 0) {
         return (
             <div className="text-center py-8 text-slate-500">
@@ -47,18 +72,11 @@ export function AttendanceTable({
                             </td>
                             <td className="px-4 py-3">
                                 <div className="flex gap-2">
-                                    {["Present", "Absent", "Vacation", "Day Off", "Sick Leave"].map(status => (
+                                    {OFFICIAL_ATTENDANCE_STATUSES.map(status => (
                                         <button
                                             key={status}
                                             onClick={() => onStatusChange(worker.id, status)}
-                                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${getWorkerStatus(worker.id) === status
-                                                ? status === "Present"
-                                                    ? "bg-green-100 text-green-700 border-green-200"
-                                                    : status === "Absent"
-                                                        ? "bg-red-100 text-red-700 border-red-200"
-                                                        : "bg-blue-100 text-blue-700 border-blue-200"
-                                                : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
-                                                }`}
+                                            className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${getStatusClasses(status, getWorkerStatus(worker.id) === status)}`}
                                         >
                                             {status}
                                         </button>
