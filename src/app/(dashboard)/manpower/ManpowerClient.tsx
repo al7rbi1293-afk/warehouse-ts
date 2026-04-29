@@ -14,6 +14,7 @@ import { StaffManagement } from "@/components/StaffManagement";
 import { ExportButton } from "@/components/ExportButton";
 import { useAsyncAction } from "@/lib/useDebounce";
 import { isManagerRole } from "@/lib/roles";
+import { normalizeWorkerAttendanceStatus } from "@/lib/attendance-status";
 
 interface Props {
     data: ManpowerData & { allUsers?: User[] };
@@ -75,14 +76,16 @@ export function ManpowerClient({
     // Helper to get effective status
     const getWorkerStatus = (workerId: number) => {
         // 1. Check local override
-        if (attendanceBuffer[attendanceDate]?.[workerId]?.status) return attendanceBuffer[attendanceDate][workerId].status!;
+        if (attendanceBuffer[attendanceDate]?.[workerId]?.status) {
+            return attendanceBuffer[attendanceDate][workerId].status!;
+        }
 
         // 2. Check existing DB record
         const existing = data.allAttendance?.find(a =>
             a.workerId === workerId &&
             new Date(a.date).toISOString().split('T')[0] === attendanceDate
         );
-        if (existing) return existing.status || "Present";
+        if (existing) return normalizeWorkerAttendanceStatus(existing.status) || "Present";
 
         // 3. Default
         return "Present";

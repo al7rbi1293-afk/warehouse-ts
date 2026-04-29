@@ -1,5 +1,5 @@
 import { Worker } from "@/types";
-import { OFFICIAL_ATTENDANCE_STATUSES } from "@/lib/attendance-status";
+import { WORKER_ATTENDANCE_STATUSES } from "@/lib/attendance-status";
 
 interface AttendanceTableProps {
     workers: Worker[];
@@ -33,11 +33,15 @@ export function AttendanceTable({
             return "bg-amber-100 text-amber-700 border-amber-200";
         }
 
-        if (status === "Annual Leave") {
+        if (status === "Vacation") {
             return "bg-blue-100 text-blue-700 border-blue-200";
         }
 
-        return "bg-violet-100 text-violet-700 border-violet-200";
+        if (status === "Day Off") {
+            return "bg-indigo-100 text-indigo-700 border-indigo-200";
+        }
+
+        return "bg-blue-100 text-blue-700 border-blue-200";
     };
 
     if (workers.length === 0) {
@@ -72,7 +76,7 @@ export function AttendanceTable({
                             </td>
                             <td className="px-4 py-3">
                                 <div className="flex gap-2">
-                                    {OFFICIAL_ATTENDANCE_STATUSES.map(status => (
+                                    {WORKER_ATTENDANCE_STATUSES.map(status => (
                                         <button
                                             key={status}
                                             onClick={() => onStatusChange(worker.id, status)}
