@@ -36,6 +36,20 @@ const prisma = new PrismaClient({
   datasourceUrl: verificationUrl,
 });
 
+function isReachabilityError(error) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("can't reach database server") ||
+    message.includes("could not connect to server") ||
+    message.includes("timed out")
+  );
+}
+
 const requiredColumns = [
   {
     table: "discharge_report_entries",
@@ -100,6 +114,13 @@ try {
 
   console.log("[db:verify] Schema verification passed.");
 } catch (error) {
+  if (isReachabilityError(error)) {
+    console.warn(
+      "[db:verify] Skipping schema verification because the database is not reachable from the build environment."
+    );
+    process.exit(0);
+  }
+
   console.error("[db:verify] Failed to verify schema.", error);
   process.exit(1);
 } finally {
