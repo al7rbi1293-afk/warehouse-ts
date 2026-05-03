@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 
 const shouldVerify =
   process.env.VERCEL === "1" || process.env.REQUIRE_DB_VERIFY === "1";
+const verificationUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
 
 if (!shouldVerify) {
   console.log(
@@ -10,14 +11,16 @@ if (!shouldVerify) {
   process.exit(0);
 }
 
-if (!process.env.DATABASE_URL) {
+if (!verificationUrl) {
   console.error(
-    "[db:verify] DATABASE_URL is missing. Refusing deployment without schema verification."
+    "[db:verify] DIRECT_URL or DATABASE_URL is required. Refusing deployment without schema verification."
   );
   process.exit(1);
 }
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasourceUrl: verificationUrl,
+});
 
 const requiredColumns = [
   {
