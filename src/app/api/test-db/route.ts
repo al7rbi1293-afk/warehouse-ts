@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getDatabaseHealth, logSanitizedDatabaseError } from "@/lib/database-health";
 import { NextResponse } from "next/server";
 
 export async function GET() {
@@ -7,6 +8,8 @@ export async function GET() {
     }
 
     try {
+        const health = await getDatabaseHealth();
+
         // Test basic connection
         const userCount = await prisma.user.count();
         const workerCount = await prisma.worker.count();
@@ -21,6 +24,7 @@ export async function GET() {
 
         return NextResponse.json({
             status: "connected",
+            health,
             counts: {
                 users: userCount,
                 workers: workerCount,
@@ -34,13 +38,12 @@ export async function GET() {
                 inventory: sampleInventory,
             },
         });
-    } catch (error) {
-        console.error("DB Test Error:", error);
+    } catch (error: unknown) {
+        const sanitized = logSanitizedDatabaseError("test-db route failed", error);
         return NextResponse.json(
             {
                 status: "error",
-                message: error instanceof Error ? error.message : "Unknown error",
-                error: String(error),
+                reason: sanitized.reason,
             },
             { status: 500 }
         );

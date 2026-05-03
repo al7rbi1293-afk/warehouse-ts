@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getDatabaseHealth, sanitizeDatabaseError } from '@/lib/database-health';
 
 interface DebugResults {
     activeWorkers?: number;
@@ -26,13 +27,14 @@ export async function GET() {
 
     const results: DebugResults = {};
     const errors: DebugErrors = {};
+    const health = await getDatabaseHealth();
 
     try {
         // 1. Workers
         try {
             results.activeWorkers = await prisma.worker.count({ where: { status: "Active" } });
         } catch (e: unknown) {
-            errors.activeWorkers = e instanceof Error ? e.message : "Unknown error";
+            errors.activeWorkers = sanitizeDatabaseError(e).reason;
         }
 
         // 2. Attendance
@@ -43,14 +45,14 @@ export async function GET() {
                 where: { date: { gte: today } }
             });
         } catch (e: unknown) {
-            errors.attendance = e instanceof Error ? e.message : "Unknown error";
+            errors.attendance = sanitizeDatabaseError(e).reason;
         }
 
         // 3. Requests
         try {
             results.pendingRequests = await prisma.request.count({ where: { status: "Pending" } });
         } catch (e: unknown) {
-            errors.requests = e instanceof Error ? e.message : "Unknown error";
+            errors.requests = sanitizeDatabaseError(e).reason;
         }
 
         // 4. Inventory
@@ -62,7 +64,7 @@ export async function GET() {
                 select: { id: true, nameEn: true, qty: true }
             });
         } catch (e: unknown) {
-            errors.inventory = e instanceof Error ? e.message : "Unknown error";
+            errors.inventory = sanitizeDatabaseError(e).reason;
         }
 
         // 5. Worker groupBy
@@ -73,18 +75,20 @@ export async function GET() {
                 _count: { id: true },
             });
         } catch (e: unknown) {
-            errors.workerGroups = e instanceof Error ? e.message : "Unknown error";
+            errors.workerGroups = sanitizeDatabaseError(e).reason;
         }
 
         return NextResponse.json({
             status: Object.keys(errors).length > 0 ? 'partial_failure' : 'ok',
+            health,
             results,
             errors
         });
     } catch (error: unknown) {
         return NextResponse.json({
             status: 'critical_failure',
-            message: error instanceof Error ? error.message : "Unknown error"
+            health,
+            reason: sanitizeDatabaseError(error).reason
         }, { status: 500 });
     }
 }

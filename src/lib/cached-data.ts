@@ -1,6 +1,10 @@
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { CACHE_TAGS } from "@/lib/cache-tags";
+import {
+  GENERIC_DASHBOARD_DATA_ERROR,
+  logSanitizedDatabaseError,
+} from "@/lib/database-health";
 import { UserRole } from "@/types";
 
 function getLocalDateParts(dateStr?: string) {
@@ -33,6 +37,30 @@ function getLocalDateParts(dateStr?: string) {
 
 const getDashboardSnapshot = unstable_cache(
   async (selectedDate: string) => {
+    type SafeQueryResult<T> = {
+      value: T;
+      failed: boolean;
+    };
+
+    async function safeQuery<T>(
+      label: string,
+      queryFn: () => Promise<T>,
+      fallbackValue: T
+    ): Promise<SafeQueryResult<T>> {
+      try {
+        return {
+          value: await queryFn(),
+          failed: false,
+        };
+      } catch (error: unknown) {
+        logSanitizedDatabaseError(`dashboard ${label} query failed`, error);
+        return {
+          value: fallbackValue,
+          failed: true,
+        };
+      }
+    }
+
     const { today } = getLocalDateParts(selectedDate);
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -49,67 +77,125 @@ const getDashboardSnapshot = unstable_cache(
       topStockItems,
       recentAttendance,
     ] = await Promise.all([
-      prisma.worker.count({ where: { status: "Active" } }),
-      prisma.attendance.findMany({
-        where: {
-          date: {
-            gte: today,
-            lt: tomorrow,
-          },
-        },
-        include: {
-          worker: {
-            include: { shift: true },
-          },
-        },
-      }),
-      prisma.attendance.findMany({
-        where: {
-          date: {
-            gte: yesterday,
-            lt: today,
-          },
-        },
-        include: {
-          worker: {
-            include: { shift: true },
-          },
-        },
-      }),
-      prisma.request.count({ where: { status: "Pending" } }),
-      prisma.inventory.findMany({
-        where: { qty: { lt: 10 } },
-        orderBy: { qty: "asc" },
-      }),
-      prisma.worker.groupBy({
-        by: ["region"],
-        where: { status: "Active" },
-        _count: { id: true },
-      }),
-      prisma.inventory.findMany({
-        where: { location: "NSTC" },
-        orderBy: { qty: "desc" },
-        take: 10,
-      }),
-      prisma.attendance.findMany({
-        where: {
-          status: "Present",
-          date: { gte: trendStart, lt: tomorrow },
-        },
-        select: { date: true },
-      }),
+      safeQuery(
+        "active workers",
+        () => prisma.worker.count({ where: { status: "Active" } }),
+        0
+      ),
+      safeQuery(
+        "selected date attendance",
+        () =>
+          prisma.attendance.findMany({
+            where: {
+              date: {
+                gte: today,
+                lt: tomorrow,
+              },
+            },
+            include: {
+              worker: {
+                include: { shift: true },
+              },
+            },
+          }),
+        []
+      ),
+      safeQuery(
+        "previous day attendance",
+        () =>
+          prisma.attendance.findMany({
+            where: {
+              date: {
+                gte: yesterday,
+                lt: today,
+              },
+            },
+            include: {
+              worker: {
+                include: { shift: true },
+              },
+            },
+          }),
+        []
+      ),
+      safeQuery(
+        "pending requests",
+        () => prisma.request.count({ where: { status: "Pending" } }),
+        0
+      ),
+      safeQuery(
+        "low stock items",
+        () =>
+          prisma.inventory.findMany({
+            where: { qty: { lt: 10 } },
+            orderBy: { qty: "asc" },
+          }),
+        []
+      ),
+      safeQuery(
+        "workers by region",
+        () =>
+          prisma.worker.groupBy({
+            by: ["region"],
+            where: { status: "Active" },
+            _count: { id: true },
+          }),
+        []
+      ),
+      safeQuery(
+        "top stock items",
+        () =>
+          prisma.inventory.findMany({
+            where: { location: "NSTC" },
+            orderBy: { qty: "desc" },
+            take: 10,
+          }),
+        []
+      ),
+      safeQuery(
+        "recent attendance",
+        () =>
+          prisma.attendance.findMany({
+            where: {
+              status: "Present",
+              date: { gte: trendStart, lt: tomorrow },
+            },
+            select: { date: true },
+          }),
+        []
+      ),
     ]);
 
-    const a1Attendance = selectedDateAttendance.filter(
+    const hasLiveDataFailures = [
+      activeWorkers,
+      selectedDateAttendance,
+      b1PreviousDayAttendance,
+      pendingRequests,
+      lowStockItems,
+      workersByRegion,
+      topStockItems,
+      recentAttendance,
+    ].some((result) => result.failed);
+
+    const activeWorkersValue = activeWorkers.value;
+    const selectedDateAttendanceValue = selectedDateAttendance.value;
+    const b1PreviousDayAttendanceValue = b1PreviousDayAttendance.value;
+    const pendingRequestsValue = pendingRequests.value;
+    const lowStockItemsValue = lowStockItems.value;
+    const workersByRegionValue = workersByRegion.value;
+    const topStockItemsValue = topStockItems.value;
+    const recentAttendanceValue = recentAttendance.value;
+
+    const a1Attendance = selectedDateAttendanceValue.filter(
       (attendance) => attendance.worker?.shift?.name === "A1"
     );
-    const b1Attendance = b1PreviousDayAttendance.filter(
+    const b1Attendance = b1PreviousDayAttendanceValue.filter(
       (attendance) => attendance.worker?.shift?.name === "B1"
     );
     const combinedAttendance = [...a1Attendance, ...b1Attendance];
 
     const trendMap: Record<string, number> = {};
-    for (const attendance of recentAttendance) {
+    for (const attendance of recentAttendanceValue) {
       const dateKey = attendance.date.toISOString().split("T")[0];
       trendMap[dateKey] = (trendMap[dateKey] || 0) + 1;
     }
@@ -121,14 +207,14 @@ const getDashboardSnapshot = unstable_cache(
     return {
       selectedDate,
       metrics: {
-        activeWorkers,
+        activeWorkers: activeWorkersValue,
         attendanceRate:
-          activeWorkers > 0
-            ? Math.round((presentCount / activeWorkers) * 1000) / 10
+          activeWorkersValue > 0
+            ? Math.round((presentCount / activeWorkersValue) * 1000) / 10
             : 0,
         presentCount,
-        pendingRequests,
-        lowStockCount: lowStockItems.length,
+        pendingRequests: pendingRequestsValue,
+        lowStockCount: lowStockItemsValue.length,
         absentCount: combinedAttendance.filter(
           (attendance) => attendance.status === "Absent"
         ).length,
@@ -155,16 +241,16 @@ const getDashboardSnapshot = unstable_cache(
         a1Total: a1Attendance.length,
         b1Total: b1Attendance.length,
       },
-      lowStockItems: lowStockItems.map((item) => ({
+      lowStockItems: lowStockItemsValue.map((item) => ({
         nameEn: item.nameEn,
         qty: item.qty,
         location: item.location,
       })),
-      workersByRegion: workersByRegion.map((workerGroup) => ({
+      workersByRegion: workersByRegionValue.map((workerGroup) => ({
         name: workerGroup.region || "Unknown",
         value: workerGroup._count.id,
       })),
-      topStockItems: topStockItems.map((item) => ({
+      topStockItems: topStockItemsValue.map((item) => ({
         name: item.nameEn,
         value: item.qty,
       })),
@@ -172,6 +258,9 @@ const getDashboardSnapshot = unstable_cache(
         .map(([date, count]) => ({ date, count }))
         .sort((a, b) => a.date.localeCompare(b.date)),
       todayAttendance: combinedAttendance,
+      debugError: hasLiveDataFailures
+        ? GENERIC_DASHBOARD_DATA_ERROR
+        : undefined,
     };
   },
   ["dashboard-snapshot"],
@@ -374,10 +463,7 @@ export async function getCachedDashboardData(dateStr?: string) {
   try {
     return await getDashboardSnapshot(selectedDate);
   } catch (error: unknown) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error occurred";
-
-    console.error("Dashboard data error:", error);
+    logSanitizedDatabaseError("dashboard snapshot failed", error);
 
     return {
       selectedDate,
@@ -401,7 +487,7 @@ export async function getCachedDashboardData(dateStr?: string) {
       topStockItems: [],
       attendanceTrend: [],
       todayAttendance: [],
-      debugError: errorMessage,
+      debugError: GENERIC_DASHBOARD_DATA_ERROR,
     };
   }
 }

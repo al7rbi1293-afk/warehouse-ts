@@ -1,5 +1,6 @@
 
 import { getProjects, getWarehouses, getRegions } from "@/app/actions/references";
+import { getDatabaseHealth } from "@/lib/database-health";
 import { notFound } from "next/navigation";
 
 export default async function DebugDbPage() {
@@ -7,13 +8,16 @@ export default async function DebugDbPage() {
         notFound();
     }
 
+    const health = await getDatabaseHealth();
     const projects = await getProjects();
     const warehouses = await getWarehouses();
     const regions = await getRegions();
 
-    // Safety: Mask the password in the connection string
-    const dbUrl = process.env.DATABASE_URL || "NOT_SET";
-    const maskedUrl = dbUrl.replace(/:[^:@]+@/, ":****@");
+    const environmentSummary = [
+        { label: "DATABASE_URL", configured: Boolean(process.env.DATABASE_URL) },
+        { label: "DIRECT_URL", configured: Boolean(process.env.DIRECT_URL) },
+        { label: "SUPABASE_POOLER_URL", configured: Boolean(process.env.SUPABASE_POOLER_URL) },
+    ];
 
     return (
         <div className="p-10 font-mono text-sm space-y-8 bg-white min-h-screen text-slate-800">
@@ -21,10 +25,17 @@ export default async function DebugDbPage() {
 
             <div className="bg-blue-50 p-4 rounded border border-blue-200">
                 <h3 className="font-bold mb-2">Environment Check</h3>
-                <p><strong>Database URL:</strong> {maskedUrl}</p>
-                <p className="text-xs text-slate-500 mt-1">
-                    (Check if this looks like the Direct Connection &apos;db.cofqikmt...&apos; or the old one)
-                </p>
+                <div className="space-y-1">
+                    {environmentSummary.map(({ label, configured }) => (
+                        <p key={label}>
+                            <strong>{label}:</strong> {configured ? "configured" : "missing"}
+                        </p>
+                    ))}
+                    <p>
+                        <strong>Database Health:</strong> {health.status}
+                        {health.reason ? ` (${health.reason})` : ""}
+                    </p>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
