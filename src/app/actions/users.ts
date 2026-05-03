@@ -1,11 +1,12 @@
 "use server";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { hash } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 interface UserActionInput {
     username: string;
@@ -31,11 +32,15 @@ function parseOptionalInt(value: string | number | null | undefined): number | n
     return Number.isFinite(parsed) ? parsed : null;
 }
 
-function getErrorMessage(error: unknown) {
-    if (error instanceof Error) {
-        return error.message;
+function getSafeUserActionMessage(error: unknown, fallback: string) {
+    if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+    ) {
+        return "Username already exists";
     }
-    return "Unexpected error";
+
+    return fallback;
 }
 
 async function requireUserAdmin() {
@@ -82,8 +87,11 @@ export async function createUser(data: UserActionInput) {
         revalidatePath("/settings"); // Assuming user management might be here
         return { success: true };
     } catch (error: unknown) {
-        console.error("Create User Error:", error);
-        return { success: false, message: getErrorMessage(error) };
+        logSanitizedDatabaseError("user-action create", error);
+        return {
+            success: false,
+            message: getSafeUserActionMessage(error, "Failed to create user"),
+        };
     }
 }
 
@@ -119,8 +127,11 @@ export async function updateUser(username: string, data: UserActionInput) {
         revalidatePath("/profile");
         return { success: true };
     } catch (error: unknown) {
-        console.error("Update User Error:", error);
-        return { success: false, message: getErrorMessage(error) };
+        logSanitizedDatabaseError("user-action update", error);
+        return {
+            success: false,
+            message: getSafeUserActionMessage(error, "Failed to update user"),
+        };
     }
 }
 
@@ -137,7 +148,7 @@ export async function deleteUser(username: string) {
         revalidatePath("/profile");
         return { success: true };
     } catch (error: unknown) {
-        console.error("Delete User Error:", error);
-        return { success: false, message: getErrorMessage(error) };
+        logSanitizedDatabaseError("user-action delete", error);
+        return { success: false, message: "Failed to delete user" };
     }
 }

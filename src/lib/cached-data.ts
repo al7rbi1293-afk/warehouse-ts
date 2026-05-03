@@ -4,6 +4,7 @@ import { CACHE_TAGS } from "@/lib/cache-tags";
 import {
   GENERIC_DASHBOARD_DATA_ERROR,
   logSanitizedDatabaseError,
+  safeQuery,
 } from "@/lib/database-health";
 import { UserRole } from "@/types";
 
@@ -37,35 +38,22 @@ function getLocalDateParts(dateStr?: string) {
 
 const getDashboardSnapshot = unstable_cache(
   async (selectedDate: string) => {
-    type SafeQueryResult<T> = {
-      value: T;
-      failed: boolean;
-    };
-
-    async function safeQuery<T>(
-      label: string,
-      queryFn: () => Promise<T>,
-      fallbackValue: T
-    ): Promise<SafeQueryResult<T>> {
-      try {
-        return {
-          value: await queryFn(),
-          failed: false,
-        };
-      } catch (error: unknown) {
-        logSanitizedDatabaseError(`dashboard ${label} query failed`, error);
-        return {
-          value: fallbackValue,
-          failed: true,
-        };
-      }
-    }
-
     const { today } = getLocalDateParts(selectedDate);
     const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     const trendStart = new Date(today);
     trendStart.setDate(trendStart.getDate() - 7);
+    const failedDashboardQueries = new Set<string>();
+
+    const dashboardQuery = <T,>(
+      label: string,
+      queryFn: () => Promise<T>,
+      fallbackValue: T
+    ) =>
+      safeQuery(label, queryFn, fallbackValue, {
+        context: "dashboard-kpi",
+        onError: () => failedDashboardQueries.add(label),
+      });
 
     const [
       activeWorkers,
@@ -77,12 +65,12 @@ const getDashboardSnapshot = unstable_cache(
       topStockItems,
       recentAttendance,
     ] = await Promise.all([
-      safeQuery(
+      dashboardQuery(
         "active workers",
         () => prisma.worker.count({ where: { status: "Active" } }),
         0
       ),
-      safeQuery(
+      dashboardQuery(
         "selected date attendance",
         () =>
           prisma.attendance.findMany({
@@ -100,7 +88,7 @@ const getDashboardSnapshot = unstable_cache(
           }),
         []
       ),
-      safeQuery(
+      dashboardQuery(
         "previous day attendance",
         () =>
           prisma.attendance.findMany({
@@ -118,12 +106,12 @@ const getDashboardSnapshot = unstable_cache(
           }),
         []
       ),
-      safeQuery(
+      dashboardQuery(
         "pending requests",
         () => prisma.request.count({ where: { status: "Pending" } }),
         0
       ),
-      safeQuery(
+      dashboardQuery(
         "low stock items",
         () =>
           prisma.inventory.findMany({
@@ -132,7 +120,7 @@ const getDashboardSnapshot = unstable_cache(
           }),
         []
       ),
-      safeQuery(
+      dashboardQuery(
         "workers by region",
         () =>
           prisma.worker.groupBy({
@@ -142,7 +130,7 @@ const getDashboardSnapshot = unstable_cache(
           }),
         []
       ),
-      safeQuery(
+      dashboardQuery(
         "top stock items",
         () =>
           prisma.inventory.findMany({
@@ -152,7 +140,7 @@ const getDashboardSnapshot = unstable_cache(
           }),
         []
       ),
-      safeQuery(
+      dashboardQuery(
         "recent attendance",
         () =>
           prisma.attendance.findMany({
@@ -166,36 +154,18 @@ const getDashboardSnapshot = unstable_cache(
       ),
     ]);
 
-    const hasLiveDataFailures = [
-      activeWorkers,
-      selectedDateAttendance,
-      b1PreviousDayAttendance,
-      pendingRequests,
-      lowStockItems,
-      workersByRegion,
-      topStockItems,
-      recentAttendance,
-    ].some((result) => result.failed);
+    const hasLiveDataFailures = failedDashboardQueries.size > 0;
 
-    const activeWorkersValue = activeWorkers.value;
-    const selectedDateAttendanceValue = selectedDateAttendance.value;
-    const b1PreviousDayAttendanceValue = b1PreviousDayAttendance.value;
-    const pendingRequestsValue = pendingRequests.value;
-    const lowStockItemsValue = lowStockItems.value;
-    const workersByRegionValue = workersByRegion.value;
-    const topStockItemsValue = topStockItems.value;
-    const recentAttendanceValue = recentAttendance.value;
-
-    const a1Attendance = selectedDateAttendanceValue.filter(
+    const a1Attendance = selectedDateAttendance.filter(
       (attendance) => attendance.worker?.shift?.name === "A1"
     );
-    const b1Attendance = b1PreviousDayAttendanceValue.filter(
+    const b1Attendance = b1PreviousDayAttendance.filter(
       (attendance) => attendance.worker?.shift?.name === "B1"
     );
     const combinedAttendance = [...a1Attendance, ...b1Attendance];
 
     const trendMap: Record<string, number> = {};
-    for (const attendance of recentAttendanceValue) {
+    for (const attendance of recentAttendance) {
       const dateKey = attendance.date.toISOString().split("T")[0];
       trendMap[dateKey] = (trendMap[dateKey] || 0) + 1;
     }
@@ -207,14 +177,14 @@ const getDashboardSnapshot = unstable_cache(
     return {
       selectedDate,
       metrics: {
-        activeWorkers: activeWorkersValue,
+        activeWorkers,
         attendanceRate:
-          activeWorkersValue > 0
-            ? Math.round((presentCount / activeWorkersValue) * 1000) / 10
+          activeWorkers > 0
+            ? Math.round((presentCount / activeWorkers) * 1000) / 10
             : 0,
         presentCount,
-        pendingRequests: pendingRequestsValue,
-        lowStockCount: lowStockItemsValue.length,
+        pendingRequests,
+        lowStockCount: lowStockItems.length,
         absentCount: combinedAttendance.filter(
           (attendance) => attendance.status === "Absent"
         ).length,
@@ -241,16 +211,16 @@ const getDashboardSnapshot = unstable_cache(
         a1Total: a1Attendance.length,
         b1Total: b1Attendance.length,
       },
-      lowStockItems: lowStockItemsValue.map((item) => ({
+      lowStockItems: lowStockItems.map((item) => ({
         nameEn: item.nameEn,
         qty: item.qty,
         location: item.location,
       })),
-      workersByRegion: workersByRegionValue.map((workerGroup) => ({
+      workersByRegion: workersByRegion.map((workerGroup) => ({
         name: workerGroup.region || "Unknown",
         value: workerGroup._count.id,
       })),
-      topStockItems: topStockItemsValue.map((item) => ({
+      topStockItems: topStockItems.map((item) => ({
         name: item.nameEn,
         value: item.qty,
       })),
@@ -504,7 +474,7 @@ export async function getCachedWarehouseData(userRole: string, userName: string)
       ...roleData,
     };
   } catch (error) {
-    console.error("Warehouse data error:", error);
+    logSanitizedDatabaseError("warehouse cached data", error);
     return {
       inventory: [],
       pendingRequests: [],
@@ -535,7 +505,7 @@ export async function getCachedManpowerData(isManager: boolean) {
       allUsers,
     };
   } catch (error) {
-    console.error("Manpower data error:", error);
+    logSanitizedDatabaseError("manpower cached data", error);
     return {
       workers: [],
       shifts: [],

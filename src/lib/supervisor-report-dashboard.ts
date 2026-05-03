@@ -14,6 +14,7 @@ import {
   roundToTwo,
 } from "@/lib/kpi-helpers";
 import { prisma } from "@/lib/prisma";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 export type SupervisorDailyReportStatus = "complete" | "incomplete" | "exceeded";
 
@@ -337,42 +338,56 @@ export async function getSupervisorReportDashboardData(
   const nextSelectedDateValue = new Date(
     Date.UTC(selectedDate.year, selectedDate.month - 1, selectedDate.day + 1)
   );
-  const allowedDischargeRegions = await getSupervisorDashboardAllowedRegions(
-    supervisorId,
-    selectedDateValue
+  const expectedReports = getExpectedSupervisorReportsForMonth(
+    selectedDate.year,
+    selectedDate.month
+  );
+  const standardWorkingDays = getStandardSupervisorWorkingDaysInMonth(
+    selectedDate.year,
+    selectedDate.month
   );
 
-  const [submissions, dischargeEntries] = await Promise.all([
-    prisma.dailyReportSubmission.findMany({
-      where: {
-        supervisorId,
-        reportDate: {
-          gte: monthStart,
-          lt: nextMonthStart,
+  try {
+    const allowedDischargeRegions = await getSupervisorDashboardAllowedRegions(
+      supervisorId,
+      selectedDateValue
+    );
+
+    const [submissions, dischargeEntries] = await Promise.all([
+      prisma.dailyReportSubmission.findMany({
+        where: {
+          supervisorId,
+          reportDate: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
         },
-      },
-      select: {
-        reportDate: true,
-        roundNumber: true,
-      },
-      orderBy: [{ reportDate: "asc" }, { roundNumber: "asc" }],
-    }),
-    prisma.dischargeReportEntry.findMany({
-      where: {
-        ...(allowedDischargeRegions.length === 0 ? { supervisorId } : {}),
-        dischargeDate: {
-          gte: monthStart,
-          lt: nextMonthStart,
+        select: {
+          reportDate: true,
+          roundNumber: true,
         },
-      },
-      select: {
-        dischargeDate: true,
-        area: true,
-        roomNumber: true,
-      },
-      orderBy: [{ dischargeDate: "asc" }, { area: "asc" }, { roomNumber: "asc" }],
-    }),
-  ]);
+        orderBy: [{ reportDate: "asc" }, { roundNumber: "asc" }],
+      }),
+      prisma.dischargeReportEntry.findMany({
+        where: {
+          ...(allowedDischargeRegions.length === 0 ? { supervisorId } : {}),
+          dischargeDate: {
+            gte: monthStart,
+            lt: nextMonthStart,
+          },
+        },
+        select: {
+          dischargeDate: true,
+          area: true,
+          roomNumber: true,
+        },
+        orderBy: [
+          { dischargeDate: "asc" },
+          { area: "asc" },
+          { roomNumber: "asc" },
+        ],
+      }),
+    ]);
   const scopedDischargeEntries = filterDischargeEntriesByAllowedRegions(
     dischargeEntries,
     allowedDischargeRegions
@@ -403,14 +418,6 @@ export async function getSupervisorReportDashboardData(
   const totalCompletedReports = dailyBreakdown.reduce(
     (total, day) => total + day.totalCompletedReports,
     0
-  );
-  const expectedReports = getExpectedSupervisorReportsForMonth(
-    selectedDate.year,
-    selectedDate.month
-  );
-  const standardWorkingDays = getStandardSupervisorWorkingDaysInMonth(
-    selectedDate.year,
-    selectedDate.month
   );
   const dailyDischargeEntries = scopedDischargeEntries.filter(
     (entry) =>
@@ -455,4 +462,37 @@ export async function getSupervisorReportDashboardData(
       monthlyBreakdown: monthlyDischargeBreakdown,
     },
   };
+  } catch (error: unknown) {
+    logSanitizedDatabaseError("supervisor-dashboard data", error);
+
+    return {
+      selectedDate: selectedDate.label,
+      daily: buildDailyMonitor(selectedDate.label, []),
+      monthly: {
+        year: selectedDate.year,
+        month: selectedDate.month,
+        label: formatMonthLabel(selectedDate.year, selectedDate.month),
+        standardWorkingDays,
+        expectedReports,
+        completedRequiredReports: 0,
+        optionalReports: 0,
+        totalCompletedReports: 0,
+        remainingReports: expectedReports,
+        achievementRate: 0,
+        averageRequiredReportsPerStandardDay: 0,
+        dailyBreakdown: Array.from({ length: daysInMonth }, (_, index) =>
+          buildDailyMonitor(
+            formatDateKey(selectedDate.year, selectedDate.month, index + 1),
+            []
+          )
+        ),
+      },
+      discharge: {
+        dailyTotal: 0,
+        monthlyTotal: 0,
+        dailyBreakdown: [],
+        monthlyBreakdown: [],
+      },
+    };
+  }
 }

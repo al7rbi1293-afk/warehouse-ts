@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getDatabaseHealth, sanitizeDatabaseError } from '@/lib/database-health';
 
+export const runtime = "nodejs";
+
 interface DebugResults {
     activeWorkers?: number;
     attendanceCount?: number;

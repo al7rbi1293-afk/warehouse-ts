@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { getDatabaseHealth, logSanitizedDatabaseError } from "@/lib/database-health";
 import { NextResponse } from "next/server";
 
+export const runtime = "nodejs";
+
 export async function GET() {
     if (process.env.NODE_ENV === "production") {
         return NextResponse.json({ status: "not_found" }, { status: 404 });

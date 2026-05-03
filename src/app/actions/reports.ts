@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 export interface StaffReportRow {
     id: number;
@@ -232,8 +233,8 @@ export async function fetchMasterReportData(dateStr: string): Promise<MasterRepo
             }
         };
 
-    } catch (error) {
-        console.error("Master Report Fetch Error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("reports master-report fetch", error);
         return { error: "Failed to fetch report data" };
     }
 }

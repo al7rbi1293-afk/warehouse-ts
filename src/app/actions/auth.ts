@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { authOptions, hashPassword } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 interface RegisterResult {
     success: boolean;
@@ -55,8 +56,8 @@ export async function registerUser(formData: FormData): Promise<RegisterResult> 
 
         revalidatePath("/login");
         return { success: true, message: "Registration successful" };
-    } catch (error) {
-        console.error("Registration error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("auth register-user", error);
         return { success: false, message: "Registration failed" };
     }
 }
@@ -112,8 +113,8 @@ export async function updateUserProfile(
         });
 
         return { success: true, message: "Profile updated successfully" };
-    } catch (error) {
-        console.error("Update error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("auth update-profile", error);
         return { success: false, message: "Update failed" };
     }
 }

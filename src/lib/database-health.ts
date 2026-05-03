@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 
 export const GENERIC_DASHBOARD_DATA_ERROR =
-  "Unable to load live KPI data. Please try again later.";
+  "Unable to load live dashboard data right now.";
 
 export type DatabaseHealthStatus = {
   status: "ok" | "error";
@@ -75,12 +75,35 @@ export function sanitizeDatabaseError(error: unknown): SanitizedDatabaseError {
   return { reason: "database_error" };
 }
 
+export const sanitizeDbError = sanitizeDatabaseError;
+
 export function logSanitizedDatabaseError(context: string, error: unknown) {
   const sanitized = sanitizeDatabaseError(error);
 
-  console.error(`[db] ${context}`, sanitized);
+  console.error(`[${context}] failed`, sanitized);
 
   return sanitized;
+}
+
+export async function safeQuery<T>(
+  label: string,
+  queryFn: () => Promise<T>,
+  fallback: T,
+  options?: {
+    context?: string;
+    onError?: (error: unknown) => void;
+  }
+): Promise<T> {
+  try {
+    return await queryFn();
+  } catch (error: unknown) {
+    console.error(
+      `[${options?.context || "db"}:${label}] failed`,
+      sanitizeDbError(error)
+    );
+    options?.onError?.(error);
+    return fallback;
+  }
 }
 
 export async function getDatabaseHealth(): Promise<DatabaseHealthStatus> {
@@ -88,7 +111,7 @@ export async function getDatabaseHealth(): Promise<DatabaseHealthStatus> {
     await prisma.$queryRawUnsafe("SELECT 1");
     return { status: "ok" };
   } catch (error: unknown) {
-    const sanitized = logSanitizedDatabaseError("healthcheck failed", error);
+    const sanitized = logSanitizedDatabaseError("db:healthcheck", error);
     return {
       status: "error",
       reason: sanitized.reason,

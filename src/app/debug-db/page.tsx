@@ -16,7 +16,8 @@ export default async function DebugDbPage() {
     const environmentSummary = [
         { label: "DATABASE_URL", configured: Boolean(process.env.DATABASE_URL) },
         { label: "DIRECT_URL", configured: Boolean(process.env.DIRECT_URL) },
-        { label: "SUPABASE_POOLER_URL", configured: Boolean(process.env.SUPABASE_POOLER_URL) },
+        { label: "NEXTAUTH_SECRET", configured: Boolean(process.env.NEXTAUTH_SECRET) },
+        { label: "NEXTAUTH_URL", configured: Boolean(process.env.NEXTAUTH_URL) },
     ];
 
     return (

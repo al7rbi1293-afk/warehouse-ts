@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getWarehouseKpiDataset } from "@/lib/warehouse-kpi";
 import { prisma } from "@/lib/prisma";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 import { canAccessWarehouse } from "@/lib/roles";
 import { WarehouseExportModule, WAREHOUSE_EXPORT_TITLES } from "@/lib/warehouse-export";
 import { inferWarehouseType, parseDateInput } from "@/lib/warehouse-utils";
@@ -687,7 +688,7 @@ export async function GET(request: Request) {
 
     return Response.json({ error: "Unsupported export module" }, { status: 400 });
   } catch (error) {
-    console.error("Warehouse export error", error);
+    logSanitizedDatabaseError("api:warehouse-export", error);
     return Response.json({ error: "Failed to generate export" }, { status: 500 });
   }
 }

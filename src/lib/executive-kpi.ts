@@ -32,6 +32,7 @@ import {
   type KpiPeriodSummary,
 } from "@/lib/kpi-helpers";
 import { prisma } from "@/lib/prisma";
+import { safeQuery } from "@/lib/database-health";
 
 type SupervisorReference = {
   id: number;
@@ -132,6 +133,29 @@ type PortalFilters = {
 const SUPERVISOR_ROLES = ["supervisor", "night_supervisor"] as const;
 const WORKER_ROLES = new Set(["Housekeeper", "Housekeper"]);
 const SENIOR_WORKER_ROLE = "Senior Housekeeper";
+
+function createEmptyReferenceData(availableYears: number[]): ReferenceData {
+  return {
+    supervisors: [],
+    workers: [],
+    seniorUsers: [],
+    seniorMappings: new Map(),
+    assumptions: [],
+    supportedAttendanceStatuses: [],
+    availableYears: Array.from(new Set(availableYears)).sort(
+      (left, right) => right - left
+    ),
+  };
+}
+
+function createEmptyYearFacts(year: number): YearFacts {
+  return {
+    year,
+    staffAttendance: new Map(),
+    workerAttendance: new Map(),
+    supervisorReports: new Map(),
+  };
+}
 
 function createMonthKey(year: number, month: number) {
   return `${year}-${String(month).padStart(2, "0")}`;
@@ -1172,12 +1196,46 @@ async function getYearFacts(year: number): Promise<YearFacts> {
 export async function getExecutiveKpiPortalData(
   filters: PortalFilters
 ): Promise<ExecutiveKpiPortalData> {
-  const references = await getReferenceData();
-  const monthlyFactsPromise = getYearFacts(filters.monthly.year);
+  let hasLiveDataFailure = false;
+  const currentYear = new Date().getUTCFullYear();
+  const fallbackYears = [
+    currentYear,
+    filters.monthly.year,
+    filters.annual.year,
+  ];
+  const markLiveDataFailure = () => {
+    hasLiveDataFailure = true;
+  };
+  const references = await safeQuery(
+    "reference-data",
+    getReferenceData,
+    createEmptyReferenceData(fallbackYears),
+    {
+      context: "executive-kpi",
+      onError: markLiveDataFailure,
+    }
+  );
+  const monthlyFactsPromise = safeQuery(
+    `year-facts-${filters.monthly.year}`,
+    () => getYearFacts(filters.monthly.year),
+    createEmptyYearFacts(filters.monthly.year),
+    {
+      context: "executive-kpi",
+      onError: markLiveDataFailure,
+    }
+  );
   const annualFactsPromise =
     filters.monthly.year === filters.annual.year
       ? monthlyFactsPromise
-      : getYearFacts(filters.annual.year);
+      : safeQuery(
+          `year-facts-${filters.annual.year}`,
+          () => getYearFacts(filters.annual.year),
+          createEmptyYearFacts(filters.annual.year),
+          {
+            context: "executive-kpi",
+            onError: markLiveDataFailure,
+          }
+        );
 
   const [monthlyFacts, annualFacts] = await Promise.all([
     monthlyFactsPromise,
@@ -1202,6 +1260,11 @@ export async function getExecutiveKpiPortalData(
     availableYears: references.availableYears,
     supportedAttendanceStatuses: references.supportedAttendanceStatuses,
     assumptions: [
+      ...(hasLiveDataFailure
+        ? [
+            "Unable to load live executive KPI data right now. Empty fallback metrics are shown until database connectivity is restored.",
+          ]
+        : []),
       "Supervisor report KPI is computed read-only from persisted rows in daily_report_submissions. Because that table has no review-status column populated in live data, existing saved rows are treated as valid submitted reports and deleted rows remain excluded by absence.",
       "Expected supervisor reports are compared against the current mandatory daily rounds only. Optional rounds remain visible as extra submissions but do not increase the mandatory target.",
       "Supervisor actual daily reports rate uses distinct report-submission days as the denominator. The live staff_attendance table is not populated for every supervisor workday, so this avoids inventing attendance that is not stored.",

@@ -111,7 +111,7 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             {/* Header */}
             {data.debugError && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-                    <strong className="font-bold">Dashboard Error: </strong>
+                    <strong className="font-bold">Live data unavailable: </strong>
                     <span className="block sm:inline">{data.debugError}</span>
                 </div>
             )}

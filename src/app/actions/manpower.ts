@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAudit } from "@/app/actions/audit";
 import { revalidateManpowerData } from "@/lib/cache-tags";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 function sanitizeRequiredText(value: FormDataEntryValue | null, fieldName: string) {
     const text = typeof value === "string" ? value.trim() : "";
@@ -126,8 +127,8 @@ export async function createWorker(formData: FormData) {
 
         revalidateManpowerData();
         return { success: true, message: "Worker added successfully" };
-    } catch (error) {
-        console.error("Create worker error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower create-worker", error);
         return {
             success: false,
             message: getWorkerMutationErrorMessage(error, "Failed to add worker"),
@@ -163,8 +164,8 @@ export async function updateWorker(
 
         revalidateManpowerData();
         return { success: true, message: "Worker updated successfully" };
-    } catch (error) {
-        console.error("Update worker error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower update-worker", error);
         return { success: false, message: "Failed to update worker" };
     }
 }
@@ -192,8 +193,8 @@ export async function deleteWorker(id: number) {
 
         revalidateManpowerData();
         return { success: true, message: "Worker deleted successfully" };
-    } catch (error) {
-        console.error("Delete worker error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower delete-worker", error);
         return { success: false, message: "Failed to delete worker" };
     }
 }
@@ -223,8 +224,8 @@ export async function createShift(formData: FormData) {
 
         revalidateManpowerData();
         return { success: true, message: "Shift added successfully" };
-    } catch (error) {
-        console.error("Create shift error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower create-shift", error);
         return { success: false, message: "Failed to add shift" };
     }
 }
@@ -268,8 +269,8 @@ export async function submitAttendance(
 
         revalidateManpowerData();
         return { success: true, message: "Attendance recorded" };
-    } catch (error) {
-        console.error("Submit attendance error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower submit-attendance", error);
         return { success: false, message: "Failed to record attendance" };
     }
 }
@@ -320,8 +321,8 @@ export async function submitBulkAttendance(
 
         revalidateManpowerData();
         return { success: true, message: `Recorded attendance for ${attendanceData.length} workers` };
-    } catch (error) {
-        console.error("Bulk attendance error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower bulk-attendance", error);
         return { success: false, message: "Failed to record attendance" };
     }
 }
@@ -355,8 +356,8 @@ export async function updateSupervisorProfile(
 
         revalidateManpowerData();
         return { success: true, message: "Profile updated successfully" };
-    } catch (error) {
-        console.error("Update supervisor error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("manpower update-supervisor", error);
         return { success: false, message: "Failed to update profile" };
     }
 }

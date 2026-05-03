@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 export interface ChecklistItem {
     id: string;
@@ -122,8 +123,8 @@ export async function submitDailyReport(data: DailyReportData): Promise<DailyRep
             message: "Daily report submitted successfully",
             id: String(report.id),
         };
-    } catch (error) {
-        console.error("Error submitting daily report:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("daily-reports submit", error);
         return { success: false, message: "Failed to submit daily report" };
     }
 }
@@ -144,8 +145,8 @@ export async function getDailyReports(dateStr?: string, region?: string) {
         });
 
         return { success: true, data: reports };
-    } catch (error) {
-        console.error("Error fetching daily reports:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("daily-reports fetch", error);
         return { success: false, data: [] };
     }
 }

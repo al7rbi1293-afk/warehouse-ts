@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { revalidateManpowerData } from "@/lib/cache-tags";
 import { isUnavailableAttendanceStatus } from "@/lib/attendance-status";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 
 
@@ -28,8 +29,8 @@ export async function getStaffList() {
             }
         });
         return { success: true, data: staff };
-    } catch (error) {
-        console.error("Error fetching staff:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("staff fetch-list", error);
         return { success: false, message: "Failed to fetch staff" };
     }
 }
@@ -51,8 +52,8 @@ export async function getStaffAttendance(date: string) {
             }
         });
         return { success: true, data: attendance };
-    } catch (error) {
-        console.error("Error fetching staff attendance:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("staff fetch-attendance", error);
         return { success: false, message: "Failed to fetch attendance" };
     }
 }
@@ -98,8 +99,8 @@ export async function markStaffAttendance(
 
         revalidateManpowerData();
         return { success: true, message: "Staff attendance updated" };
-    } catch (error) {
-        console.error("Error updating staff attendance:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("staff mark-attendance", error);
         return { success: false, message: "Failed to update attendance" };
     }
 }
@@ -160,8 +161,8 @@ export async function assignSubstitute(
             message: "Substitute assigned successfully",
             inheritedZones: absentUser.regions || absentUser.region
         };
-    } catch (error) {
-        console.error("Assign substitute error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("staff assign-substitute", error);
         return { success: false, message: "Failed to assign substitute" };
     }
 }
@@ -192,8 +193,8 @@ export async function getSubstituteZones(substituteUserId: number, date: string)
         });
 
         return { success: true, data: Array.from(inheritedZones) };
-    } catch (error) {
-        console.error("Get substitute zones error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("staff substitute-zones", error);
         return { success: false, data: [] };
     }
 }
@@ -226,8 +227,8 @@ export async function updateWorkerAttendance(
 
         revalidateManpowerData();
         return { success: true, message: "Attendance updated successfully" };
-    } catch (error) {
-        console.error("Update worker attendance error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("staff update-worker-attendance", error);
         return { success: false, message: "Failed to update attendance" };
     }
 }

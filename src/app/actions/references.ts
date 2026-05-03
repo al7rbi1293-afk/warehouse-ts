@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { revalidateReferenceData } from "@/lib/cache-tags";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 // =====================
 // Projects
@@ -15,8 +16,8 @@ export async function getProjects() {
             orderBy: { name: "asc" }
         });
         return { success: true, data: projects };
-    } catch (error) {
-        console.error("Error fetching projects:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references fetch-projects", error);
         return { success: false, data: [] };
     }
 }
@@ -30,8 +31,8 @@ export async function getWarehouses() {
             orderBy: { name: "asc" }
         });
         return { success: true, data: warehouses };
-    } catch (error) {
-        console.error("Error fetching warehouses:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references fetch-warehouses", error);
         return { success: false, data: [] };
     }
 }
@@ -45,8 +46,8 @@ export async function getRegions() {
             orderBy: { name: "asc" }
         });
         return { success: true, data: regions };
-    } catch (error) {
-        console.error("Error fetching regions:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references fetch-regions", error);
         return { success: false, data: [] };
     }
 }
@@ -66,8 +67,8 @@ export async function createRegion(name: string) {
         await prisma.region.create({ data: { name } });
         revalidateReferenceData();
         return { success: true, message: "Region created successfully" };
-    } catch (error) {
-        console.error("Create region error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references create-region", error);
         return { success: false, message: "Failed to create region" };
     }
 }
@@ -85,8 +86,8 @@ export async function updateRegion(id: number, name: string) {
         });
         revalidateReferenceData();
         return { success: true, message: "Region updated successfully" };
-    } catch (error) {
-        console.error("Update region error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references update-region", error);
         return { success: false, message: "Failed to update region" };
     }
 }
@@ -101,8 +102,8 @@ export async function deleteRegion(id: number) {
         await prisma.region.delete({ where: { id } });
         revalidateReferenceData();
         return { success: true, message: "Region deleted successfully" };
-    } catch (error) {
-        console.error("Delete region error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references delete-region", error);
         return { success: false, message: "Failed to delete region" };
     }
 }
@@ -116,8 +117,8 @@ export async function getShifts() {
             orderBy: { id: "asc" }
         });
         return { success: true, data: shifts };
-    } catch (error) {
-        console.error("Error fetching shifts:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references fetch-shifts", error);
         return { success: false, data: [] };
     }
 }
@@ -138,8 +139,8 @@ export async function createShift(data: { name: string; startTime?: string; endT
         });
         revalidateReferenceData();
         return { success: true, message: "Shift created successfully" };
-    } catch (error) {
-        console.error("Create shift error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references create-shift", error);
         return { success: false, message: "Failed to create shift" };
     }
 }
@@ -157,8 +158,8 @@ export async function updateShift(id: number, data: { name?: string; startTime?:
         });
         revalidateReferenceData();
         return { success: true, message: "Shift updated successfully" };
-    } catch (error) {
-        console.error("Update shift error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references update-shift", error);
         return { success: false, message: "Failed to update shift" };
     }
 }
@@ -181,8 +182,8 @@ export async function deleteShift(id: number) {
         await prisma.shift.delete({ where: { id } });
         revalidateReferenceData();
         return { success: true, message: "Shift deleted successfully" };
-    } catch (error) {
-        console.error("Delete shift error:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("references delete-shift", error);
         return { success: false, message: "Failed to delete shift" };
     }
 }

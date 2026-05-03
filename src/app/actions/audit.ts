@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 
 export async function logAudit(
     userName: string,
@@ -18,8 +19,8 @@ export async function logAudit(
                 timestamp: new Date(),
             },
         });
-    } catch (error) {
-        console.error("Failed to create audit log:", error);
+    } catch (error: unknown) {
+        logSanitizedDatabaseError("audit create-log", error);
         // Don't throw, just log error so main action doesn't fail
     }
 }

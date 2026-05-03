@@ -6,6 +6,7 @@ import { getServerSession, type Session } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { logAudit } from "@/app/actions/audit";
 import { revalidateWarehouseData } from "@/lib/cache-tags";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 import { buildBulkOperationNo, normalizePositiveInt } from "@/lib/warehouse-utils";
 import { WarehouseBulkOperationType } from "@/types";
 
@@ -579,7 +580,7 @@ export async function createInventoryItem(formData: FormData) {
         revalidateWarehouseData();
         return { success: true, message: "Item created successfully" };
     } catch (error) {
-        console.error("Create inventory error:", error);
+        logSanitizedDatabaseError("inventory create", error);
         return { success: false, message: "Failed to create item" };
     }
 }
@@ -624,7 +625,7 @@ export async function addInventoryItem(
         revalidateWarehouseData();
         return { success: true, message: "Item added successfully" };
     } catch (error) {
-        console.error("Add inventory error:", error);
+        logSanitizedDatabaseError("inventory add", error);
         return { success: false, message: "Failed to add item" };
     }
 }
@@ -679,7 +680,7 @@ export async function updateInventoryItem(
         revalidateWarehouseData();
         return { success: true, message: "Item updated successfully" };
     } catch (error) {
-        console.error("Update inventory error:", error);
+        logSanitizedDatabaseError("inventory update", error);
         return { success: false, message: "Failed to update item" };
     }
 }
@@ -703,7 +704,7 @@ export async function deleteInventoryItem(id: number) {
         revalidateWarehouseData();
         return { success: true, message: "Item deleted successfully" };
     } catch (error) {
-        console.error("Delete inventory error:", error);
+        logSanitizedDatabaseError("inventory delete", error);
         return { success: false, message: "Failed to delete item" };
     }
 }
@@ -761,7 +762,7 @@ export async function updateStock(
         revalidateWarehouseData();
         return { success: true, message: "Stock updated successfully" };
     } catch (error) {
-        console.error("Update stock error:", error);
+        logSanitizedDatabaseError("inventory update-stock", error);
         return { success: false, message: "Failed to update stock" };
     }
 }
@@ -796,7 +797,7 @@ export async function transferStock(
         revalidateWarehouseData();
         return { success: true, message: "Transfer completed successfully" };
     } catch (error) {
-        console.error("Transfer error:", error);
+        logSanitizedDatabaseError("inventory transfer", error);
         const msg = error instanceof Error ? error.message : "Unknown error";
         return { success: false, message: msg === `Insufficient stock in ${fromLocation}` ? msg : "Transfer failed" };
     }
@@ -832,7 +833,7 @@ export async function lendStock(
         revalidateWarehouseData();
         return { success: true, message: `Successfully lent to ${projectName}` };
     } catch (error) {
-        console.error("Lend error:", error);
+        logSanitizedDatabaseError("inventory lend", error);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const msg = (error as any).message;
         return { success: false, message: msg === "Insufficient stock" ? msg : "Lend operation failed" };
@@ -869,7 +870,7 @@ export async function returnStock(
         revalidateWarehouseData();
         return { success: true, message: `Successfully returned from ${projectName}` };
     } catch (error) {
-        console.error("Return error:", error);
+        logSanitizedDatabaseError("inventory return", error);
         return { success: false, message: "Return operation failed" };
     }
 }
@@ -1085,7 +1086,7 @@ export async function createBulkMovementOperation(input: {
             operationNo: result.operationNo,
         };
     } catch (error) {
-        console.error("Bulk movement operation error:", error);
+        logSanitizedDatabaseError("inventory bulk-movement", error);
         return {
             success: false,
             message: error instanceof Error ? error.message : "Failed to process bulk operation",
@@ -1125,7 +1126,7 @@ export async function createRequest(
         revalidateWarehouseData();
         return { success: true, message: "Request created" };
     } catch (error) {
-        console.error("Create request error:", error);
+        logSanitizedDatabaseError("inventory create-request", error);
         return { success: false, message: "Failed to create request" };
     }
 }
@@ -1271,7 +1272,7 @@ export async function createBulkRequest(
             operationNo: result.operationNo,
         };
     } catch (error) {
-        console.error("Create bulk request error:", error);
+        logSanitizedDatabaseError("inventory create-bulk-request", error);
         return {
             success: false,
             message: error instanceof Error ? error.message : "Failed to submit requests",
@@ -1334,7 +1335,7 @@ export async function updateRequestStatus(
         revalidateWarehouseData();
         return { success: true, message: "Request updated" };
     } catch (error) {
-        console.error("Update request error:", error);
+        logSanitizedDatabaseError("inventory update-request", error);
         return { success: false, message: "Failed to update request" };
     }
 }
@@ -1415,7 +1416,7 @@ export async function confirmReceipt(reqId: number) {
         revalidateWarehouseData();
         return { success: true, message: "Receipt confirmed and local inventory updated" };
     } catch (error) {
-        console.error("Confirm receipt error:", error);
+        logSanitizedDatabaseError("inventory confirm-receipt", error);
         return { success: false, message: "Failed to confirm receipt" };
     }
 }
@@ -1451,7 +1452,7 @@ export async function deleteRequest(reqId: number) {
         revalidateWarehouseData();
         return { success: true, message: "Request deleted" };
     } catch (error) {
-        console.error("Delete request error:", error);
+        logSanitizedDatabaseError("inventory delete-request", error);
         return { success: false, message: "Failed to delete request" };
     }
 }
@@ -1497,7 +1498,7 @@ export async function updateBulkStock(
         revalidateWarehouseData();
         return { success: true, message: `Updated ${items.filter((i) => i.oldQty !== i.newQty).length} items` };
     } catch (error) {
-        console.error("Bulk stock update error:", error);
+        logSanitizedDatabaseError("inventory bulk-stock-update", error);
         return { success: false, message: "Failed to update stock" };
     }
 }
@@ -1539,7 +1540,7 @@ export async function updateLocalInventory(
         revalidateWarehouseData();
         return { success: true, message: "Inventory updated" };
     } catch (error) {
-        console.error("Update local inventory error:", error);
+        logSanitizedDatabaseError("inventory update-local", error);
         return { success: false, message: "Failed to update inventory" };
     }
 }
@@ -1584,7 +1585,7 @@ export async function bulkUpdateLocalInventory(
         revalidateWarehouseData();
         return { success: true, message: `Updated ${items.length} items` };
     } catch (error) {
-        console.error("Bulk local inventory update error:", error);
+        logSanitizedDatabaseError("inventory bulk-local-update", error);
         return { success: false, message: "Failed to update inventory" };
     }
 }
@@ -1701,7 +1702,7 @@ export async function bulkIssueRequests(
         revalidateWarehouseData();
         return { success: true, message: `Successfully issued ${validItems.length} requests`, operationNo: result.operationNo };
     } catch (error) {
-        console.error("Bulk issue error:", error);
+        logSanitizedDatabaseError("inventory bulk-issue", error);
         return {
             success: false,
             message: error instanceof Error ? error.message : "Failed to issue requests",
@@ -1773,7 +1774,7 @@ export async function bulkConfirmReceipt(reqIds: number[]) {
         revalidateWarehouseData();
         return { success: true, message: `Successfully confirmed ${reqIds.length} items` };
     } catch (error) {
-        console.error("Bulk confirm receipt error:", error);
+        logSanitizedDatabaseError("inventory bulk-confirm-receipt", error);
         return { success: false, message: "Failed to confirm receipts" };
     }
 }
@@ -1812,7 +1813,7 @@ export async function bulkApproveRequests(reqIds: number[]) {
         revalidateWarehouseData();
         return { success: true, message: `Approved ${reqIds.length} requests` };
     } catch (error) {
-        console.error("Bulk approve error:", error);
+        logSanitizedDatabaseError("inventory bulk-approve", error);
         return { success: false, message: "Failed to approve requests" };
     }
 }
@@ -1851,7 +1852,7 @@ export async function bulkRejectRequests(reqIds: number[], reason?: string) {
         revalidateWarehouseData();
         return { success: true, message: `Rejected ${reqIds.length} requests` };
     } catch (error) {
-        console.error("Bulk reject error:", error);
+        logSanitizedDatabaseError("inventory bulk-reject", error);
         return { success: false, message: "Failed to reject requests" };
     }
 }
@@ -1881,7 +1882,7 @@ export async function updateRequest(
         revalidateWarehouseData();
         return { success: true, message: "Request updated successfully" };
     } catch (error) {
-        console.error("Update request error:", error);
+        logSanitizedDatabaseError("inventory update-request-status", error);
         return { success: false, message: "Failed to update request" };
     }
 }

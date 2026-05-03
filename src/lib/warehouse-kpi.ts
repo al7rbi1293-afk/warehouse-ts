@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 import { CACHE_TAGS } from "@/lib/cache-tags";
+import { logSanitizedDatabaseError } from "@/lib/database-health";
 import { inferWarehouseType } from "@/lib/warehouse-utils";
 import {
   WarehouseKpiBorrowLendRecord,
@@ -428,7 +429,7 @@ export async function getWarehouseKpiDataset() {
   try {
     return await getWarehouseKpiSnapshot();
   } catch (error) {
-    console.error("Warehouse reports data error:", error);
+    logSanitizedDatabaseError("warehouse-kpi snapshot", error);
 
     return {
       generatedAt: new Date().toISOString(),

@@ -1,7 +1,12 @@
 import { PrismaClient } from "@prisma/client";
+import { readFileSync } from "node:fs";
 
 const shouldVerify =
   process.env.VERCEL === "1" || process.env.REQUIRE_DB_VERIFY === "1";
+const schemaText = readFileSync("prisma/schema.prisma", "utf8");
+const schemaRequiresDirectUrl = /directUrl\s*=\s*env\("DIRECT_URL"\)/.test(
+  schemaText
+);
 const verificationUrl = process.env.DIRECT_URL || process.env.DATABASE_URL;
 
 if (!shouldVerify) {
@@ -18,16 +23,46 @@ if (!verificationUrl) {
   process.exit(1);
 }
 
-let verificationHost = "";
-try {
-  verificationHost = new URL(verificationUrl).hostname;
-} catch {
-  verificationHost = "";
+if (schemaRequiresDirectUrl && !process.env.DIRECT_URL) {
+  console.error(
+    "[db:verify] DIRECT_URL is required because prisma/schema.prisma defines directUrl = env(\"DIRECT_URL\"). Set it to the direct Supabase database URL on port 5432."
+  );
+  process.exit(1);
 }
 
-if (!process.env.DIRECT_URL && verificationHost.includes("pooler.supabase.com")) {
+let verificationUrlDetails = {
+  host: "",
+  sslmode: "",
+  isSupabase: false,
+};
+try {
+  const parsed = new URL(verificationUrl);
+  verificationUrlDetails = {
+    host: parsed.hostname,
+    sslmode: parsed.searchParams.get("sslmode") || "",
+    isSupabase:
+      parsed.hostname.includes("pooler.supabase.com") ||
+      (parsed.hostname.startsWith("db.") &&
+        parsed.hostname.endsWith(".supabase.co")),
+  };
+} catch {
+  verificationUrlDetails = {
+    host: "",
+    sslmode: "",
+    isSupabase: false,
+  };
+}
+
+if (!process.env.DIRECT_URL && verificationUrlDetails.host.includes("pooler.supabase.com")) {
   console.error(
     "[db:verify] DIRECT_URL is missing while DATABASE_URL points to the Supabase pooler. Set DIRECT_URL to the direct database connection (port 5432) for Prisma schema verification."
+  );
+  process.exit(1);
+}
+
+if (verificationUrlDetails.isSupabase && verificationUrlDetails.sslmode !== "require") {
+  console.error(
+    "[db:verify] Supabase database URLs must include sslmode=require."
   );
   process.exit(1);
 }
