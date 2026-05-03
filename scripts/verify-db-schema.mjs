@@ -18,6 +18,20 @@ if (!verificationUrl) {
   process.exit(1);
 }
 
+let verificationHost = "";
+try {
+  verificationHost = new URL(verificationUrl).hostname;
+} catch {
+  verificationHost = "";
+}
+
+if (!process.env.DIRECT_URL && verificationHost.includes("pooler.supabase.com")) {
+  console.error(
+    "[db:verify] DIRECT_URL is missing while DATABASE_URL points to the Supabase pooler. Set DIRECT_URL to the direct database connection (port 5432) for Prisma schema verification."
+  );
+  process.exit(1);
+}
+
 const prisma = new PrismaClient({
   datasourceUrl: verificationUrl,
 });
