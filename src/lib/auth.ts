@@ -24,13 +24,18 @@ export const authOptions: NextAuthOptions = {
                 password: { label: "Password", type: "password" },
             },
             async authorize(credentials) {
-                if (!credentials?.username || !credentials?.password) {
+                const normalizedUsername = credentials?.username?.trim();
+
+                if (!normalizedUsername || !credentials?.password) {
                     throw new Error("Invalid credentials");
                 }
 
-                const user = await prisma.user.findUnique({
+                const user = await prisma.user.findFirst({
                     where: {
-                        username: credentials.username,
+                        username: {
+                            equals: normalizedUsername,
+                            mode: "insensitive",
+                        },
                     },
                     include: {
                         shift: true

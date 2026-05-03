@@ -22,7 +22,7 @@ export default function LoginPage() {
         try {
             const result = await signIn("credentials", {
                 username: username.trim(),
-                password: password.trim(),
+                password,
                 redirect: false,
             });
 
