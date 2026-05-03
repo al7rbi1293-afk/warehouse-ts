@@ -10,6 +10,8 @@ import { getSiteUrl } from "@/lib/siteUrl";
 
 const siteUrl = getSiteUrl();
 
+export const preferredRegion = "fra1";
+
 const cairo = Cairo({
   subsets: ["arabic", "latin"],
   variable: "--font-cairo",

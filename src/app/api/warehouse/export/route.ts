@@ -10,6 +10,7 @@ import { WarehouseExportModule, WAREHOUSE_EXPORT_TITLES } from "@/lib/warehouse-
 import { inferWarehouseType, parseDateInput } from "@/lib/warehouse-utils";
 
 export const runtime = "nodejs";
+export const preferredRegion = "fra1";
 
 function formatDateTime(value: Date | string | null | undefined) {
   if (!value) return "";
